@@ -7,7 +7,6 @@
 	<script src="s_main.lua" type="server" />
 
 	<file src="logo-circle.png" />
-	<file src="images/logo_text.png" />
 
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
@@ -16,6 +15,11 @@
 	<file src="icons/discord.png" />
 	<file src="icons/youtube.png" />
 	<file src="icons/link.png" />
+	<file src="icons/menu_person.png" />
+	<file src="icons/menu_shield.png" />
+	<file src="icons/menu_trophy.png" />
+	<file src="icons/menu_chat.png" />
+	<file src="icons/menu_globe.png" />
 	<file src="icons/admin3.png" />
 	<file src="icons/admin_badge.png" />
 	<file src="icons/AFK.png" />

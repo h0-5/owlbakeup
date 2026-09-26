@@ -62,11 +62,13 @@ local BRAND_TEXT   = "VORTEX ROLEPLAY"
         code creates content for. Titles/emoji restore the sidebar. ]]
 
 local SECTIONS = {
-        { id = "character_info", en = "Personal Info",  ar = "المعلومات الشخصية",  emoji = "👤" },
-        { id = "onlinestaff",    en = "Online Staff",   ar = "الإدارة المتصلة",    emoji = "🛡️" },
-        { id = "leaderboard",    en = "Leaderboard",    ar = "المتصدرين",          emoji = "🏆" },
-        { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      emoji = "💬" },
-        { id = "about",          en = "About Server",   ar = "عن السيرفر",         emoji = "🌐" },
+        -- icons use the ORIGINAL rows[].icon mechanism (arg3 of uiMenuAddRow);
+        -- UIKit tints them with the menu "icons_color" (Vortex blue)
+        { id = "character_info", en = "Personal Info",  ar = "المعلومات الشخصية",  icon = "icons/menu_person.png" },
+        { id = "onlinestaff",    en = "Online Staff",   ar = "الإدارة المتصلة",    icon = "icons/menu_shield.png" },
+        { id = "leaderboard",    en = "Leaderboard",    ar = "المتصدرين",          icon = "icons/menu_trophy.png" },
+        { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/menu_chat.png" },
+        { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
 }
 
 local GENDERS = { "Male", "Female" }
@@ -214,14 +216,6 @@ function main_menu_draw()
         if logoTex and state.sideX > LOGO_SIZE then
                 dxDrawImage(LOGO_X, LOGO_Y, LOGO_SIZE, LOGO_SIZE, logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), true)
         end
-        -- vertical brand text, faint, like the original logo_text.png
-        if logoTextTex and state.sideX > 60 then
-                local tw = 450 * SCALE_X
-                local th = tw * 0.24
-                local tx = (state.sideX - tw) / 2 + 150 * SCALE_X
-                local ty = sy - (sy - th) / 2 - 200 * SCALE_Y
-                dxDrawImage(tx, ty, tw, th, logoTextTex, -90, 0, 0, tocolor(255, 255, 255, 50), true)
-        end
 end
 
 --[[ F1 / ESC-binds cancel while quitting the character ]]
@@ -278,7 +272,17 @@ end
 
 --[[ ===================== UIKit construction (1:1) ===================== ]]
 
+local uiBuilt = false -- rebuild guard (see UIKitReady)
+
 function UIKitReady()
+        -- only one live panel per UIKit lifetime: both onClientUIReady and
+        -- onClientUIKitReady fire on some start orders (and UIKit may restart
+        -- while main-menu is up). A COMPLETED build is kept, an ABORTED one
+        -- (UIKit not running yet) is discarded and rebuilt on the next event.
+        if UI.window.MainMenu and isElement(UI.window.MainMenu) then
+                if uiBuilt then return end
+                destroyElement(UI.window.MainMenu)
+        end
         eui = exports.UIKit
 
         UI.window.MainMenu = eui:uiCreateRectangle(false, false,
@@ -325,7 +329,7 @@ function UIKitReady()
                         false, false, false, false, panel)
 
                 eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
-                        tocolor(29, 32, 37, 0), nil, UI.container[section.id], section.id, section.emoji)
+                        tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)
         end
 
         --[[ ------------------ character_info ------------------ ]]
@@ -739,7 +743,9 @@ function UIKitReady()
                                         .. bullet .. "رخصة قيادة الطائرات:  #FFFFFF" .. (getElementData(localPlayer, "license.Aircraft") and "نعم" or "#FF0000لا") .. "\n"
                                         .. bullet .. "رخصة الطيار:  #FFFFFF" .. (getElementData(localPlayer, "license.Pilots") and "نعم" or "#FF0000لا"),
                         })
-                        eui:uiSetText(UI.label.username, "Current Username: " .. tostring(getElementData(localPlayer, "character:account")))
+                        local accName = getElementData(localPlayer, "character:account")
+                        if type(accName) ~= "string" or accName == "" then accName = getPlayerName(localPlayer) end
+                        eui:uiSetText(UI.label.username, accName)
                 end
         end)
 
@@ -814,6 +820,8 @@ function UIKitReady()
                         eui:uiGridListSetItemText(grid, row, 3, tostring(kind == "levels" and entry.level or entry.points))
                 end
         end)
+
+        uiBuilt = true
 end
 
 function updateLeaderboard(kind)

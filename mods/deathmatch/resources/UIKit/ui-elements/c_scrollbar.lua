@@ -71,7 +71,8 @@ UI.getDrawFunction["ui-scrollbar"] = function(arg0)
   if UI.DB[arg0].data.horizontal then
     dxDrawRectangle(UI.DB[arg0].data.scrollX, UI.DB[arg0].dimensions.y + 1, UI.DB[arg0].properties.thumb_size.value, UI.DB[arg0].dimensions.height - 2, tocolor(dxGetColor(UI.DB[arg0].colors[1])), UI.postGUI)
     if UI.DB[arg0].state == "clicked" and isCursorShowing() then
-      UI.DB[arg0].data.scrollX = getCursorPosition() * sx - UI.DB[arg0].data.clickPositionRelatedToScroll
+      local mcx, mcy = getCursorPosition()
+      UI.DB[arg0].data.scrollX = (mcx or 0) * sx - UI.DB[arg0].data.clickPositionRelatedToScroll
       UI.DB[arg0].data.scrollX = math.min(math.max(UI.DB[arg0].dimensions.x + 1, UI.DB[arg0].data.scrollX), UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - UI.DB[arg0].properties.thumb_size.value - 1)
       UI.DB[arg0].data.scroll = math.ceil((UI.DB[arg0].data.scrollX - UI.DB[arg0].dimensions.x - 1) / (UI.DB[arg0].dimensions.width - 2 - UI.DB[arg0].properties.thumb_size.value) * 100)
       if UI.DB[arg0].data.scroll ~= UI.DB[arg0].data.scroll then
@@ -81,7 +82,8 @@ UI.getDrawFunction["ui-scrollbar"] = function(arg0)
   else
     dxDrawRectangle(UI.DB[arg0].dimensions.x + 1, UI.DB[arg0].data.scrollY, UI.DB[arg0].dimensions.width - 2, UI.DB[arg0].properties.thumb_size.value, tocolor(dxGetColor(UI.DB[arg0].colors[1])), UI.postGUI)
     if UI.DB[arg0].state == "clicked" and isCursorShowing() then
-      UI.DB[arg0].data.scrollY = getCursorPosition() * sy - UI.DB[arg0].data.clickPositionRelatedToScroll
+      local mcx, mcy = getCursorPosition()
+      UI.DB[arg0].data.scrollY = (mcy or 0) * sy - UI.DB[arg0].data.clickPositionRelatedToScroll
       UI.DB[arg0].data.scrollY = math.min(math.max(UI.DB[arg0].dimensions.y + 1, UI.DB[arg0].data.scrollY), UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - UI.DB[arg0].properties.thumb_size.value - 1)
       UI.DB[arg0].data.scroll = math.ceil((UI.DB[arg0].data.scrollY - UI.DB[arg0].dimensions.y - 1) / (UI.DB[arg0].dimensions.height - 2 - UI.DB[arg0].properties.thumb_size.value) * 100)
       if UI.DB[arg0].data.scroll ~= UI.DB[arg0].data.scroll then

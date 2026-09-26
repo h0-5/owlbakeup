@@ -43,11 +43,6 @@ UI = {
 newLinePrefix = "@@@@@@@@@@@@@@@NEWS_LINE@@@@@@@@@@@@@@@@"
 dxFont = dxCreateFont("fonts/Font2.ttf", 11.5 * SCALE_Y)
 dxFontLarge = dxCreateFont("fonts/Font2.ttf", 15 * SCALE_Y)
--- monochrome emoji glyph font (Segoe UI Emoji ships with every Windows 8.1+ client);
--- used by ui-menu rows that pass an "emoji" instead of an image icon
-dxFontEmoji = dxCreateFont("C:/Windows/Fonts/seguiemj.ttf", 11.5 * SCALE_Y)
-	 or dxCreateFont("fonts/seguiemj.ttf", 11.5 * SCALE_Y)
-	 or "default-bold"
 dxFontHUD = dxCreateFont("fonts/Akrobat-Regular.otf", 15 * SCALE_Y, false) or "default"
 dxFontHUDLarge = dxCreateFont("fonts/Akrobat-SemiBold.otf", 35 * SCALE_Y) or "default"
 function restartUIKit()
@@ -537,9 +532,11 @@ function uiDragElement(arg0)
     return
   end
   UI.DraggedElement = arg0
+  -- [Vortex fix] capture both cursor coords (decompiler lost the y local)
+  local dcx, dcy = getCursorPosition()
   dragTemp = {
-    getCursorPosition() * sx,
-    getCursorPosition() * sy,
+    (dcx or 0) * sx,
+    (dcy or 0) * sy,
     UI.DB[arg0].dimensions.x,
     UI.DB[arg0].dimensions.y
   }

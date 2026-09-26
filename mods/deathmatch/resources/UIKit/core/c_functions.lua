@@ -6,7 +6,16 @@ function isMouseInPosition(arg0, arg1, arg2, arg3)
   if not isCursorShowing() then
     return false
   end
-  return arg0 <= getCursorPosition() * sx and arg1 <= getCursorPosition() * sy and getCursorPosition() * sx <= arg0 + arg2 and getCursorPosition() * sy <= arg1 + arg3
+  -- [Vortex fix] the Owl decompiler inlined getCursorPosition() 4 times and
+  -- Lua keeps only the FIRST return value, so every Y check compared against
+  -- cursorX * sy -- hover zones collapsed into a narrow diagonal band and
+  -- UI.HoveredElement was never promoted (no button/menu/tab was clickable)
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  cx, cy = cx * sx, cy * sy
+  return arg0 <= cx and arg1 <= cy and cx <= arg0 + arg2 and cy <= arg1 + arg3
 end
 function dxGetColor(arg0)
   if not arg0 then

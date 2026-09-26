@@ -68,15 +68,20 @@ function uiGridListAddColumn(arg0, arg1, arg2)
 end
 function uiGridListAddRow(arg0)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListAddRow' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  -- REPAIR (gridlist fix): the decompiled original inserted the row
+  -- cells into a throwaway table and pushed an EMPTY row, so the very
+  -- first AddRow crashed in the height math and every SetItem*/Get*
+  -- call afterwards indexed a nil cell. Build cells into the real row.
+  local rowIndex = #UI.DB[arg0].data.rows + 1
+  UI.DB[arg0].data.rows[rowIndex] = {}
   for forvar5, forvar6 in ipairs(UI.DB[arg0].data.columns) do
-    table.insert({}, {
+    UI.DB[arg0].data.rows[rowIndex][forvar5] = {
       text = "",
       height = math.min(math.max(UI.DB[arg0].dimensions.height - 2, 0), UI.DB[arg0].properties.row_height.value * SCALE_Y),
       width = forvar6.width,
       alignX = "left"
-    })
+    }
   end
-  table.insert(UI.DB[arg0].data.rows, {})
   if doesGridlistNeedScrollBar(arg0) then
     if not uiGetVisible(UI.DB[arg0].data.scrollbar) then
       uiSetVisible(UI.DB[arg0].data.scrollbar, true)
@@ -95,7 +100,8 @@ function scrollGridList(arg0, arg1)
     return
   end
   for forvar8 = 1, #UI.DB[arg1 or getElementParent(source)].data.rows do
-    if calcRowsHeight(arg1 or getElementParent(source)) / 100 * arg0 <= 2 + UI.DB[arg1 or getElementParent(source)].properties.column_height.value + UI.DB[arg1 or getElementParent(source)].data.rows[forvar8][1].height * (forvar8 - 1) then
+    local rowCell = UI.DB[arg1 or getElementParent(source)].data.rows[forvar8][1]
+    if rowCell and calcRowsHeight(arg1 or getElementParent(source)) / 100 * arg0 <= 2 + UI.DB[arg1 or getElementParent(source)].properties.column_height.value + rowCell.height * (forvar8 - 1) then
       UI.DB[arg1 or getElementParent(source)].data.row_i = forvar8
       break
     end
@@ -103,13 +109,16 @@ function scrollGridList(arg0, arg1)
   UI.DB[arg1 or getElementParent(source)].data.row_f = findLastRow(arg1 or getElementParent(source))
 end
 function calcRowsHeight(arg0)
-  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows or {}) do
+  local rows = UI.DB[arg0].data.rows or {}
+  if #rows == 0 or not rows[#rows][1] then
+    return 0
   end
-  return 2 + forvar6[1].height
+  return 2 + rows[#rows][1].height
 end
 function findLastRow(arg0)
   for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
-    if UI.DB[arg0].properties.column_height.value + 2 + UI.DB[arg0].data.rows[forvar5][1].height > UI.DB[arg0].dimensions.height then
+    local rowCell = UI.DB[arg0].data.rows[forvar5] and UI.DB[arg0].data.rows[forvar5][1]
+    if rowCell and UI.DB[arg0].properties.column_height.value + 2 + rowCell.height > UI.DB[arg0].dimensions.height then
       return forvar5 - 1
     end
   end
@@ -170,13 +179,15 @@ function uiGridListGetItemText(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetItemText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListGetItemText' [There's no such column index]")
   assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListGetItemText' [There's no such row index]")
-  return UI.DB[arg0].data.rows[arg1 + 1][arg2].text
+  local cell = UI.DB[arg0].data.rows[arg1 + 1][arg2]
+  return cell and cell.text or ""
 end
 function uiGridListGetItemData(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetItemData' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListGetItemData' [There's no such column index]")
   assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListGetItemData' [There's no such row index]")
-  return UI.DB[arg0].data.rows[arg1 + 1][arg2].data
+  local cell = UI.DB[arg0].data.rows[arg1 + 1][arg2]
+  return cell and cell.data
 end
 function uiGridListGetSelectedItem(arg0)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetSelectedItem' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")

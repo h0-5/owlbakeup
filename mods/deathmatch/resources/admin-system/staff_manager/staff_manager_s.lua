@@ -416,9 +416,11 @@ addEventHandler("rpadmin:requestPanel", root, function()
         sendPanel(source)
 end)
 
-addCommandHandler("staffs", function(player)
-        sendPanel(player)
-end, false, false)
+-- [Vortex fix] /staffs is handled CLIENT-side (staff_manager_c.lua) which
+-- asks the server through rpadmin:requestPanel. Registering it HERE as well
+-- made one typed /staffs fire BOTH paths -> two rpadmin:showPanel events ->
+-- the client TOGGLE showed the panel then instantly hid it (the "<1 second
+-- and it disappears" bug). One command, one toggle.
 
 -- ============================================================================
 -- mutations

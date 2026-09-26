@@ -62,16 +62,29 @@ function uiCreateMenu(arg0, arg1, arg2, arg3, arg4, arg5)
   uiSetVisible(UI.DB[element].data.scrollbar, false)
   return (element)
 end
+-- [Vortex scroll fix] cumulative heights (rows are drawn with a
+-- height*SCALE_Y + 4 stride and a 5px top pad) so menus taller than
+-- their box scroll instead of overflowing
 function calcCLRowsHeight(arg0)
   local rows = UI.DB[arg0].data.rows or {}
-  local last = rows[#rows]
-  if not last then return 0 end
-  return 2 + last.height + 4
+  if #rows == 0 then return 0 end
+  local total = 10
+  for forvar5 = 1, #rows do
+    local row = rows[forvar5]
+    if row then total = total + (row.height or 0) * SCALE_Y + 4 end
+  end
+  return total
 end
 function findLastCLRow(arg0)
+  local viewport = UI.DB[arg0].dimensions.height - 5
+  if viewport <= 0 then return UI.DB[arg0].data.row_i end
+  local used = 0
   for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
-    if 2 + UI.DB[arg0].data.rows[forvar5].height + 4 > UI.DB[arg0].dimensions.height then
-      return forvar5 - 1
+    local row = UI.DB[arg0].data.rows[forvar5]
+    if not row then return #UI.DB[arg0].data.rows end
+    used = used + (row.height or 0) * SCALE_Y + 4
+    if used > viewport then
+      return math.max(UI.DB[arg0].data.row_i, forvar5 - 1)
     end
   end
   return #UI.DB[arg0].data.rows
@@ -118,13 +131,23 @@ function scrollMenu(arg0, arg1)
   if not isUIElement(arg1 or getElementParent(source), "menu") then
     return
   end
-  for forvar8 = 1, #UI.DB[arg1 or getElementParent(source)].data.rows do
-    if calcCLRowsHeight(arg1 or getElementParent(source)) / 100 * arg0 <= 2 + UI.DB[arg1 or getElementParent(source)].data.rows[forvar8].height * (forvar8 - 1) then
-      UI.DB[arg1 or getElementParent(source)].data.row_i = forvar8
-      break
+  local db = UI.DB[arg1 or getElementParent(source)]
+  local rows = db.data.rows
+  local scrolled = calcCLRowsHeight(arg1 or getElementParent(source)) / 100 * (tonumber(arg0) or 0)
+  local acc = 5
+  local newI = math.max(1, #rows)
+  for forvar8 = 1, #rows do
+    local row = rows[forvar8]
+    if row then
+      if scrolled <= acc then
+        newI = forvar8
+        break
+      end
+      acc = acc + (row.height or 0) * SCALE_Y + 4
     end
   end
-  UI.DB[arg1 or getElementParent(source)].data.row_f = findLastCLRow(arg1 or getElementParent(source))
+  db.data.row_i = math.min(newI, math.max(1, #rows))
+  db.data.row_f = findLastCLRow(arg1 or getElementParent(source))
 end
 function doesChecklistNeedScrollBar(arg0)
   return calcCLRowsHeight(arg0) > UI.DB[arg0].dimensions.height

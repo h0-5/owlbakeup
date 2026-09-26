@@ -296,7 +296,11 @@ function playerRankAtLeast(player, index)
         return idx >= index
 end
 
--- legacy column -> closest new rank (highest wins)
+-- legacy column -> closest new rank (highest wins).
+-- [Vortex fix] the OLD ladder only ever held admin 1..4 (plus 10 = scripter);
+-- anything from 5 to 21 was someone writing the NEW 21-rank index straight
+-- into the old column (admin=21 = Owner). migrateLegacyStaff honors those
+-- values 1:1 through RANK_LADDER before these thresholds apply.
 local LEGACY_MIGRATION = {
         { column = "admin",     min = 4, rank = "Lead Administrator"  },
         { column = "admin",     min = 3, rank = "Senior Administrator" },
@@ -315,9 +319,12 @@ local function rankIDByName(name)
         return row and tonumber(row.ID) or nil
 end
 
+-- [Vortex fix] runs on EVERY resource start but is PER-ACCOUNT idempotent:
+-- only accounts with NO staff_role_members row are considered, so deleting
+-- someone's rank in the panel never gets re-created here. This also catches
+-- accounts whose old column was edited AFTER the first migration (e.g. the
+-- owner setting admin=21 to grab the Owner rank).
 function migrateLegacyStaff()
-        local count = mysql:query_fetch_assoc("SELECT COUNT(*) AS n FROM staff_role_members")
-        if count and tonumber(count.n) > 0 then return 0 end -- only a true first run
         local rows = mysql:query(
                 "SELECT id, username, admin, supporter, scripter FROM accounts " ..
                 "WHERE IFNULL(admin,0) > 0 OR IFNULL(supporter,0) > 0 OR IFNULL(scripter,0) > 0")
@@ -326,18 +333,31 @@ function migrateLegacyStaff()
         while true do
                 local acc = mysql:fetch_assoc(rows)
                 if not acc then break end
-                local assigned = nil
-                for _, rule in ipairs(LEGACY_MIGRATION) do
-                        if not assigned and tonumber(acc[rule.column] or 0) >= rule.min then
-                                assigned = rule.rank
+                local accountID = tonumber(acc.id)
+                if accountID and not mysql:query_fetch_assoc(
+                                "SELECT AccountID FROM staff_role_members WHERE AccountID="
+                                .. accountID .. " LIMIT 1") then
+                        local assigned = nil
+                        -- direct NEW-ladder index stored in the old column (5..21,
+                        -- excluding 10 which the old ladder used for Scripter)
+                        local adminVal = tonumber(acc.admin) or 0
+                        if adminVal >= 5 and adminVal <= 21 and adminVal ~= 10 then
+                                assigned = RANK_LADDER[adminVal]
                         end
-                end
-                if assigned then
-                        local roleID = rankIDByName(assigned)
-                        if roleID then
-                                mysql:query_free("INSERT INTO staff_role_members (RoleID, AccountID) VALUES ("
-                                        .. roleID .. ", " .. tonumber(acc.id) .. ")")
-                                migrated = migrated + 1
+                        if not assigned then
+                                for _, rule in ipairs(LEGACY_MIGRATION) do
+                                        if not assigned and tonumber(acc[rule.column] or 0) >= rule.min then
+                                                assigned = rule.rank
+                                        end
+                                end
+                        end
+                        if assigned then
+                                local roleID = rankIDByName(assigned)
+                                if roleID then
+                                        mysql:query_free("INSERT INTO staff_role_members (RoleID, AccountID) VALUES ("
+                                                .. roleID .. ", " .. accountID .. ")")
+                                        migrated = migrated + 1
+                                end
                         end
                 end
         end
@@ -354,9 +374,7 @@ end
 -- ============================================================================
 
 addEventHandler("onResourceStart", resourceRoot, function()
-        -- one-time migration: staff stored in the OLD admin/supporter/scripter
-        -- columns get the equivalent new rank, so the 21-rank ladder truly
-        -- REPLACES the legacy ladder instead of coexisting with it
+        -- per-account migration (idempotent — see migrateLegacyStaff)
         migrateLegacyStaff()
         -- push the ladder onto everyone already online (resource restarts)
         setTimer(function()

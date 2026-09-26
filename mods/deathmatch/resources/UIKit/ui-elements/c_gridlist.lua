@@ -95,31 +95,62 @@ function uiGridListAddRow(arg0)
   UI.DB[arg0].data.row_f = findLastRow(arg0)
   return #UI.DB[arg0].data.rows - 1
 end
+-- [Vortex scroll fix] the decompiled original measured only the LAST row
+-- height (not the cumulative total), so doesGridlistNeedScrollBar was
+-- always false and findLastRow returned every row -> lists painted past
+-- their borders with no scrolling (the /staffs ranks + permissions
+-- overflow). Cumulative rebuild: scrollbars appear, the wheel scrolls,
+-- and rows clip at the list bounds on EVERY UIKit gridlist.
 function scrollGridList(arg0, arg1)
   if not isUIElement(arg1 or getElementParent(source), "gridlist") then
     return
   end
-  for forvar8 = 1, #UI.DB[arg1 or getElementParent(source)].data.rows do
-    local rowCell = UI.DB[arg1 or getElementParent(source)].data.rows[forvar8][1]
-    if rowCell and calcRowsHeight(arg1 or getElementParent(source)) / 100 * arg0 <= 2 + UI.DB[arg1 or getElementParent(source)].properties.column_height.value + rowCell.height * (forvar8 - 1) then
-      UI.DB[arg1 or getElementParent(source)].data.row_i = forvar8
-      break
+  local db = UI.DB[arg1 or getElementParent(source)]
+  local rows = db.data.rows
+  local scrolled = calcRowsHeight(arg1 or getElementParent(source)) / 100 * (tonumber(arg0) or 0)
+  local acc = 2 + db.properties.column_height.value
+  local newI = math.max(1, #rows)
+  for forvar8 = 1, #rows do
+    local rowCell = rows[forvar8] and rows[forvar8][1]
+    if rowCell then
+      if scrolled <= acc then
+        newI = forvar8
+        break
+      end
+      acc = acc + (rowCell.height or 0)
     end
   end
-  UI.DB[arg1 or getElementParent(source)].data.row_f = findLastRow(arg1 or getElementParent(source))
+  db.data.row_i = math.min(newI, math.max(1, #rows))
+  db.data.row_f = findLastRow(arg1 or getElementParent(source))
 end
 function calcRowsHeight(arg0)
   local rows = UI.DB[arg0].data.rows or {}
-  if #rows == 0 or not rows[#rows][1] then
+  if #rows == 0 then
     return 0
   end
-  return 2 + rows[#rows][1].height
+  local total = 2
+  for forvar5 = 1, #rows do
+    local rowCell = rows[forvar5] and rows[forvar5][1]
+    if rowCell then
+      total = total + (rowCell.height or 0)
+    end
+  end
+  return total
 end
 function findLastRow(arg0)
+  local viewport = UI.DB[arg0].dimensions.height - UI.DB[arg0].properties.column_height.value - 2
+  if viewport <= 0 then
+    return UI.DB[arg0].data.row_i
+  end
+  local used = 0
   for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
     local rowCell = UI.DB[arg0].data.rows[forvar5] and UI.DB[arg0].data.rows[forvar5][1]
-    if rowCell and UI.DB[arg0].properties.column_height.value + 2 + rowCell.height > UI.DB[arg0].dimensions.height then
-      return forvar5 - 1
+    if not rowCell then
+      return #UI.DB[arg0].data.rows
+    end
+    used = used + (rowCell.height or 0)
+    if used > viewport then
+      return math.max(UI.DB[arg0].data.row_i, forvar5 - 1)
     end
   end
   return #UI.DB[arg0].data.rows
@@ -154,6 +185,11 @@ function uiGridListClear(arg0)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListClear' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   UI.DB[arg0].data.rows = {}
   UI.DB[arg0].data.selected_row = -1
+  -- [Vortex fix] reset the thumb too, otherwise a stale scroll position
+  -- desyncs it from the freshly emptied list
+  if isElement(UI.DB[arg0].data.scrollbar) then
+    uiScrollBarSetScrollPosition(UI.DB[arg0].data.scrollbar, 0)
+  end
   scrollGridList(0, arg0)
   return true
 end
@@ -294,7 +330,9 @@ function MouseWheel(arg0, arg1)
     return
   end
   if isElement(UI.DB[UI.HoveredElement].data.scrollbar) then
-    uiScrollBarSetScrollPosition(UI.DB[UI.HoveredElement].data.scrollbar, (tonumber(UI.DB[UI.DB[UI.HoveredElement].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -1 or 1))
+    -- [Vortex fix] +-5% per notch (same step the memo uses) so long lists
+    -- like the 44-row permissions table are navigable by wheel
+    uiScrollBarSetScrollPosition(UI.DB[UI.HoveredElement].data.scrollbar, (tonumber(UI.DB[UI.DB[UI.HoveredElement].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -5 or 5))
   end
 end
 bindKey("mouse_wheel_up", "both", MouseWheel)

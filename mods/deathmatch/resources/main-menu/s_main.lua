@@ -152,13 +152,23 @@ addEventHandler("admin:showStaff", root, function()
                 -- admin_level>0  -> Admins Team (Trial Moderator and above)
                 -- supporter_level>0 (without admin) -> Supports Team (Trial
                 -- Support / Support) -- these were invisible before.
-                local admin = tonumber(getElementData(player, "admin_level")) or 0
-                local support = tonumber(getElementData(player, "supporter_level")) or 0
-                if admin == 0 and getResourceRunning("global") then
-                        local ok, value = pcall(function()
-                                return exports.global:getPlayerAdminLevel(player)
-                        end)
-                        if ok and value then admin = tonumber(value) or admin end
+                -- [Vortex] rank:index (staff bridge) is THE source when it
+                -- exists, so Owner/Founder/Tester etc. always land in the
+                -- right team; legacy columns stay the fallback otherwise.
+                local admin, support
+                local ridx = tonumber(getElementData(player, "rank:index"))
+                if ridx then
+                        admin = (ridx >= 4) and ridx or 0                 -- Trial Moderator+
+                        support = (ridx >= 1 and ridx <= 3) and ridx or 0 -- Trial Support..Support
+                else
+                        admin = tonumber(getElementData(player, "admin_level")) or 0
+                        support = tonumber(getElementData(player, "supporter_level")) or 0
+                        if admin == 0 and getResourceRunning("global") then
+                                local ok, value = pcall(function()
+                                        return exports.global:getPlayerAdminLevel(player)
+                                end)
+                                if ok and value then admin = tonumber(value) or admin end
+                        end
                 end
                 if admin > 0 or support > 0 then
                         list[#list + 1] = {

@@ -110,7 +110,8 @@ function UIKitReady()
         eui:uiSetVisible(UI.window.admin_panel, false)
         eui:uiBringToFront(UI.window.admin_panel)
 
-        UI.label.MainMenuTitle = eui:uiCreateLabel(15, 10, 200, 45, "Admin Panel",
+        UI.image.title_logo = eui:uiCreateImage(15, 12, 32, 32, "icons/menu_shield.png", UI.window.admin_panel)
+        UI.label.MainMenuTitle = eui:uiCreateLabel(55, 10, 200, 45, "Admin Panel",
                 tocolor(255, 255, 255), "left", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.MainMenuTitle, "default-large")
 
@@ -288,17 +289,22 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "row_height", 30)
 
         --[[ ----------------------- sidebar menu -----------------------
-             Vortex: full-height rounded rows + tinted PNG icons (fixes #2 #3) ]]
-        menu = eui:uiCreateMenu(5, 65, MENU_W, 450, tocolor(19, 22, 27, 0),
+             Vortex lab-style sidebar: compact top-aligned rows on a soft
+             card, Vortex-blue accent bar on the selected row (fixes the
+             solid black box look) ]]
+        local MENU_H = 300
+        menu = eui:uiCreateMenu(5, 65, MENU_W, MENU_H, tocolor(19, 22, 27, 120),
                 UI.window.admin_panel)
-        eui:uiSetProperty(menu, "hovered_row_color", tocolor(9, 12, 17, 100))
-        eui:uiSetProperty(menu, "selected_row_color", tocolor(3, 6, 11, 255))
-        -- fill the menu height: padding 5+5 and 4px gaps between rows, small safety
-        local rowHeight = (450 - (10 + (#SECTIONS - 1) * 4 + 8) / SCALE_Y) / #SECTIONS
+        eui:uiSetProperty(menu, "hovered_row_color", tocolor(9, 12, 17, 110))
+        eui:uiSetProperty(menu, "selected_row_color", tocolor(13, 16, 22, 235))
+        -- rows are stored pre-scaled by SCALE_Y and drawn with a SECOND
+        -- SCALE_Y factor + 4px gap, so divide the per-row budget by SCALE_Y^2
+        -- to actually fill MENU_H without overflowing it
+        local rowHeight = ((MENU_H - 10) / #SECTIONS - 4) / (SCALE_Y * SCALE_Y)
         eui:uiSetProperty(menu, "row_height", rowHeight)
         eui:uiSetProperty(menu, "row_font_scale", 1.2)
         eui:uiSetProperty(menu, "icons_color", themeColor("primary"))
-        eui:uiSetProperty(menu, "selection_color", tocolor(255, 255, 255))
+        eui:uiSetProperty(menu, "selection_color", themeColor("primary"))
         setElementID(menu, "staff-panel-menu")
 
         uiBuilt = true
@@ -687,6 +693,7 @@ function getStaffPanelTestTable()
                 window = UI.window, gridlist = UI.gridlist, button = UI.button,
                 label = UI.label, edit = UI.edit, dialog = UI.dialog,
                 rectangle = UI.rectangle, checkbox = UI.checkbox, container = UI.container,
+                image = UI.image,
                 menu = menu,
                 getRankColor = function() return RankColor end,
         }

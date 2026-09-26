@@ -1,0 +1,23 @@
+<meta>
+	<info author="Trust Store" name="Mecânica Modelada" type="script" version="1.0"/>
+    <oop>true</oop>
+
+	<script src="config.lua"  type="shared"/>
+        <map src="pcrypted/removedor.map" dimension="0"></map>
+	<script src="pcrypted/key.pcrypt" type="client" cache="false" />
+	<script src="pcrypted/Trust-C.luac"  type="client"/>
+	
+
+	<file src="pcrypted/editavel.txd"/>
+	<file src="pcrypted/dp.txd.pcrypt"/>
+	<file src="pcrypted/dp.dff.pcrypt"/>
+	<file src="pcrypted/dp.col.pcrypt"/>
+        <file src="1brokenCOL.col"/>
+        <file src="1brokenDFF.dff"/>
+        <file src="1brokenTXD.txd"/>
+        <file src="2brokenTXD.txd"/>
+        
+
+	<min_mta_version server="1.5.4-9.11413" />
+
+</meta>

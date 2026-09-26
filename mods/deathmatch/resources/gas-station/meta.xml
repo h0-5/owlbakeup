@@ -1,7 +1,9 @@
 <meta>
-    <oop>true</oop>
+ 
+    <min_mta_version server="1.5.8-9.20957"></min_mta_version>
     <info type="map" version="1.0.0"></info>
-    <map src="CITY-CENTER.map" dimension="0"></map>
+    <map src="Luno.map" dimension="0"></map>
+    
     <settings>
         <setting name="#maxplayers" value="[ 128 ]"></setting>
         <setting name="#useLODs" value="[ false ]"></setting>
@@ -11,8 +13,20 @@
         <setting name="#waveheight" value="[ 0 ]"></setting>
         <setting name="#locked_time" value="[ false ]"></setting>
         <setting name="#weather" value="[ 0 ]"></setting>
-        <setting name="#time" value="1:0"></setting>
+        <setting name="#time" value="12:0"></setting>
     </settings>
+
+
     <script src="mapEditorScriptingExtension_s.lua" type="server"></script>
     <script src="mapEditorScriptingExtension_c.lua" type="client" validate="false"></script>
+
+    <info author="Luno Scripts" type="script" name="model_gas_1" version="0.1.0" />
+    <script src="client.lua" type="client" />
+
+    <file src="1.col" cache="false"/>
+    <file src="1.dff" cache="false"/>
+    <file src="1.txd" cache="false"/>
+    <file src="2.txd" cache="false"/>
+    <file src="2.dff" cache="false"/>
+    <file src="2.col" cache="false"/>
 </meta>

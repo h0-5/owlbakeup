@@ -1,0 +1,4 @@
+<map edf:definitions="editor_main">
+    <object id="object (newbuildsm01) (1)" breakable="false" interior="0" alpha="255" dimension="0" model="4019" scale="1" doublesided="false" collisions="true" posX="1811.8" posY="-1808.2" posZ="12.49" rotX="0" rotY="0" rotZ="90"></object>
+    <removeWorldObject id="removeWorldObject (newbuildsm01) (1)" radius="51.489464" interior="-1" model="4019" lodModel="4025" posX="1777.8359" posY="-1773.9062" posZ="12.52344" rotX="0" rotY="0" rotZ="0"></removeWorldObject>
+</map>

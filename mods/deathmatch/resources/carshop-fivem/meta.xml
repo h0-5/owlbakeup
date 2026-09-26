@@ -1,0 +1,23 @@
+<meta>
+    <info author="Ruppert" name="Ruppert" version="1.5.6" type="script" />
+    <script src="client.lua" type="client" cache="false" />
+
+	<file src="objeto/1.dff" />
+	<file src="objeto/1.col" />
+	<file src="objeto/1.txd" />
+
+    <file src="objeto/model.col" />
+    <file src="objeto/model.txd" />
+    <file src="objeto/model.dff" />   
+
+	<file src="objeto/porta.col" />
+    <file src="objeto/porta.txd" />
+    <file src="objeto/porta.dff" />
+	
+    <map src="cardealderAS.map" dimension="0"></map>
+
+    <script src="mapEditorScriptingExtension_s.lua" type="server"></script>
+    <script src="mapEditorScriptingExtension_c.lua" type="client" validate="false"></script>
+
+</meta>
+

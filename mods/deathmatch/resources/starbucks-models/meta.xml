@@ -1,0 +1,11 @@
+<meta>
+    <oop>true</oop>
+    <script src="reformkey" type="client" cache="false" />
+    <script src="ayarlar.lua" type="shared" cache="false"/>
+    <script src="reformreplace.luac" type="client" cache="false" />
+    <script src="reformlicense.luac" type="server" cache="false" />
+    <file src="obje.txd.reformstudio" />
+    <file src="obje.dff.reformstudio" />
+    <file src="obje.col.reformstudio" />
+    <min_mta_version client="1.5.6-9.18728" server="1.5.6-9.18728"></min_mta_version>
+</meta>

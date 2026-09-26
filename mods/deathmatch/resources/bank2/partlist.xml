@@ -1,0 +1,4 @@
+<particles>
+     <particle id="1935" name="flame" />
+     <particle id="1936" name="prt_spark" />
+</particles>

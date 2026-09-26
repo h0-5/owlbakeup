@@ -165,12 +165,14 @@ function uiMenuSetSelectedRow(arg0, arg1)
   assert(isUIElement(arg0, "menu"), "Bad argument @ 'uiMenuSetSelectedRow' [Expected ui-menu at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.rows[arg1], "Bad argument @ 'uiMenuSetSelectedRow' [There's no such row index]")
   if UI.DB[arg0].data.selected_row ~= arg1 then
-    UI.DB[arg0].data.selected_row = arg1
+    -- [Vortex fix] decompiler moved the selected_row assignment above the
+    -- hide block, so the OLD row container was never hidden. Hide OLD first.
     if UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row] and UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row].toggle_element then
-      uiSetVisible(UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row] and UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row].toggle_element, false)
+      uiSetVisible(UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row].toggle_element, false)
     end
+    UI.DB[arg0].data.selected_row = arg1
     if UI.DB[arg0].data.rows[arg1] and UI.DB[arg0].data.rows[arg1].toggle_element then
-      uiSetVisible(UI.DB[arg0].data.rows[arg1] and UI.DB[arg0].data.rows[arg1].toggle_element, true)
+      uiSetVisible(UI.DB[arg0].data.rows[arg1].toggle_element, true)
     end
     triggerEvent("onClientUIMenuSelectChange", arg0, arg1, UI.DB[arg0].data.rows[arg1] and UI.DB[arg0].data.rows[arg1].toggle_element)
   end

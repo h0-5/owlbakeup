@@ -249,6 +249,19 @@ function UI.onElementDestroy()
   UI.isDraw[source] = nil
 end
 addEventHandler("onClientElementDestroy", resourceRoot, UI.onElementDestroy)
+-- [Vortex fix] an element may only draw if it AND every ancestor above it are
+-- visible. Without this chain check, hiding the top-level window left its
+-- whole subtree on screen (panel visible before login, sections stacked).
+function UI.isHierarchyVisible(el)
+  local parent = getElementParent(el)
+  while parent and isElement(parent) and isUIElement(parent) do
+    if not UI.DB[parent] or not UI.DB[parent].visible then
+      return false
+    end
+    parent = getElementParent(parent)
+  end
+  return true
+end
 function uiSetVisible(arg0, arg1)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetVisible' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   UI.DB[arg0].visible = type(arg1) == "boolean" and arg1 or false
@@ -257,6 +270,23 @@ function uiSetVisible(arg0, arg1)
   if arg1 and not UI.renderStatus then
     addEventHandler("onClientRender", root, UI.drawing)
     UI.renderStatus = true
+  end
+  -- [Vortex fix] hidden elements must not keep focus or hover invisibly
+  if not UI.DB[arg0].visible then
+    local stillDrawn = {}
+    for forvar4 = 1, #UI.DrawElements do
+      stillDrawn[UI.DrawElements[forvar4]] = true
+    end
+    local focused = UI.FocusElement
+    if focused and isElement(focused) and not stillDrawn[focused] then
+      UI.FocusElement = false
+      UI.DB[focused].state = "normal"
+      triggerEvent("onClientUIBlur", focused)
+    end
+    if UI.TempHoveredElement and isElement(UI.TempHoveredElement) and not stillDrawn[UI.TempHoveredElement] then
+      UI.TempHoveredElement = false
+      UI.HoveredElement = false
+    end
   end
   return true
 end

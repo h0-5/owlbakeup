@@ -233,8 +233,8 @@ function cancelBindsEvent(key, press)
 end
 
 function MainMenuKey()
-        if getElementData(localPlayer, "character:id")
-                or getElementData(localPlayer, "account:character:id") then
+        -- 1:1 with the original: F1 works only after spawning into a character
+        if getElementData(localPlayer, "character:id") then
                 showSideBar(not state.state)
         end
 end

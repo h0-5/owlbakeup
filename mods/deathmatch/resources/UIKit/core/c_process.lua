@@ -24,9 +24,13 @@ function UI.updateDrawingList()
   UI.DrawElements = {}
   for i = 1, #UI.Elements do
     local el = UI.Elements[i]
-    if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] then
+    if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] and UI.isHierarchyVisible(el) then
       UI.DrawElements[#UI.DrawElements + 1] = el
-      UI.isDraw[el] = true
+      -- [Vortex fix] ui-tab children are armed per-frame by their tabpanel
+      -- draw (selected tab only); arming them here would flash every tab
+      if getElementType(el) ~= "ui-tab" then
+        UI.isDraw[el] = true
+      end
     end
   end
 end
@@ -190,12 +194,15 @@ function UI.click(arg0, arg1, arg2, arg3)
             end
           elseif getElementType(UI.HoveredElement) == "ui-menu" then
             if UI.DB[UI.HoveredElement].data.hovered_row and UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
-              UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
+              -- [Vortex fix] decompiler moved the selected_row assignment above
+              -- the hide block, so the OLD row was never hidden (sections stacked
+              -- on each other). Hide the OLD toggle element BEFORE reassigning.
               if UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row].toggle_element then
-                uiSetVisible(UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row].toggle_element, false)
+                uiSetVisible(UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row].toggle_element, false)
               end
+              UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
               if UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].toggle_element then
-                uiSetVisible(UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].toggle_element, true)
+                uiSetVisible(UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].toggle_element, true)
               end
               triggerEvent("onClientUIMenuSelectChange", UI.HoveredElement, UI.DB[UI.HoveredElement].data.hovered_row, UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].toggle_element)
             end

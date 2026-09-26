@@ -29,8 +29,9 @@ end
 -- calls an export safely: returns nil when the resource is not running
 local function safeExport(resourceName, exportName, ...)
 	if not getResourceRunning(resourceName) then return nil end
+	local args = { ... }
 	local ok, result = pcall(function()
-		return call(getResourceFromName(resourceName), exportName, ...)
+		return call(getResourceFromName(resourceName), exportName, unpack(args))
 	end)
 	if ok then return result end
 	return nil

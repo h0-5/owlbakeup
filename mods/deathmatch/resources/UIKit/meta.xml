@@ -1,0 +1,228 @@
+<meta>
+	<info author="Vortex" name="UIKit" description="Shared UI library: windows, buttons, gridlists, menus, dialogs (1:1 restore of the original client UIKit)" type="script" version="1.0.0" />
+	<min_mta_version client="1.5.9" server="1.5.9"></min_mta_version>
+
+	<!-- core: load order matters (UI table -> process -> functions) -->
+	<script src="core/c_main.lua" type="client" cache="false" />
+	<script src="core/c_process.lua" type="client" cache="false" />
+	<script src="core/c_functions.lua" type="client" cache="false" />
+	<!-- theme -->
+	<script src="themes/theme_1.lua" type="client" cache="false" />
+	<!-- ui elements -->
+	<script src="ui-elements/c_browser.lua" type="client" cache="false" />
+	<script src="ui-elements/c_button.lua" type="client" cache="false" />
+	<script src="ui-elements/c_checkbox.lua" type="client" cache="false" />
+	<script src="ui-elements/c_combobox.lua" type="client" cache="false" />
+	<script src="ui-elements/c_edit.lua" type="client" cache="false" />
+	<script src="ui-elements/c_gridlist.lua" type="client" cache="false" />
+	<script src="ui-elements/c_image.lua" type="client" cache="false" />
+	<script src="ui-elements/c_label.lua" type="client" cache="false" />
+	<script src="ui-elements/c_memo.lua" type="client" cache="false" />
+	<script src="ui-elements/c_progressbar.lua" type="client" cache="false" />
+	<script src="ui-elements/c_radiobutton.lua" type="client" cache="false" />
+	<script src="ui-elements/c_scrollbar.lua" type="client" cache="false" />
+	<script src="ui-elements/c_tabpanel.lua" type="client" cache="false" />
+	<script src="ui-elements/c_window.lua" type="client" cache="false" />
+	<!-- addons -->
+	<script src="addons/c_checklist.lua" type="client" cache="false" />
+	<script src="addons/c_container.lua" type="client" cache="false" />
+	<script src="addons/c_dialog.lua" type="client" cache="false" />
+	<script src="addons/c_infolist.lua" type="client" cache="false" />
+	<script src="addons/c_loading.lua" type="client" cache="false" />
+	<script src="addons/c_menu.lua" type="client" cache="false" />
+	<script src="addons/c_rangeslider.lua" type="client" cache="false" />
+	<script src="addons/c_rectangle.lua" type="client" cache="false" />
+
+	<!-- fonts -->
+	<file src="fonts/Font2.ttf" />
+	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
+	<file src="fonts/PFDinDisplayPro-Regular.ttf" />
+	<!-- images -->
+	<file src="images/arc_glow_h.png" />
+	<file src="images/arc_glow_v.png" />
+	<file src="images/arrow_down.png" />
+	<file src="images/circle.png" />
+	<file src="images/circle_glow.png" />
+	<file src="images/close.png" />
+	<file src="images/empty.png" />
+	<file src="images/glow.png" />
+	<file src="images/gradient_x.png" />
+	<file src="images/gradient_y.png" />
+	<file src="images/loading.png" />
+	<file src="images/outlined_circle.png" />
+	<file src="images/switch_bg.png" />
+	<file src="images/alerts/danger.png" />
+	<file src="images/alerts/info.png" />
+	<file src="images/alerts/success.png" />
+	<file src="images/alerts/warning.png" />
+	<!-- sounds -->
+	<file src="sounds/click.wav" />
+	<file src="sounds/click2.wav" />
+
+	<!-- exported client API (165 functions) -->
+	<export function="uiBringToFront" type="client" />
+	<export function="uiCenterElement" type="client" />
+	<export function="uiCheckBoxGetSelected" type="client" />
+	<export function="uiCheckBoxSetSelected" type="client" />
+	<export function="uiCheckListAddRow" type="client" />
+	<export function="uiCheckListClear" type="client" />
+	<export function="uiCheckListGetItemText" type="client" />
+	<export function="uiCheckListGetRowCount" type="client" />
+	<export function="uiCheckListGetSelectedItems" type="client" />
+	<export function="uiCheckListRemoveRow" type="client" />
+	<export function="uiCheckListSetItemText" type="client" />
+	<export function="uiComboBoxAddItem" type="client" />
+	<export function="uiComboBoxClear" type="client" />
+	<export function="uiComboBoxGetItemFont" type="client" />
+	<export function="uiComboBoxGetItemFontSize" type="client" />
+	<export function="uiComboBoxGetItemHeight" type="client" />
+	<export function="uiComboBoxGetItemIcon" type="client" />
+	<export function="uiComboBoxGetItemIconAlignX" type="client" />
+	<export function="uiComboBoxGetItemText" type="client" />
+	<export function="uiComboBoxGetItemsCount" type="client" />
+	<export function="uiComboBoxGetListVisible" type="client" />
+	<export function="uiComboBoxGetScrollBarPosition" type="client" />
+	<export function="uiComboBoxGetScrollBarSize" type="client" />
+	<export function="uiComboBoxGetSelected" type="client" />
+	<export function="uiComboBoxRemoveItem" type="client" />
+	<export function="uiComboBoxRemoveItemIcon" type="client" />
+	<export function="uiComboBoxSetItemFont" type="client" />
+	<export function="uiComboBoxSetItemFontSize" type="client" />
+	<export function="uiComboBoxSetItemHeight" type="client" />
+	<export function="uiComboBoxSetItemIcon" type="client" />
+	<export function="uiComboBoxSetItemIconAlignX" type="client" />
+	<export function="uiComboBoxSetItemText" type="client" />
+	<export function="uiComboBoxSetScrollBarPosition" type="client" />
+	<export function="uiComboBoxSetScrollBarSize" type="client" />
+	<export function="uiComboBoxSetSelected" type="client" />
+	<export function="uiCreateBrowser" type="client" />
+	<export function="uiCreateButton" type="client" />
+	<export function="uiCreateCheckBox" type="client" />
+	<export function="uiCreateCheckList" type="client" />
+	<export function="uiCreateComboBox" type="client" />
+	<export function="uiCreateContainer" type="client" />
+	<export function="uiCreateDialog" type="client" />
+	<export function="uiCreateEdit" type="client" />
+	<export function="uiCreateGridList" type="client" />
+	<export function="uiCreateImage" type="client" />
+	<export function="uiCreateInfoList" type="client" />
+	<export function="uiCreateLabel" type="client" />
+	<export function="uiCreateLoading" type="client" />
+	<export function="uiCreateMemo" type="client" />
+	<export function="uiCreateMenu" type="client" />
+	<export function="uiCreateProgressBar" type="client" />
+	<export function="uiCreateRadioButton" type="client" />
+	<export function="uiCreateRangeSlider" type="client" />
+	<export function="uiCreateRectangle" type="client" />
+	<export function="uiCreateScrollBar" type="client" />
+	<export function="uiCreateSwitch" type="client" />
+	<export function="uiCreateTab" type="client" />
+	<export function="uiCreateTabPanel" type="client" />
+	<export function="uiCreateWindow" type="client" />
+	<export function="uiDeleteTab" type="client" />
+	<export function="uiDialogGetLeftButtonCallback" type="client" />
+	<export function="uiDialogGetLeftButtonText" type="client" />
+	<export function="uiDialogGetRightButtonCallback" type="client" />
+	<export function="uiDialogGetRightButtonText" type="client" />
+	<export function="uiDialogSetLeftButtonCallback" type="client" />
+	<export function="uiDialogSetLeftButtonText" type="client" />
+	<export function="uiDialogSetRightButtonCallback" type="client" />
+	<export function="uiDialogSetRightButtonText" type="client" />
+	<export function="uiDragElement" type="client" />
+	<export function="uiEditGetCaretIndex" type="client" />
+	<export function="uiEditGetMaxLength" type="client" />
+	<export function="uiEditGetShadedText" type="client" />
+	<export function="uiEditIsMasked" type="client" />
+	<export function="uiEditIsReadOnly" type="client" />
+	<export function="uiEditSetCaretIndex" type="client" />
+	<export function="uiEditSetMasked" type="client" />
+	<export function="uiEditSetMaxLength" type="client" />
+	<export function="uiEditSetReadOnly" type="client" />
+	<export function="uiEditSetTitle" type="client" />
+	<export function="uiGetAlpha" type="client" />
+	<export function="uiGetBrowser" type="client" />
+	<export function="uiGetColor" type="client" />
+	<export function="uiGetFont" type="client" />
+	<export function="uiGetFontSize" type="client" />
+	<export function="uiGetParent" type="client" />
+	<export function="uiGetPosition" type="client" />
+	<export function="uiGetProperties" type="client" />
+	<export function="uiGetProperty" type="client" />
+	<export function="uiGetReferenceScreenSize" type="client" />
+	<export function="uiGetSelectedTab" type="client" />
+	<export function="uiGetSize" type="client" />
+	<export function="uiGetText" type="client" />
+	<export function="uiGetThemeColor" type="client" />
+	<export function="uiGetVisible" type="client" />
+	<export function="uiGridListAddColumn" type="client" />
+	<export function="uiGridListAddRow" type="client" />
+	<export function="uiGridListClear" type="client" />
+	<export function="uiGridListGetColumnColor" type="client" />
+	<export function="uiGridListGetColumnCount" type="client" />
+	<export function="uiGridListGetColumnText" type="client" />
+	<export function="uiGridListGetItemColor" type="client" />
+	<export function="uiGridListGetItemData" type="client" />
+	<export function="uiGridListGetItemText" type="client" />
+	<export function="uiGridListGetRowCount" type="client" />
+	<export function="uiGridListGetSelectedItem" type="client" />
+	<export function="uiGridListRemoveColumn" type="client" />
+	<export function="uiGridListRemoveRow" type="client" />
+	<export function="uiGridListSetColumnColor" type="client" />
+	<export function="uiGridListSetColumnText" type="client" />
+	<export function="uiGridListSetItemColor" type="client" />
+	<export function="uiGridListSetItemData" type="client" />
+	<export function="uiGridListSetItemText" type="client" />
+	<export function="uiGridListSetSelectedItem" type="client" />
+	<export function="uiInfoListClear" type="client" />
+	<export function="uiInfoListGetRows" type="client" />
+	<export function="uiInfoListSetRows" type="client" />
+	<export function="uiLabelApplyShakeAnimation" type="client" />
+	<export function="uiMemoGetCaretIndex" type="client" />
+	<export function="uiMemoGetVerticalScrollPosition" type="client" />
+	<export function="uiMemoIsReadOnly" type="client" />
+	<export function="uiMemoSetReadOnly" type="client" />
+	<export function="uiMemoSetVerticalScrollPosition" type="client" />
+	<export function="uiMenuAddRow" type="client" />
+	<export function="uiMenuClear" type="client" />
+	<export function="uiMenuGetItemID" type="client" />
+	<export function="uiMenuGetItemText" type="client" />
+	<export function="uiMenuGetRowCount" type="client" />
+	<export function="uiMenuGetSelectedItems" type="client" />
+	<export function="uiMenuGetSelectedRow" type="client" />
+	<export function="uiMenuRemoveRow" type="client" />
+	<export function="uiMenuSetItemID" type="client" />
+	<export function="uiMenuSetItemText" type="client" />
+	<export function="uiMenuSetSelectedRow" type="client" />
+	<export function="uiProgressBarGetProgress" type="client" />
+	<export function="uiProgressBarSetProgress" type="client" />
+	<export function="uiRadioButtonGetSelected" type="client" />
+	<export function="uiRadioButtonSetSelected" type="client" />
+	<export function="uiRangeSliderGetValue" type="client" />
+	<export function="uiRangeSliderSetValue" type="client" />
+	<export function="uiScrollBarGetScrollPosition" type="client" />
+	<export function="uiScrollBarSetScrollPosition" type="client" />
+	<export function="uiSetAlign" type="client" />
+	<export function="uiSetAlignX" type="client" />
+	<export function="uiSetAlignY" type="client" />
+	<export function="uiSetAlpha" type="client" />
+	<export function="uiSetClickAction" type="client" />
+	<export function="uiSetColor" type="client" />
+	<export function="uiSetFont" type="client" />
+	<export function="uiSetFontSize" type="client" />
+	<export function="uiSetParent" type="client" />
+	<export function="uiSetPos" type="client" />
+	<export function="uiSetPosition" type="client" />
+	<export function="uiSetProperty" type="client" />
+	<export function="uiSetSelectedTab" type="client" />
+	<export function="uiSetSize" type="client" />
+	<export function="uiSetText" type="client" />
+	<export function="uiSetVisible" type="client" />
+	<export function="uiStaticImageLoadImage" type="client" />
+	<export function="uiSwitchGetSelected" type="client" />
+	<export function="uiSwitchSetSelected" type="client" />
+	<export function="uiTabGetTitle" type="client" />
+	<export function="uiTabSetTitle" type="client" />
+	<export function="uiWindowGetTitleBarHeight" type="client" />
+	<export function="uiWindowSetMovable" type="client" />
+	<export function="uiWindowSetTitleBarHeight" type="client" />
+</meta>

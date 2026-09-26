@@ -101,6 +101,12 @@ function playerLogin(username,password,checksave)
 	setElementDataEx(client, "mapper_level", tonumber(accountData['mapper']), true)
 	setElementDataEx(client, "scripter_level", tonumber(accountData['scripter']), true)
 
+-- Vortex 21-rank ladder: resolve the account's staff rank (overrides the
+-- legacy columns above when a rank is assigned in /staffs)
+if getResourceState("admin-system") == "running" then
+	pcall(function() exports["admin-system"]:refreshPlayerRank(client) end)
+end
+
 	exports['report-system']:reportLazyFix(client)
 
 	setElementDataEx(client, "adminreports", tonumber(accountData["adminreports"]), true)

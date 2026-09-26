@@ -119,6 +119,7 @@
 	
 	<script src="staff_manager/staff_manager_rights.lua" type="shared"/>
 	<script src="staff_manager/staff_manager_s.lua" type="server"/>
+	<script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_c.lua" type="client"/>
 	<script src="staff_manager/colorpicker_c.lua" type="client"/>
 	<script src="staff_manager/staff_manager_g.lua" type="server"/>
@@ -130,6 +131,10 @@
 	<file src="staff_manager/icons/menu_globe.png"/>
 
 	<export function="canPlayerAccessStaffManager" type="server"/>
+	<export function="refreshPlayerRank" type="server"/>
+	<export function="playerHasRight" type="server"/>
+	<export function="refreshAllPlayerRanks" type="server"/>
+	<export function="refreshRankMembers" type="server"/>
 	<export function="canPlayerAccessStaffManager" type="client"/>
 	<export function="toggleRecon" type="client"/>
 	<export function="addAdminHistory" type="server" http="true" /> <!-- addAdminHistory(user, admin, reason, action, duration) user and admin can be player elements or userids; action and duration are optional -->

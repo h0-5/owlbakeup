@@ -477,6 +477,15 @@ addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelNam
         addChangelog("Promotion", user.username, oldName, tostring(levelName or "-"))
         outputChatBox("Staff added: " .. user.username .. " -> " .. tostring(levelName), client, 0, 255, 0)
         refresh(client)
+        -- Vortex bridge: push the new rank onto the target immediately if online
+        if type(refreshPlayerRank) == "function" then
+                for _, p in ipairs(getElementsByType("player")) do
+                        if tonumber(getElementData(p, "account:id")) == tonumber(user.id) then
+                                refreshPlayerRank(p)
+                                break
+                        end
+                end
+        end
 end)
 
 -- remove a staff member (by username)
@@ -506,6 +515,15 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
         addChangelog("Demotion", user.username, oldName, "Player")
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
         refresh(client)
+        -- Vortex bridge: drop the target's live rank data if online
+        if type(refreshPlayerRank) == "function" then
+                for _, p in ipairs(getElementsByType("player")) do
+                        if tonumber(getElementData(p, "account:id")) == tonumber(user.id) then
+                                refreshPlayerRank(p)
+                                break
+                        end
+                end
+        end
 end)
 
 -- create a rank
@@ -538,6 +556,10 @@ addEventHandler("rpadmin:removeAdminLevel", root, function(levelID)
         mysql:query_free("DELETE FROM staff_role_members WHERE RoleID=" .. levelID)
         addChangelog("Rank Deleted", row.LevelName, "-", "-")
         refresh(client)
+        -- Vortex bridge: former members lost their rank
+        if type(refreshAllPlayerRanks) == "function" then
+                refreshAllPlayerRanks()
+        end
 end)
 
 -- rename a rank
@@ -578,6 +600,10 @@ local function updateRoleImpl(sender, levelID, rights, color)
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))
         outputChatBox("Rank saved: " .. row.LevelName, sender, 0, 255, 0)
         refresh(sender)
+        -- Vortex bridge: live-update colors/rights for every online member
+        if type(refreshRankMembers) == "function" then
+                refreshRankMembers(levelID)
+        end
 end
 
 addEvent("rpadmin:updateRole", true)

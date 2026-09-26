@@ -37,24 +37,24 @@ computeBoard()
 
 addEventHandler("onClientDisplayResolutionChange", root, computeBoard)
 
--- rounded rectangle helper: fills a rect with rounded corners using circles
+-- rounded rectangle helper: fills a rect with smooth rounded corners
 local function drawRoundRect(x, y, w, h, color, postGUI)
 	if not x or not y or not w or not h then return end
 	local r = math.min(CORNER, h / 2, w / 2)
-	if r < 1 then r = 0 end
-	if r == 0 then
+	if r < 2 then
 		dxDrawRectangle(x, y, w, h, color, postGUI)
 		return
 	end
-	-- centre fill (avoids rounded corners)
+	-- generous segment count so the arcs look smooth, not polygonal
+	local segs = 48
+	-- centre cross fill so only the corners need arcs
 	dxDrawRectangle(x + r, y, w - 2 * r, h, color, postGUI)
-	dxDrawRectangle(x, y + r, r, h - 2 * r, color, postGUI)
-	dxDrawRectangle(x + w - r, y + r, r, h - 2 * r, color, postGUI)
-	-- four corner circles
-	dxDrawCircle(x + r, y + r, r, 180, 270, color, color, 24, postGUI)
-	dxDrawCircle(x + w - r, y + r, r, 270, 360, color, color, 24, postGUI)
-	dxDrawCircle(x + r, y + h - r, r, 90, 180, color, color, 24, postGUI)
-	dxDrawCircle(x + w - r, y + h - r, r, 0, 90, color, color, 24, postGUI)
+	dxDrawRectangle(x, y + r, w, h - 2 * r, color, postGUI)
+	-- four corner quarter-circles
+	dxDrawCircle(x + r, y + r, r, 180, 270, color, color, segs, postGUI)
+	dxDrawCircle(x + w - r, y + r, r, 270, 360, color, color, segs, postGUI)
+	dxDrawCircle(x + r, y + h - r, r, 90, 180, color, color, segs, postGUI)
+	dxDrawCircle(x + w - r, y + h - r, r, 0, 90, color, color, segs, postGUI)
 end
 
 --[[ ==================== columns (fractions of CONTENT_W) ==================== ]]
@@ -109,6 +109,7 @@ local maxOnline = 0
 local searchOn = false
 local searchBuf = ""
 local searchBox = { x = 0, y = 0, w = 0, h = 0 }
+local searchEdit -- real CEGUI edit, invisible, used only to capture input
 
 -- per-player cached data (colour, badges, rank)
 local cache = {}
@@ -288,41 +289,26 @@ addEventHandler("onClientClick", root, function(button, buttonState)
 	if not state or button ~= "left" or buttonState ~= "down" then return end
 	if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
 		searchOn = true
+		if searchEdit then
+			guiSetVisible(searchEdit, true)
+			guiBringToFront(searchEdit)
+		end
 		if not cursorOn then
 			cursorOn = true
 			showCursor(true)
 		end
 	elseif searchOn then
 		searchOn = false
+		if searchEdit then guiSetVisible(searchEdit, false) end
 	end
 end)
 
-addEventHandler("onClientKey", root, function(key, press)
-	if not searchOn or press ~= "down" then return end
-	if key == "back" then
-		searchBuf = searchBuf:sub(1, -2)
-		scroll = 0
-		cancelEvent()
-	elseif key == "delete" then
-		searchBuf = ""
-		scroll = 0
-		cancelEvent()
-	elseif key == "escape" then
-		searchOn = false
-		searchBuf = ""
-		scroll = 0
-		cancelEvent()
-	end
-end)
-
--- printable characters (letters, digits, spaces, Arabic, ...) land here
-addEventHandler("onClientCharacter", root, function(char)
-	if not searchOn then return end
-	if type(char) == "string" and #char >= 1 and #char <= 4 then
-		searchBuf = searchBuf .. char
-		scroll = 0
-		cancelEvent()
-	end
+-- real input handling lives inside the invisible CEGUI edit;
+-- we just mirror its text so our custom drawing stays in sync
+addEventHandler("onClientGUIChanged", root, function()
+	if not searchOn or source ~= searchEdit then return end
+	searchBuf = guiGetText(searchEdit) or ""
+	scroll = 0
 end)
 
 --[[ ==================== cell data ==================== ]]
@@ -362,10 +348,23 @@ end
 local function drawBoard()
 	local list = filteredList()
 
-	-- board background: fully opaque black with rounded corners
+	-- board background: fully opaque black with smooth rounded corners
 	drawRoundRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, tocolor(6, 8, 12, 255), true)
-	-- thin accent line tracing the top of the board
-	dxDrawRectangle(BOARD.x + CORNER, BOARD.y, BOARD.w - CORNER * 2, 2 * s, accent(255), true)
+	-- accent border that follows the rounded corners (not a flat line)
+	local r = math.min(CORNER, BOARD.h / 2, BOARD.w / 2)
+	local bw = 2 * s
+	if r >= 2 then
+		-- straight top/bottom/side segments
+		dxDrawRectangle(BOARD.x + r, BOARD.y, BOARD.w - 2 * r, bw, accent(255), true)
+		dxDrawRectangle(BOARD.x + r, BOARD.y + BOARD.h - bw, BOARD.w - 2 * r, bw, accent(255), true)
+		dxDrawRectangle(BOARD.x, BOARD.y + r, bw, BOARD.h - 2 * r, accent(255), true)
+		dxDrawRectangle(BOARD.x + BOARD.w - bw, BOARD.y + r, bw, BOARD.h - 2 * r, accent(255), true)
+		-- corner arcs
+		dxDrawCircle(BOARD.x + r, BOARD.y + r, r, 180, 270, accent(255), accent(255), 48, true)
+		dxDrawCircle(BOARD.x + BOARD.w - r, BOARD.y + r, r, 270, 360, accent(255), accent(255), 48, true)
+		dxDrawCircle(BOARD.x + r, BOARD.y + BOARD.h - r, r, 90, 180, accent(255), accent(255), 48, true)
+		dxDrawCircle(BOARD.x + BOARD.w - r, BOARD.y + BOARD.h - r, r, 0, 90, accent(255), accent(255), 48, true)
+	end
 
 	-- header
 	dxDrawRectangle(BOARD.x, BOARD.y + HEADER_H, BOARD.w, 1, tocolor(255, 255, 255, 20), true)

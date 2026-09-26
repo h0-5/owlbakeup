@@ -5,7 +5,8 @@
 	<script src="s_main.lua" type="server" />
 
 	<file src="logo-circle.png" />
-	<file src="shaders/BlurShader.fx" />
+	<file src="images/rounded_lg.png" />
+	<file src="images/rounded_sm.png" />
 
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />

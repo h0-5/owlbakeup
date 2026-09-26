@@ -59,17 +59,16 @@ function uiCreateButton(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
 end
 UI.getDrawFunction["ui-button"] = function(arg0)
   hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
+  -- [Vortex fix] hover color blend restored (decompiler mangled the anim args)
+  local bgColor = UI.DB[arg0].colors[1]
+  if UI.HoveredElement == arg0 and UI.DB[arg0].properties.HoverColor and UI.DB[arg0].properties.HoverColor.value then
+    bgColor = UI.DB[arg0].properties.HoverColor.value
+  end
   if UI.HoveredElement == arg0 then
-    glowAlpha = anim(UI.DB[arg0].data.enterTick or 0, 200, 0, dxGetColor(UI.DB[arg0].colors[1]))
     if UI.DB[arg0].properties.HoverGlow.value then
-      dxDrawImage(UI.DB[arg0].dimensions.x - 25, UI.DB[arg0].dimensions.y - 25, UI.DB[arg0].dimensions.width + 50, UI.DB[arg0].dimensions.height + 50, "images/glow.png", 0, 0, 0, tocolor(anim(UI.DB[arg0].data.enterTick or 0, 200, 0, dxGetColor(UI.DB[arg0].colors[1]))), UI.postGUI)
-    end
-  else
-    glowAlpha = anim(UI.DB[arg0].data.leaveTick or 0, 200, dxGetColor(UI.DB[arg0].properties.HoverColor.value))
-    if UI.DB[arg0].properties.HoverGlow.value then
-      dxDrawImage(UI.DB[arg0].dimensions.x - 25, UI.DB[arg0].dimensions.y - 25, UI.DB[arg0].dimensions.width + 50, UI.DB[arg0].dimensions.height + 50, "images/glow.png", 0, 0, 0, tocolor(anim(UI.DB[arg0].data.leaveTick or 0, 200, dxGetColor(UI.DB[arg0].properties.HoverColor.value))), UI.postGUI)
+      dxDrawImage(UI.DB[arg0].dimensions.x - 25, UI.DB[arg0].dimensions.y - 25, UI.DB[arg0].dimensions.width + 50, UI.DB[arg0].dimensions.height + 50, "images/glow.png", 0, 0, 0, tocolor(dxGetColor(bgColor)), UI.postGUI)
     end
   end
-  dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height, tocolor(anim(UI.DB[arg0].data.leaveTick or 0, 200, dxGetColor(UI.DB[arg0].properties.HoverColor.value))), 8 * SCALE_Y, UI.postGUI)
+  dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height, tocolor(dxGetColor(bgColor)), 8 * SCALE_Y, UI.postGUI)
   dxDrawText(UI.DB[arg0].text[language], UI.DB[arg0].dimensions.x + 3, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 3, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height, UI.HoveredElement == arg0 and UI.DB[arg0].properties.HoverTextColor.value or UI.DB[arg0].properties.TextColor.value, UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, false, UI.postGUI)
 end

@@ -63,9 +63,10 @@ function uiCreateMenu(arg0, arg1, arg2, arg3, arg4, arg5)
   return (element)
 end
 function calcCLRowsHeight(arg0)
-  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows or {}) do
-  end
-  return 2 + forvar6.height + 4
+  local rows = UI.DB[arg0].data.rows or {}
+  local last = rows[#rows]
+  if not last then return 0 end
+  return 2 + last.height + 4
 end
 function findLastCLRow(arg0)
   for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
@@ -73,9 +74,9 @@ function findLastCLRow(arg0)
       return forvar5 - 1
     end
   end
-  return #_FOR_.DB[arg0].data.rows
+  return #UI.DB[arg0].data.rows
 end
-function uiMenuAddRow(arg0, arg1, arg2, arg3, arg4, arg5)
+function uiMenuAddRow(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
   assert(isUIElement(arg0, "menu"), "Bad argument @ 'uiMenuAddRow' [Expected ui-menu at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   if arg3 and type(arg3) == "string" and arg3:sub(1, 1) ~= ":" and sourceResource then
     arg3 = ":" .. getResourceName(sourceResource) .. "/" .. arg3
@@ -90,6 +91,7 @@ function uiMenuAddRow(arg0, arg1, arg2, arg3, arg4, arg5)
     alignX = "left",
     color = arg2 or theme.COLORS.primary,
     icon = arg3,
+    emoji = arg6,
     toggle_element = arg4 or false,
     animation = {0}
   })
@@ -122,7 +124,7 @@ function scrollMenu(arg0, arg1)
       break
     end
   end
-  _FOR_.DB[arg1 or getElementParent(source)].data.row_f = findLastCLRow(arg1 or getElementParent(source))
+  UI.DB[arg1 or getElementParent(source)].data.row_f = findLastCLRow(arg1 or getElementParent(source))
 end
 function doesChecklistNeedScrollBar(arg0)
   return calcCLRowsHeight(arg0) > UI.DB[arg0].dimensions.height
@@ -222,19 +224,25 @@ UI.getDrawFunction["ui-menu"] = function(arg0)
         end
       end
       if UI.DB[arg0].data.selected_row == forvar16 then
-        dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.selected_row_color.value, var0)
+        dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.selected_row_color.value, 5)
         dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y - anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear")) / 2, 2, anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear"), UI.DB[arg0].properties.selection_color.value, UI.postGUI)
       else
         if UI.DB[arg0].data.hovered_row == forvar16 then
         end
         if 0 < bitExtract(UI.DB[arg0].properties.hovered_row_color.value, 24, 8) then
-          dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.hovered_row_color.value, var0)
+          dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.hovered_row_color.value, 5)
         end
       end
       if UI.DB[arg0].data.rows[forvar16].icon then
         dxDrawImage(UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y - UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2) / 2, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, UI.DB[arg0].data.rows[forvar16].icon, 0, 0, 0, UI.DB[arg0].properties.icons_color.value, UI.postGUI)
+      elseif UI.DB[arg0].data.rows[forvar16].emoji then
+        local emojiSq = UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2
+        local emojiX = UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y
+        local emojiY = UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i)
+        local emojiScale = emojiSq / (11.5 * SCALE_Y) * 0.52
+        dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].emoji), emojiX, emojiY, emojiX + emojiSq, emojiY + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 235), emojiScale, dxFontEmoji, "center", "center", true, false, UI.postGUI)
       end
-      dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].text[language]), UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2 + 10, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.x + 5 + (UI.DB[arg0].dimensions.width - 10), UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 255), 1, UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, false, UI.postGUI, true, false)
+      dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].text[language]), UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2 + 10, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.x + 5 + (UI.DB[arg0].dimensions.width - 10), UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 255), 1 * UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, false, UI.postGUI, true, false)
     end
   end
 end

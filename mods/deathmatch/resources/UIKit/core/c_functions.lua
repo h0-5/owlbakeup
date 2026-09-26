@@ -17,27 +17,29 @@ function dxGetColor(arg0)
   end
   return bitExtract(arg0, 16, 8), bitExtract(arg0, 8, 8), bitExtract(arg0, 0, 8), (bitExtract(arg0, 24, 8))
 end
+-- [Vortex fix] default rounded-corner options (lost global restored)
+local ROUNDED_ALL = { up = { left = true, right = true }, down = { left = true, right = true } }
 function dxDrawRoundedRectangle(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
   arg2, arg3, arg0, arg1 = arg2 - arg5 * 2, arg3 - arg5 * 2, arg0 + arg5, arg1 + arg5
   dxDrawRectangle(arg0 - arg5, arg1, arg2 + arg5 * 2, arg3, arg4, UI.postGUI)
   dxDrawRectangle(arg0, arg1 - arg5, arg2, arg5, arg4, UI.postGUI)
   dxDrawRectangle(arg0, arg1 + arg3, arg2, arg5, arg4, UI.postGUI)
-  if (type(arg6) == "table" and arg6 or var0).up.left then
+  if (type(arg6) == "table" and arg6 or ROUNDED_ALL).up.left then
     dxDrawCircle(arg0, arg1, arg5, 180, 270, arg4, arg4, 12 * SCALE_Y, _, UI.postGUI)
   else
     dxDrawRectangle(arg0 - arg5, arg1 - arg5, arg5, arg5, arg4, UI.postGUI)
   end
-  if (type(arg6) == "table" and arg6 or var0).up.right then
+  if (type(arg6) == "table" and arg6 or ROUNDED_ALL).up.right then
     dxDrawCircle(arg0 + arg2, arg1, arg5, 270, 360, arg4, arg4, 12 * SCALE_Y, _, UI.postGUI)
   else
     dxDrawRectangle(arg0 + arg2, arg1 - arg5, arg5, arg5, arg4, UI.postGUI)
   end
-  if (type(arg6) == "table" and arg6 or var0).down.left then
+  if (type(arg6) == "table" and arg6 or ROUNDED_ALL).down.left then
     dxDrawCircle(arg0, arg1 + arg3, arg5, 90, 180, arg4, arg4, 12 * SCALE_Y, _, UI.postGUI)
   else
     dxDrawRectangle(arg0 - arg5, arg1 + arg3, arg5, arg5, arg4, UI.postGUI)
   end
-  if (type(arg6) == "table" and arg6 or var0).down.right then
+  if (type(arg6) == "table" and arg6 or ROUNDED_ALL).down.right then
     dxDrawCircle(arg0 + arg2, arg1 + arg3, arg5, 0, 90, arg4, arg4, 12 * SCALE_Y, _, UI.postGUI)
   else
     dxDrawRectangle(arg0 + arg2, arg1 + arg3, arg5, arg5, arg4, UI.postGUI)
@@ -131,10 +133,11 @@ function RGBToHex(arg0, arg1, arg2, arg3)
     return string.format("#%.2X%.2X%.2X", arg0, arg1, arg2)
   end
 end
-;({}).gradient_x = dxCreateTexture("images/gradient_x.png", "argb", true, "clamp")
-;({}).gradient_y = dxCreateTexture("images/gradient_y.png", "argb", true, "clamp")
+local imageCache = {}
+imageCache.gradient_x = dxCreateTexture("images/gradient_x.png", "argb", true, "clamp")
+imageCache.gradient_y = dxCreateTexture("images/gradient_y.png", "argb", true, "clamp")
 function getUIImage(arg0)
-  return var0[arg0]
+  return imageCache[arg0]
 end
 function uiGetThemeColor(arg0)
   if theme.COLORS[arg0] then

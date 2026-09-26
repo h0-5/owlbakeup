@@ -225,7 +225,7 @@ UI.getDrawFunction["ui-memo"] = function(arg0)
       })[3] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), dxGetFontHeight(UI.DB[arg0].font.size, UI.DB[arg0].font.name) - 2, tocolor(50, 50, 50, 100), UI.postGUI)
     end
   end
-  if _FOR_.FocusElement == arg0 then
+  if UI.FocusElement == arg0 then
     dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, 3, UI.DB[arg0].dimensions.height, tocolor(dxGetColor(UI.DB[arg0].properties.SecondColor.value or tocolor(255, 55, 95, 255))), UI.postGUI)
     dxDrawLine(math.min(UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub((UI.DB[arg0].text:find("\n", 1, true) and split("" .. newLinePrefix .. UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
       UI.DB[arg0].text

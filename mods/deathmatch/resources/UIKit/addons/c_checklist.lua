@@ -54,7 +54,7 @@ function findLastCLRow(arg0)
       return forvar5 - 1
     end
   end
-  return #_FOR_.DB[arg0].data.rows
+  return #UI.DB[arg0].data.rows
 end
 function uiCheckListAddRow(arg0, arg1, arg2, arg3)
   assert(isUIElement(arg0, "checklist"), "Bad argument @ 'uiCheckListAddRow' [Expected ui-checklist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -89,7 +89,7 @@ function scrollCheckList(arg0, arg1)
       break
     end
   end
-  _FOR_.DB[arg1 or getElementParent(source)].data.row_f = findLastCLRow(arg1 or getElementParent(source))
+  UI.DB[arg1 or getElementParent(source)].data.row_f = findLastCLRow(arg1 or getElementParent(source))
 end
 function doesChecklistNeedScrollBar(arg0)
   return calcCLRowsHeight(arg0) > UI.DB[arg0].dimensions.height

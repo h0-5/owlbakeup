@@ -100,7 +100,7 @@ function scrollGridList(arg0, arg1)
       break
     end
   end
-  _FOR_.DB[arg1 or getElementParent(source)].data.row_f = findLastRow(arg1 or getElementParent(source))
+  UI.DB[arg1 or getElementParent(source)].data.row_f = findLastRow(arg1 or getElementParent(source))
 end
 function calcRowsHeight(arg0)
   for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows or {}) do
@@ -113,7 +113,7 @@ function findLastRow(arg0)
       return forvar5 - 1
     end
   end
-  return #_FOR_.DB[arg0].data.rows
+  return #UI.DB[arg0].data.rows
 end
 function doesGridlistNeedScrollBar(arg0)
   return UI.DB[arg0].properties.column_height.value + calcRowsHeight(arg0) > UI.DB[arg0].dimensions.height
@@ -243,8 +243,10 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
     dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height, tocolor(dxGetColor(UI.DB[arg0].colors[1])), 5)
   end
   if 1 <= #UI.DB[arg0].data.columns then
+    local columnX, columnOffset = {}, 0
     for forvar17, forvar18 in ipairs(UI.DB[arg0].data.columns) do
-      ({})[forvar17] = UI.DB[arg0].dimensions.x
+      columnX[forvar17] = UI.DB[arg0].dimensions.x + columnOffset
+      columnOffset = columnOffset + forvar18.width * UI.DB[arg0].dimensions.width
       if UI.DB[arg0].properties.columns_names_visible.value == "True" then
         dxDrawText(forvar18.text, UI.DB[arg0].dimensions.x + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI)
       end
@@ -257,7 +259,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
         for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
           if UI.DB[arg0].data.selected_row == forvar19 - 1 and not false then
-            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(5, 125, 255, 155), UI.postGUI)
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), 155), UI.postGUI)
             if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
               UI.DB[arg0].data.hovered_row = forvar19 - 1
             end
@@ -269,7 +271,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
               end
             end
           end
-          dxDrawText(forvar25.text, ({})[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), ({})[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, forvar25.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
+          dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, forvar25.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
           dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
         end
       end

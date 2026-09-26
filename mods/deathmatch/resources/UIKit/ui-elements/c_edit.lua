@@ -106,18 +106,18 @@ function uiEditSetTitle(arg0, arg1)
 end
 UI.getDrawFunction["ui-edit"] = function(arg0)
   hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
-  if UI.HoveredElement ~= arg0 or not tocolor(200, 200, 200, 200) then
-  end
   if UI.DB[arg0].properties.UnderLineVisible.value == "True" then
-    var0(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, noActiveColor or tocolor(50, 50, 50, 255), 2, UI.postGUI)
-    var0(anim(UI.DB[arg0].animation[1], 500, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width / 2, 0, 180, 0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.width, 255, 0, "Linear"))
+    dxDrawLine(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, noActiveColor or tocolor(50, 50, 50, 255), 2, UI.postGUI)
+    if UI.FocusElement == arg0 then
+      dxDrawLine(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, UI.DB[arg0].colors[1], 2, UI.postGUI)
+    end
   end
-  var3(string.rep("*", utfLen(UI.DB[arg0].text)) == "" and UI.DB[arg0].title[language] or string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].dimensions.x + 7, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, tocolor(255, 255, 255, math.max(string.rep("*", utfLen(UI.DB[arg0].text)) == "" and anim(UI.DB[arg0].animation[1], 500, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width / 2, 0, 180, 0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.width, 255, 0, "Linear") - 155 or anim(UI.DB[arg0].animation[1], 500, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width / 2, 0, 180, 0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.width, 255, 0, "Linear"))), UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].dimensions.x + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) + 5 <= UI.DB[arg0].dimensions.x - 5 + UI.DB[arg0].dimensions.width and "left" or "left", "center", true, false, UI.postGUI, false, false)
+  dxDrawText(string.rep("*", utfLen(UI.DB[arg0].text)) == "" and UI.DB[arg0].title[language] or string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].dimensions.x + 7, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7, UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 2, tocolor(255, 255, 255, math.max(string.rep("*", utfLen(UI.DB[arg0].text)) == "" and anim(UI.DB[arg0].animation[1], 500, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width / 2, 0, 180, 0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.width, 255, 0, "Linear") - 155 or anim(UI.DB[arg0].animation[1], 500, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width / 2, 0, 180, 0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.width, 255, 0, "Linear"))), UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].dimensions.x + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) + 5 <= UI.DB[arg0].dimensions.x - 5 + UI.DB[arg0].dimensions.width and "left" or "left", "center", true, false, UI.postGUI, false, false)
   if UI.DB[arg0].data.shading[1] ~= UI.DB[arg0].data.shading[2] then
-    var4(UI.DB[arg0].dimensions.x + 7 + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.y + 2, UI.DB[arg0].dimensions.x + 7 + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) > UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7 and UI.DB[arg0].dimensions.width - (UI.DB[arg0].dimensions.x + 7 + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) - (UI.DB[arg0].dimensions.x + 7)) - 14 or var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.height - 6, tocolor(50, 50, 50, 150), UI.postGUI)
+    dxDrawRectangle(UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.y + 2, UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) > UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7 and UI.DB[arg0].dimensions.width - (UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.shading[1] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name) - (UI.DB[arg0].dimensions.x + 7)) - 14 or dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.height - 6, tocolor(50, 50, 50, 150), UI.postGUI)
   end
   if UI.FocusElement == arg0 then
-    var0(math.min(UI.DB[arg0].dimensions.x + 7 + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7), UI.DB[arg0].dimensions.y + 2, math.min(UI.DB[arg0].dimensions.x + 7 + var1(var2(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7), UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 4, tocolor(dxGetColor(UI.FocusElement == arg0 and UI.DB[arg0].colors[1] or tocolor(50, 50, 50, 255))), 2, UI.postGUI)
+    dxDrawLine(math.min(UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7), UI.DB[arg0].dimensions.y + 2, math.min(UI.DB[arg0].dimensions.x + 7 + dxGetTextWidth(utfSub(string.rep("*", utfLen(UI.DB[arg0].text)), 1, UI.DB[arg0].data.caret - 1), UI.DB[arg0].font.size, UI.DB[arg0].font.name), UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 7), UI.DB[arg0].dimensions.y + UI.DB[arg0].dimensions.height - 4, tocolor(dxGetColor(UI.FocusElement == arg0 and UI.DB[arg0].colors[1] or tocolor(50, 50, 50, 255))), 2, UI.postGUI)
   end
 end
 function shadeAllEditText(arg0, arg1)
@@ -149,29 +149,32 @@ function uiEditGetShadedText(arg0)
   if UI.DB[arg0].data.shading[1] == UI.DB[arg0].data.shading[2] then
     return false
   else
-    return var0(UI.DB[arg0].text, UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1)
+    return utfSub(UI.DB[arg0].text, UI.DB[arg0].data.shading[1], UI.DB[arg0].data.shading[2] - 1)
   end
 end
 function getCaretFromCursorPosition(arg0, arg1, arg2, arg3)
-  if arg2 > arg0 + var0(arg1, UI.DB[arg3].font.size, UI.DB[arg3].font.name) then
-  elseif arg2 < arg0 then
-  else
-    for forvar9 = 1, utfLen(arg1) do
-      if arg2 >= arg0 + var0(var1(arg1, 1, forvar9 - 1), UI.DB[arg3].font.size, UI.DB[arg3].font.name) and arg2 <= arg0 + var0(var1(arg1, 1, forvar9), UI.DB[arg3].font.size, UI.DB[arg3].font.name) then
+  local idx = 0
+  if arg2 > arg0 + dxGetTextWidth(arg1, UI.DB[arg3].font.size, UI.DB[arg3].font.name) then
+    idx = utfLen(arg1)
+  elseif arg2 >= arg0 then
+    idx = utfLen(arg1)
+    for i = 1, utfLen(arg1) do
+      if arg2 <= arg0 + dxGetTextWidth(utfSub(arg1, 1, i), UI.DB[arg3].font.size, UI.DB[arg3].font.name) then
+        idx = i
         break
       end
     end
   end
-  return forvar9 + 1
+  return idx + 1
 end
 function copyText(arg0, arg1)
   if (getKeyState("lctrl") or getKeyState("rctrl")) and UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" then
     if arg0 == "x" then
       UI.DB[UI.FocusElement].data.shading = {1, 1}
-      uiSetText(UI.FocusElement, var0(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. var0(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[2], utfLen(UI.DB[UI.FocusElement].text)))
-      uiEditSetCaretIndex(UI.FocusElement, utfLen((var0(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1))) + 1)
+      uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[2], utfLen(UI.DB[UI.FocusElement].text)))
+      uiEditSetCaretIndex(UI.FocusElement, utfLen((utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1))) + 1)
     end
-    setClipboard((var0(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2] - 1)))
+    setClipboard((utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2] - 1)))
   end
 end
 bindKey("C", "down", copyText)

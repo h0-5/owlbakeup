@@ -1,17 +1,21 @@
 <meta>
-	<info author="PDZ" name="Main Menu" description="F1 main menu - personal info, online staff, leaderboard, about" type="script" version="1.0.0" />
+	<info author="Vortex" name="Main Menu" description="F1 main menu - personal info, online staff, leaderboard, discord link, about" type="script" version="2.1.0" />
+
+	<depend src="UIKit" />
 
 	<script src="c_main.lua" type="client" />
 	<script src="s_main.lua" type="server" />
 
 	<file src="logo-circle.png" />
-	<file src="images/rounded_lg.png" />
-	<file src="images/rounded_sm.png" />
+	<file src="images/logo_text.png" />
 
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
 	<file src="fonts/PFDinDisplayPro-Regular.ttf" />
 
+	<file src="icons/discord.png" />
+	<file src="icons/youtube.png" />
+	<file src="icons/link.png" />
 	<file src="icons/admin3.png" />
 	<file src="icons/admin_badge.png" />
 	<file src="icons/AFK.png" />
@@ -58,5 +62,6 @@
 	<file src="icons/youtuber.png" />
 
 	<export function="isOpen" type="client" />
-	<export function="toggleMenu" type="client" />
+	<export function="showSideBar" type="client" />
+	<export function="showEscapeView" type="client" />
 </meta>

@@ -76,7 +76,7 @@ function uiInfoListClear(arg0)
 end
 UI.getDrawFunction["ui-infolist"] = function(arg0)
   for forvar15 = 1, #UI.DB[arg0].data.rows do
-    dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 5 * SCALE_Y + (30 * SCALE_Y + 4) * (forvar15 - 1), UI.DB[arg0].data.rows[forvar15].width, 30 * SCALE_Y, UI.DB[arg0].colors[1], var0)
+    dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 5 * SCALE_Y + (30 * SCALE_Y + 4) * (forvar15 - 1), UI.DB[arg0].data.rows[forvar15].width, 30 * SCALE_Y, UI.DB[arg0].colors[1], 5)
     if UI.DB[arg0].data.rows[forvar15].icon then
       dxDrawImage(UI.DB[arg0].dimensions.x + 7 * SCALE_Y, UI.DB[arg0].dimensions.y + 5 * SCALE_Y + (30 * SCALE_Y + 4) * (forvar15 - 1) + (30 * SCALE_Y - 30 * SCALE_Y / 1.7) / 2, 30 * SCALE_Y / 1.7, 30 * SCALE_Y / 1.7, UI.DB[arg0].data.rows[forvar15].icon, 0, 0, 0, UI.DB[arg0].properties.icons_color.value, UI.postGUI)
     end

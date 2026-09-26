@@ -105,6 +105,7 @@
 	<export function="uiCreateEdit" type="client" />
 	<export function="uiCreateGridList" type="client" />
 	<export function="uiCreateImage" type="client" />
+	<export function="getUIImage" type="client" />
 	<export function="uiCreateInfoList" type="client" />
 	<export function="uiCreateLabel" type="client" />
 	<export function="uiCreateLoading" type="client" />

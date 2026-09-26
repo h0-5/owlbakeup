@@ -43,6 +43,11 @@ UI = {
 newLinePrefix = "@@@@@@@@@@@@@@@NEWS_LINE@@@@@@@@@@@@@@@@"
 dxFont = dxCreateFont("fonts/Font2.ttf", 11.5 * SCALE_Y)
 dxFontLarge = dxCreateFont("fonts/Font2.ttf", 15 * SCALE_Y)
+-- monochrome emoji glyph font (Segoe UI Emoji ships with every Windows 8.1+ client);
+-- used by ui-menu rows that pass an "emoji" instead of an image icon
+dxFontEmoji = dxCreateFont("C:/Windows/Fonts/seguiemj.ttf", 11.5 * SCALE_Y)
+	 or dxCreateFont("fonts/seguiemj.ttf", 11.5 * SCALE_Y)
+	 or "default-bold"
 dxFontHUD = dxCreateFont("fonts/Akrobat-Regular.otf", 15 * SCALE_Y, false) or "default"
 dxFontHUDLarge = dxCreateFont("fonts/Akrobat-SemiBold.otf", 35 * SCALE_Y) or "default"
 function restartUIKit()
@@ -365,10 +370,11 @@ function uiGetProperty(arg0, arg1)
 end
 function uiGetProperties(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetProperties' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  local result = {}
   for forvar5, forvar6 in pairs(UI.DB[arg0].properties) do
-    ({})[forvar5] = forvar6.value
+    result[forvar5] = forvar6.value
   end
-  return {}
+  return result
 end
 function uiSetPosition(arg0, arg1, arg2)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetPosition' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -410,17 +416,18 @@ function uiGetSize(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetSize' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   return UI.DB[arg0].related_dimensions_org.width, UI.DB[arg0].related_dimensions_org.height
 end
+local frontList = {}
 function uiBringToFront(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiBringToFront' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   while isUIElement(getElementParent(arg0)) do
     arg0 = getElementParent(arg0)
   end
-  for forvar4, forvar5 in ipairs(var0) do
+  for forvar4, forvar5 in ipairs(frontList) do
     if isElement(forvar5) then
       UI.priority[forvar5] = UI.DB[forvar5].priority
     end
   end
-  var0 = {}
+  frontList = {}
   bringToFront(arg0, #UI.Elements + 10000)
   table.sort(UI.Elements, function(arg0, arg1)
     return (UI.priority[arg0] or 0) < (UI.priority[arg1] or 0)
@@ -429,7 +436,7 @@ function uiBringToFront(arg0)
 end
 function bringToFront(arg0, arg1)
   UI.priority[arg0] = arg1
-  table.insert(var0, arg0)
+  table.insert(frontList, arg0)
   for forvar5, forvar6 in ipairs(getElementChildren(arg0)) do
     if isUIElement(forvar6) then
       bringToFront(forvar6, arg1 + 1)
@@ -469,6 +476,10 @@ function uiGetParent(arg0)
 end
 function uiSetClickAction(arg0, arg1, arg2)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetClickAction' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or arg1(arg0)) .. "]")
+  if arg1 and arg2 == nil and type(arg1) == "string" then
+    -- bare link/text: treat as a copy-to-clipboard action (original client usage)
+    arg1, arg2 = "copy_text", arg1
+  end
   if arg1 then
     UI.DB[arg0].click_action = {type = arg1, value = arg2}
   else

@@ -3,76 +3,92 @@
 -- discord.gg/owwl
 
 moveTemp = {}
+
+-- [Vortex fix] locals lost by the decompiler, reconstructed:
+local repeatTimer, repeatCount = false, 0
+local clickTimer1, clickTimer2 = false, false
+local cancelKeys = {
+	backspace = true, delete = true, enter = true, num_enter = true,
+	arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
+}
+local function isTypableCharacter(ch)
+	return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
+end
+function updateLabelScroll(label)
+	if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
+		uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
+	end
+	return true
+end
 function UI.updateDrawingList()
   UI.DrawElements = {}
-  for forvar4 = 1, #UI.Elements do
-    if UI.DB[UI.Elements[forvar4]].visible then
-      if ({})[var0(UI.Elements[forvar4])] or false then
-        UI.DrawElements[#UI.DrawElements + 1] = UI.Elements[forvar4]
-        ;({})[UI.Elements[forvar4]] = true
-      end
+  for i = 1, #UI.Elements do
+    local el = UI.Elements[i]
+    if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] then
+      UI.DrawElements[#UI.DrawElements + 1] = el
+      UI.isDraw[el] = true
     end
   end
 end
 function UI.drawing()
   UI.HoveredElement = false
-  var0 = false
-  var1 = false
+  local hoverCandidate = false
+  local anyDrawn = false
   for forvar3 = 1, #UI.DrawElements do
-    if var2(UI.DrawElements[forvar3]) then
-      if UI.DB[UI.DrawElements[forvar3]].visible then
-        if UI.isDraw[var3(UI.DrawElements[forvar3])] or false then
-          if var4(UI.DrawElements[forvar3]) ~= "ui-tab" then
-            var0 = isMouseInPosition(UI.DB[UI.DrawElements[forvar3]].dimensions.x, UI.DB[UI.DrawElements[forvar3]].dimensions.y, UI.DB[UI.DrawElements[forvar3]].dimensions.width, UI.DB[UI.DrawElements[forvar3]].dimensions.height) and UI.DrawElements[forvar3] or var0
+    local el = UI.DrawElements[forvar3]
+    if isUIElement(el) then
+      if UI.DB[el].visible then
+        if UI.isDraw[el] then
+          if getElementType(el) ~= "ui-tab" then
+            hoverCandidate = isMouseInPosition(UI.DB[el].dimensions.x, UI.DB[el].dimensions.y, UI.DB[el].dimensions.width, UI.DB[el].dimensions.height) and el or hoverCandidate
           end
-          if var5() and (var6() >= 1 or var6() <= 0 or var6() >= 1 or var6() <= 0) and UI.DB[UI.DrawElements[forvar3]].state == "clicked" and UI.DB[UI.DrawElements[forvar3]].state ~= "normal" then
-            UI.DB[UI.DrawElements[forvar3]].state = "normal"
+          local cx, cy = getCursorPosition()
+          if isCursorShowing() and ((cx or -1) >= 1 or (cy or -1) >= 1 or (cx or -1) <= 0 or (cy or -1) <= 0) and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
+            UI.DB[el].state = "normal"
             if isEventHandlerAdded("onClientCursorMove", root, moveElement) then
               removeEventHandler("onClientCursorMove", root, moveElement)
               moveTemp = {}
             end
           end
-          if type(UI.getDrawFunction[var4(UI.DrawElements[forvar3])]) == "function" then
-            UI.getDrawFunction[var4(UI.DrawElements[forvar3])](UI.DrawElements[forvar3])
-            UI.isDraw[UI.DrawElements[forvar3]] = true
-            var1 = true
+          if type(UI.getDrawFunction[getElementType(el)]) == "function" then
+            UI.getDrawFunction[getElementType(el)](el)
+            UI.isDraw[el] = true
+            anyDrawn = true
           end
-          UI.TempDisabled[UI.DrawElements[forvar3]] = UI.DB[UI.DrawElements[forvar3]].properties.Disabled.value == "True" or UI.TempDisabled[var3(UI.DrawElements[forvar3])]
-        else
+          UI.TempDisabled[el] = UI.DB[el].properties.Disabled.value == "True" or UI.TempDisabled[el]
         end
-      else
       end
-      if not false then
-        UI.isDraw[UI.DrawElements[forvar3]] = false
-        if UI.FocusElement == UI.DrawElements[forvar3] then
+      if not UI.isDraw[el] then
+        UI.isDraw[el] = false
+        if UI.FocusElement == el then
           UI.FocusElement = false
-          UI.DB[UI.DrawElements[forvar3]].state = "normal"
-          triggerEvent("onClientUIBlur", UI.DrawElements[forvar3])
+          UI.DB[el].state = "normal"
+          triggerEvent("onClientUIBlur", el)
         end
-        if UI.HoveredElement == UI.DrawElements[forvar3] then
+        if UI.HoveredElement == el then
           UI.HoveredElement = false
         end
       end
     end
   end
-  if var0 ~= UI.TempHoveredElement then
-    if UI.TempHoveredElement and var2(UI.TempHoveredElement) then
+  if hoverCandidate ~= UI.TempHoveredElement then
+    if UI.TempHoveredElement and isUIElement(UI.TempHoveredElement) then
       UI.DB[UI.TempHoveredElement].data.leaveTick = getTickCount()
       triggerEvent("onClientUIMouseLeave", UI.TempHoveredElement)
     end
-    UI.TempHoveredElement = var0
-    if var0 then
-      if var4(var0) == "ui-edit" and UI.FocusElement ~= var0 then
-        UI.DB[var0].animation = {
+    UI.TempHoveredElement = hoverCandidate
+    if hoverCandidate then
+      if getElementType(hoverCandidate) == "ui-edit" and UI.FocusElement ~= hoverCandidate then
+        UI.DB[hoverCandidate].animation = {
           getTickCount(),
           true
         }
       end
-      UI.DB[var0].data.enterTick = getTickCount()
-      triggerEvent("onClientUIMouseEnter", var0)
+      UI.DB[hoverCandidate].data.enterTick = getTickCount()
+      triggerEvent("onClientUIMouseEnter", hoverCandidate)
     end
   end
-  if not var1 then
+  if not anyDrawn then
     UI.renderStatus = false
     removeEventHandler("onClientRender", root, UI.drawing)
     if UI.FocusElement then
@@ -86,16 +102,16 @@ addEventHandler("onClientRender", root, UI.drawing)
 function UI.click(arg0, arg1, arg2, arg3)
   if arg0 == "left" then
     if UI.HoveredElement then
-      if isTimer(var0) then
-        killTimer(var0)
+      if clickTimer1 and isTimer(clickTimer1) then
+        killTimer(clickTimer1)
       end
-      if isTimer(var1) then
-        killTimer(var1)
+      if clickTimer2 and isTimer(clickTimer2) then
+        killTimer(clickTimer2)
       end
       if isUIDisabled(UI.HoveredElement) then
         return
       end
-      if var3(UI.FocusElement) then
+      if isElement(UI.FocusElement) then
         UI.DB[UI.FocusElement].state = "normal"
         if UI.FocusElement ~= UI.HoveredElement then
           triggerEvent("onClientUIBlur", UI.FocusElement)
@@ -107,7 +123,7 @@ function UI.click(arg0, arg1, arg2, arg3)
       UI.FocusElement = UI.HoveredElement
       if arg0 == "left" then
         if arg1 == "up" then
-          if var2(UI.HoveredElement) == "ui-edit" then
+          if getElementType(UI.HoveredElement) == "ui-edit" then
             if arg2 > UI.DB[UI.HoveredElement].dimensions.x + 7 + dxGetTextWidth(UI.DB[UI.HoveredElement].text, UI.DB[UI.HoveredElement].font.size, UI.DB[UI.HoveredElement].font.name) then
               uiEditSetCaretIndex(UI.HoveredElement, utfLen(UI.DB[UI.HoveredElement].text) + 1)
             elseif arg2 < UI.DB[UI.HoveredElement].dimensions.x + 7 then
@@ -122,43 +138,44 @@ function UI.click(arg0, arg1, arg2, arg3)
             end
             removeEventHandler("onClientCursorMove", root, moveCursor)
             toggleControl("chatbox", false)
-          elseif var2(UI.HoveredElement) == "ui-combobox" then
+          elseif getElementType(UI.HoveredElement) == "ui-combobox" then
             if isMouseInPosition(UI.DB[UI.HoveredElement].dimensions.x + (UI.DB[UI.HoveredElement].dimensions.width - UI.DB[UI.HoveredElement].dimensions.width / 8), UI.DB[UI.HoveredElement].dimensions.y, UI.DB[UI.HoveredElement].dimensions.width / 8, UI.DB[UI.HoveredElement].dimensions.height) then
               UI.DB[UI.HoveredElement].data.visible = not UI.DB[UI.HoveredElement].data.visible
               uiSetVisible(UI.DB[UI.HoveredElement].scrollbar.element, #UI.DB[UI.HoveredElement].data.items > UI.DB[UI.HoveredElement].properties.items_per_page.value and not UI.DB[UI.HoveredElement].data.visible or false)
               UI.VisibleList = UI.HoveredElement
               uiBringToFront(UI.HoveredElement)
             end
-          elseif var2(UI.HoveredElement) == "ui-switch" or var2(UI.HoveredElement) == "ui-checkbox" then
+          elseif getElementType(UI.HoveredElement) == "ui-switch" or getElementType(UI.HoveredElement) == "ui-checkbox" then
             UI.DB[UI.HoveredElement].data.selected = not UI.DB[UI.HoveredElement].data.selected
             UI.DB[UI.HoveredElement].animation[1] = getTickCount()
             playSound(":UIKit/sounds/click2.wav")
-          elseif var2(UI.HoveredElement) == "ui-radiobutton" then
-            if UI.HoveredElement ~= UI.SelectedRadio[var4(UI.HoveredElement)] and UI.SelectedRadio[var4(UI.HoveredElement)] then
-              UI.DB[UI.SelectedRadio[var4(UI.HoveredElement)]].animation[1] = getTickCount()
+          elseif getElementType(UI.HoveredElement) == "ui-radiobutton" then
+            if UI.HoveredElement ~= UI.SelectedRadio[getElementType(UI.HoveredElement)] and UI.SelectedRadio[getElementType(UI.HoveredElement)] then
+              UI.DB[UI.SelectedRadio[getElementType(UI.HoveredElement)]].animation[1] = getTickCount()
             end
             UI.DB[UI.HoveredElement].animation[1] = getTickCount()
-            UI.SelectedRadio[var4(UI.HoveredElement)] = UI.SelectedRadio[var4(UI.HoveredElement)] ~= UI.HoveredElement and UI.HoveredElement
-          elseif var2(UI.HoveredElement) == "ui-memo" then
+            UI.SelectedRadio[getElementType(UI.HoveredElement)] = UI.SelectedRadio[getElementType(UI.HoveredElement)] ~= UI.HoveredElement and UI.HoveredElement
+          elseif getElementType(UI.HoveredElement) == "ui-memo" then
             removeEventHandler("onClientCursorMove", root, moveCursorForShading)
             toggleControl("chatbox", false)
-          elseif var2(UI.HoveredElement) == "ui-window" or var2(UI.HoveredElement) == "ui-dialog" then
+          elseif getElementType(UI.HoveredElement) == "ui-window" or getElementType(UI.HoveredElement) == "ui-dialog" then
             removeEventHandler("onClientCursorMove", root, moveElement)
             moveTemp = {}
-          elseif var2(UI.HoveredElement) == "ui-tabpanel" and UI.DB[UI.HoveredElement].data.hovered_tab and UI.DB[UI.DB[UI.HoveredElement].data.hovered_tab].properties.Disabled.value ~= "True" and UI.DB[UI.HoveredElement].properties.Disabled.value ~= "True" and UI.DB[UI.HoveredElement].data.selected_tab ~= UI.DB[UI.HoveredElement].data.hovered_tab then
+          elseif getElementType(UI.HoveredElement) == "ui-tabpanel" and UI.DB[UI.HoveredElement].data.hovered_tab and UI.DB[UI.DB[UI.HoveredElement].data.hovered_tab].properties.Disabled.value ~= "True" and UI.DB[UI.HoveredElement].properties.Disabled.value ~= "True" and UI.DB[UI.HoveredElement].data.selected_tab ~= UI.DB[UI.HoveredElement].data.hovered_tab then
             uiSetSelectedTab(UI.HoveredElement, UI.DB[UI.HoveredElement].data.hovered_tab)
           end
           if UI.DraggedElement then
             removeEventHandler("onClientCursorMove", root, dragElement)
             if dragTemp then
-              UI.DB[UI.DraggedElement].dimensions.x = unpack(dragTemp)
-              UI.DB[UI.DraggedElement].dimensions.y = unpack(dragTemp)
+              local dcx, dcy, dox, doy = unpack(dragTemp)
+              UI.DB[UI.DraggedElement].dimensions.x = dox
+              UI.DB[UI.DraggedElement].dimensions.y = doy
             end
             triggerEvent("onClientUIDragEnd", UI.DraggedElement, UI.HoveredElement)
             UI.DraggedElement = nil
           end
         else
-          if var2(UI.HoveredElement) == "ui-gridlist" then
+          if getElementType(UI.HoveredElement) == "ui-gridlist" then
             if not UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = -1
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
@@ -166,12 +183,12 @@ function UI.click(arg0, arg1, arg2, arg3)
               UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
             end
-          elseif var2(UI.HoveredElement) == "ui-checklist" then
+          elseif getElementType(UI.HoveredElement) == "ui-checklist" then
             if UI.DB[UI.HoveredElement].data.hovered_row and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row] then
               UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].selected = not UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].selected
               UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].animation[1] = getTickCount()
             end
-          elseif var2(UI.HoveredElement) == "ui-menu" then
+          elseif getElementType(UI.HoveredElement) == "ui-menu" then
             if UI.DB[UI.HoveredElement].data.hovered_row and UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
               if UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.selected_row].toggle_element then
@@ -182,14 +199,14 @@ function UI.click(arg0, arg1, arg2, arg3)
               end
               triggerEvent("onClientUIMenuSelectChange", UI.HoveredElement, UI.DB[UI.HoveredElement].data.hovered_row, UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row] and UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].toggle_element)
             end
-          elseif var3(UI.VisibleList) and var2(UI.VisibleList) == "ui-combobox" and UI.HoveredElement ~= UI.DB[UI.VisibleList].scrollbar.element and not UI.DB[UI.VisibleList].data.hovered_item then
+          elseif isElement(UI.VisibleList) and getElementType(UI.VisibleList) == "ui-combobox" and UI.HoveredElement ~= UI.DB[UI.VisibleList].scrollbar.element and not UI.DB[UI.VisibleList].data.hovered_item then
             if not isMouseInPosition(UI.DB[UI.VisibleList].dimensions.x + (UI.DB[UI.VisibleList].dimensions.width - UI.DB[UI.VisibleList].dimensions.width / 8), UI.DB[UI.VisibleList].dimensions.y, UI.DB[UI.VisibleList].dimensions.width / 8, UI.DB[UI.VisibleList].dimensions.height) and UI.DB[UI.VisibleList].data.visible then
               UI.DB[UI.VisibleList].data.visible = false
               UI.DB[UI.VisibleList].data.selected_item = -1
               uiSetVisible(UI.DB[UI.VisibleList].scrollbar.element, false)
               UI.VisibleList = false
             end
-          elseif var2(UI.HoveredElement) == "ui-scrollbar" then
+          elseif getElementType(UI.HoveredElement) == "ui-scrollbar" then
             if UI.DB[UI.HoveredElement].data.horizontal then
               if arg2 >= UI.DB[UI.HoveredElement].data.scrollX and arg2 <= UI.DB[UI.HoveredElement].data.scrollX + UI.DB[UI.HoveredElement].properties.thumb_size.value then
                 UI.DB[UI.HoveredElement].data.clickPositionRelatedToScroll = arg2 - UI.DB[UI.HoveredElement].data.scrollX
@@ -203,13 +220,13 @@ function UI.click(arg0, arg1, arg2, arg3)
               UI.DB[UI.HoveredElement].data.scrollY = arg3
               UI.DB[UI.HoveredElement].data.scrollY = math.min(math.max(UI.DB[UI.HoveredElement].dimensions.y + 1, UI.DB[UI.HoveredElement].data.scrollY), UI.DB[UI.HoveredElement].dimensions.y + UI.DB[UI.HoveredElement].dimensions.height - UI.DB[UI.HoveredElement].properties.thumb_size.value - 1)
             end
-          elseif var2(UI.HoveredElement) == "ui-edit" then
+          elseif getElementType(UI.HoveredElement) == "ui-edit" then
             UI.DB[UI.HoveredElement].data.shading[1] = getCaretFromCursorPosition(UI.DB[UI.HoveredElement].dimensions.x + 7, UI.DB[UI.HoveredElement].text, arg2, UI.HoveredElement)
             UI.DB[UI.HoveredElement].data.shading[2] = getCaretFromCursorPosition(UI.DB[UI.HoveredElement].dimensions.x + 7, UI.DB[UI.HoveredElement].text, arg2, UI.HoveredElement)
             UI.DB[UI.HoveredElement].data.shading[3] = getCaretFromCursorPosition(UI.DB[UI.HoveredElement].dimensions.x + 7, UI.DB[UI.HoveredElement].text, arg2, UI.HoveredElement)
             addEventHandler("onClientCursorMove", root, moveCursor)
             toggleControl("chatbox", false)
-          elseif var2(UI.HoveredElement) == "ui-memo" then
+          elseif getElementType(UI.HoveredElement) == "ui-memo" then
             if getKeyState("lshift") or getKeyState("rshift") then
               if UI.DB[UI.HoveredElement].data.caretLine == getLineFromCursorPosition(UI.HoveredElement, arg3) then
                 UI.DB[UI.HoveredElement].data.shadingTable[1][3] = getCaretFromCursorPosition(UI.DB[UI.HoveredElement].dimensions.x + 7, (UI.DB[UI.HoveredElement].text:find("\n", 1, true) and split(UI.DB[UI.HoveredElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
@@ -249,7 +266,7 @@ function UI.click(arg0, arg1, arg2, arg3)
             end
             addEventHandler("onClientCursorMove", root, moveCursorForShading)
             toggleControl("chatbox", false)
-          elseif (var2(UI.HoveredElement) == "ui-window" or var2(UI.HoveredElement) == "ui-dialog") and arg1 == "down" and UI.DB[UI.HoveredElement].properties.movable.value then
+          elseif (getElementType(UI.HoveredElement) == "ui-window" or getElementType(UI.HoveredElement) == "ui-dialog") and arg1 == "down" and UI.DB[UI.HoveredElement].properties.movable.value then
             moveTemp = {
               arg2,
               arg3,
@@ -288,12 +305,12 @@ function UI.doubleclick(arg0, arg1, arg2)
     if isUIDisabled(UI.HoveredElement) then
       return
     end
-    if var0(UI.HoveredElement) == "ui-edit" then
+    if getElementType(UI.HoveredElement) == "ui-edit" then
       UI.DB[UI.HoveredElement].data.shading[1] = 1
       UI.DB[UI.HoveredElement].data.shading[2] = utfLen(UI.DB[UI.HoveredElement].text) + 1
       UI.DB[UI.HoveredElement].data.shading[3] = 1
       uiEditSetCaretIndex(UI.HoveredElement, utfLen(UI.DB[UI.HoveredElement].text) + 1)
-    elseif var0(UI.HoveredElement) == "ui-memo" then
+    elseif getElementType(UI.HoveredElement) == "ui-memo" then
       UI.DB[UI.HoveredElement].data.shadingTable[1] = {
         getLineFromCursorPosition(UI.HoveredElement, arg2),
         1,
@@ -315,8 +332,8 @@ function UI.doubleclick(arg0, arg1, arg2)
 end
 addEventHandler("onClientDoubleClick", root, UI.doubleclick)
 addEventHandler("onClientCharacter", root, function(arg0)
-  if UI.FocusElement and var0(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
-    if not var1() then
+  if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
+    if not isTypableCharacter(arg0) then
       return
     end
     if uiEditGetShadedText(UI.FocusElement) then
@@ -334,8 +351,8 @@ addEventHandler("onClientCharacter", root, function(arg0)
       end
       triggerEvent("onClientUIChanged", UI.FocusElement)
     end
-  elseif UI.FocusElement and var0(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly then
-    if not var1() then
+  elseif UI.FocusElement and getElementType(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly then
+    if not isTypableCharacter(arg0) then
       return
     end
     if replaceShadedText(UI.FocusElement, arg0) then
@@ -362,7 +379,7 @@ addEventHandler("onClientCharacter", root, function(arg0)
 end)
 addEvent("ui-returnClipBoard", true)
 addEventHandler("ui-returnClipBoard", localPlayer, function(arg0)
-  if UI.FocusElement and var0(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
+  if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
     arg0 = arg0:gsub("\n", "")
     if uiEditGetShadedText(UI.FocusElement) then
     end
@@ -375,7 +392,7 @@ addEventHandler("ui-returnClipBoard", localPlayer, function(arg0)
     end
     triggerEvent("onClientUIChanged", UI.FocusElement)
     UI.DB[UI.FocusElement].data.shading = {1, 1}
-  elseif UI.FocusElement and var0(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly then
+  elseif UI.FocusElement and getElementType(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly then
     arg0 = arg0:gsub("" .. newLinePrefix, "\n")
     if replaceShadedText(UI.FocusElement, arg0) then
       triggerEvent("onClientUITextChange", UI.FocusElement)
@@ -407,49 +424,52 @@ addEventHandler("ui-returnClipBoard", localPlayer, function(arg0)
   end
 end)
 function moveCaret(arg0, arg1)
-  if UI.FocusElement and var0(UI.FocusElement) == "ui-edit" then
+  if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" then
     if arg1 == "down" then
       if arg0 == "arrow_r" then
         uiEditSetCaretIndex(UI.FocusElement, math.min(UI.DB[UI.FocusElement].data.caret + 1, utfLen(UI.DB[UI.FocusElement].text) + 1))
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
+        repeatTimer = setTimer(function(arg0)
           uiEditSetCaretIndex(arg0, math.min(UI.DB[arg0].data.caret + 1, utfLen(UI.DB[arg0].text) + 1))
         end, 150, 0, UI.FocusElement)
       elseif arg0 == "arrow_l" then
         uiEditSetCaretIndex(UI.FocusElement, math.max(UI.DB[UI.FocusElement].data.caret - 1, 1))
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
+        repeatTimer = setTimer(function(arg0)
           uiEditSetCaretIndex(arg0, math.max(UI.DB[arg0].data.caret - 1, 1))
         end, 150, 0, UI.FocusElement)
       end
-    elseif isTimer(var1) then
-      killTimer(var1)
+    elseif repeatTimer and isTimer(repeatTimer) then
+      killTimer(repeatTimer)
     end
-  elseif UI.FocusElement and var0(UI.FocusElement) == "ui-memo" then
+  elseif UI.FocusElement and getElementType(UI.FocusElement) == "ui-memo" then
     if arg1 == "down" then
       if arg0 == "arrow_r" then
         UI.DB[UI.FocusElement].data.caret = math.min(UI.DB[UI.FocusElement].data.caret + 1, utfLen(((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
           UI.DB[UI.FocusElement].text
         })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""))) + 1)
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
-          UI.DB[arg0].data.caret = math.min(UI.DB[arg0].data.caret + 1, utfLen(var0) + 1)
+        local lineText = ((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
+          UI.DB[UI.FocusElement].text
+        })[UI.DB[UI.FocusElement].data.caretLine] or ""):gsub("" .. newLinePrefix, "")
+        repeatTimer = setTimer(function(arg0)
+          UI.DB[arg0].data.caret = math.min(UI.DB[arg0].data.caret + 1, utfLen(lineText) + 1)
           if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
             triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
           end
         end, 150, 0, UI.FocusElement)
       elseif arg0 == "arrow_l" then
         UI.DB[UI.FocusElement].data.caret = math.max(UI.DB[UI.FocusElement].data.caret - 1, 1)
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
+        repeatTimer = setTimer(function(arg0)
           UI.DB[arg0].data.caret = math.max(UI.DB[arg0].data.caret - 1, 1)
           if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
             triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
@@ -457,10 +477,10 @@ function moveCaret(arg0, arg1)
         end, 150, 0, UI.FocusElement)
       elseif arg0 == "arrow_u" then
         UI.DB[UI.FocusElement].data.caretLine = math.max(UI.DB[UI.FocusElement].data.caretLine - 1, 1)
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
+        repeatTimer = setTimer(function(arg0)
           UI.DB[arg0].data.caretLine = math.max(UI.DB[arg0].data.caretLine - 1, 1)
           if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
             triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
@@ -470,11 +490,14 @@ function moveCaret(arg0, arg1)
         UI.DB[UI.FocusElement].data.caretLine = math.min(UI.DB[UI.FocusElement].data.caretLine + 1, #(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
           UI.DB[UI.FocusElement].text
         }))
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var1 = setTimer(function(arg0)
-          UI.DB[arg0].data.caretLine = math.min(UI.DB[arg0].data.caretLine + 1, #var0)
+        local linesTable = UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
+          UI.DB[UI.FocusElement].text
+        }
+        repeatTimer = setTimer(function(arg0)
+          UI.DB[arg0].data.caretLine = math.min(UI.DB[arg0].data.caretLine + 1, #linesTable)
           if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
             triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
           end
@@ -483,8 +506,8 @@ function moveCaret(arg0, arg1)
       if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
         triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
       end
-    elseif isTimer(var1) then
-      killTimer(var1)
+    elseif repeatTimer and isTimer(repeatTimer) then
+      killTimer(repeatTimer)
     end
   end
 end
@@ -493,7 +516,7 @@ bindKey("arrow_l", "both", moveCaret)
 bindKey("arrow_u", "both", moveCaret)
 bindKey("arrow_d", "both", moveCaret)
 function removeText(arg0, arg1)
-  if UI.FocusElement and var0(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
+  if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
     if UI.DB[UI.FocusElement].text then
       if arg1 == "down" then
         if uiEditGetShadedText(UI.FocusElement) then
@@ -505,13 +528,13 @@ function removeText(arg0, arg1)
           uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, math.max(0, UI.DB[UI.FocusElement].data.caret - 2)) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.caret, utfLen(UI.DB[UI.FocusElement].text)))
           uiEditSetCaretIndex(UI.FocusElement, math.max(1, UI.DB[UI.FocusElement].data.caret - 1))
           triggerEvent("onClientUIChanged", UI.FocusElement)
-          if isTimer(var1) then
-            killTimer(var1)
+          if repeatTimer and isTimer(repeatTimer) then
+            killTimer(repeatTimer)
           end
-          var2 = 0
-          var1 = setTimer(function(arg0)
-            var0 = var0 + 1
-            if var0 >= 5 then
+          repeatCount = 0
+          repeatTimer = setTimer(function(arg0)
+            repeatCount = repeatCount + 1
+            if repeatCount >= 5 then
               uiSetText(arg0, utfSub(UI.DB[arg0].text, 1, math.max(0, UI.DB[arg0].data.caret - 2)) .. utfSub(UI.DB[arg0].text, UI.DB[arg0].data.caret, utfLen(UI.DB[arg0].text)))
               uiEditSetCaretIndex(arg0, math.max(1, UI.DB[arg0].data.caret - 1))
               triggerEvent("onClientUIChanged", arg0)
@@ -520,23 +543,23 @@ function removeText(arg0, arg1)
         elseif arg0 == "delete" then
           uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.caret - 1) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.caret + 1, utfLen(UI.DB[UI.FocusElement].text)))
           triggerEvent("onClientUIChanged", UI.FocusElement)
-          if isTimer(var1) then
-            killTimer(var1)
+          if repeatTimer and isTimer(repeatTimer) then
+            killTimer(repeatTimer)
           end
-          var2 = 0
-          var1 = setTimer(function(arg0)
-            var0 = var0 + 1
-            if var0 >= 5 then
+          repeatCount = 0
+          repeatTimer = setTimer(function(arg0)
+            repeatCount = repeatCount + 1
+            if repeatCount >= 5 then
               uiSetText(arg0, utfSub(UI.DB[arg0].text, 1, UI.DB[arg0].data.caret - 1) .. utfSub(UI.DB[arg0].text, UI.DB[arg0].data.caret + 1, utfLen(UI.DB[arg0].text)))
               triggerEvent("onClientUIChanged", arg0)
             end
           end, 80, 0, UI.FocusElement)
         end
-      elseif isTimer(var1) then
-        killTimer(var1)
+      elseif repeatTimer and isTimer(repeatTimer) then
+        killTimer(repeatTimer)
       end
     end
-  elseif UI.FocusElement and var0(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly and UI.DB[UI.FocusElement].text then
+  elseif UI.FocusElement and getElementType(UI.FocusElement) == "ui-memo" and not UI.DB[UI.FocusElement].data.readonly and UI.DB[UI.FocusElement].text then
     if arg1 == "down" then
       if replaceShadedText(UI.FocusElement, "") then
         triggerEvent("onClientUITextChange", UI.FocusElement)
@@ -583,13 +606,13 @@ function removeText(arg0, arg1)
         }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
           UI.DB[UI.FocusElement].text
         }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var2 = 0
-        var1 = setTimer(function(arg0)
-          var0 = var0 + 1
-          if var0 >= 5 then
+        repeatCount = 0
+        repeatTimer = setTimer(function(arg0)
+          repeatCount = repeatCount + 1
+          if repeatCount >= 5 then
             if #(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
               UI.DB[arg0].text
             }) == 0 then
@@ -675,13 +698,13 @@ function removeText(arg0, arg1)
         }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
           UI.DB[UI.FocusElement].text
         }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-        if isTimer(var1) then
-          killTimer(var1)
+        if repeatTimer and isTimer(repeatTimer) then
+          killTimer(repeatTimer)
         end
-        var2 = 0
-        var1 = setTimer(function(arg0)
-          var0 = var0 + 1
-          if var0 >= 5 then
+        repeatCount = 0
+        repeatTimer = setTimer(function(arg0)
+          repeatCount = repeatCount + 1
+          if repeatCount >= 5 then
             if #(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
               UI.DB[arg0].text
             }) == 0 then
@@ -730,15 +753,15 @@ function removeText(arg0, arg1)
       if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
         triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
       end
-    elseif isTimer(var1) then
-      killTimer(var1)
+    elseif repeatTimer and isTimer(repeatTimer) then
+      killTimer(repeatTimer)
     end
   end
 end
 bindKey("backspace", "both", removeText)
 bindKey("delete", "both", removeText)
 function acceptedEvent(arg0, arg1)
-  if UI.FocusElement and var0(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly and arg1 == "up" then
+  if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly and arg1 == "up" then
     triggerEvent("onClientUIAccepted", UI.FocusElement)
   end
 end
@@ -757,8 +780,8 @@ addEventHandler("onClientUIPropertyChange", resourceRoot, function(arg0, arg1)
       UI.DB[source].data.visible = UI.DB[source].data.visible and arg1 ~= "True"
     end
   elseif isUIElement(source, "tab") then
-    if arg0 == "Disabled" and arg1 == "True" and isUIElement(var0(source), "tabpanel") and source == UI.DB[var0(source)].data.selected_tab then
-      uiSetSelectedTab(var0(source))
+    if arg0 == "Disabled" and arg1 == "True" and isUIElement(getElementParent(source), "tabpanel") and source == UI.DB[getElementParent(source)].data.selected_tab then
+      uiSetSelectedTab(getElementParent(source))
     end
   elseif isUIElement(source, "tabpanel") then
     if arg0 == "Disabled" and arg1 == "True" then
@@ -769,7 +792,7 @@ addEventHandler("onClientUIPropertyChange", resourceRoot, function(arg0, arg1)
   end
 end)
 addEventHandler("onClientUIBlur", resourceRoot, function()
-  if var0(source) == "ui-edit" or var0(source) == "ui-memo" then
+  if getElementType(source) == "ui-edit" or getElementType(source) == "ui-memo" then
     toggleControl("chatbox", true)
   end
 end)
@@ -777,7 +800,7 @@ function cancelBindsOnTyping(arg0, arg1)
   if not UI.FocusElement then
     return
   end
-  if arg1 and var0[string.lower(arg0)] and (var1(UI.FocusElement) == "ui-edit" or var1(UI.FocusElement) == "ui-memo") then
+  if arg1 and cancelKeys[string.lower(arg0)] and (getElementType(UI.FocusElement) == "ui-edit" or getElementType(UI.FocusElement) == "ui-memo") then
     cancelEvent()
   end
 end
@@ -791,9 +814,11 @@ function moveElement(arg0, arg1, arg2, arg3)
     removeEventHandler("onClientCursorMove", root, moveElement)
     return
   end
-  uiSetPosition(UI.FocusElement, arg2 - (unpack(moveTemp) - unpack(moveTemp)), arg3 - (unpack(moveTemp) - unpack(moveTemp)))
+  local mcx, mcy, mox, moy = unpack(moveTemp)
+  uiSetPosition(UI.FocusElement, arg2 - mcx + mox, arg3 - mcy + moy)
 end
 function dragElement(arg0, arg1, arg2, arg3)
-  UI.DB[UI.DraggedElement].dimensions.x = arg2 - (unpack(dragTemp) - unpack(dragTemp))
-  UI.DB[UI.DraggedElement].dimensions.y = arg3 - (unpack(dragTemp) - unpack(dragTemp))
+  local dcx, dcy, dox, doy = unpack(dragTemp)
+  UI.DB[UI.DraggedElement].dimensions.x = arg2 - dcx + dox
+  UI.DB[UI.DraggedElement].dimensions.y = arg3 - dcy + doy
 end

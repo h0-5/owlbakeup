@@ -16,7 +16,12 @@ theme = {
         primary_dark      = tocolor(64, 50, 178),
         black             = tocolor(9, 12, 17),
         bg_default        = tocolor(3, 6, 11, 240),
-        tabpanel_default  = tocolor(19, 22, 27, 240),
+        tabpanel_default  = {
+            background   = tocolor(0, 0, 0, 0),
+            tabs_bar     = tocolor(10, 10, 10),
+            tab_selected = tocolor(44, 44, 46),
+            tab_hovered  = tocolor(30, 30, 30),
+        },
         scrollbar_default = tocolor(255, 255, 255, 60),
         text_default      = tocolor(255, 255, 255, 255),
         grey              = tocolor(255, 255, 255, 50),

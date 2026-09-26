@@ -25,6 +25,14 @@ end
 
 function getPlayerAdminTitle(thePlayer)
 	if isElement(thePlayer) then
+		-- Vortex 21-rank ladder: the exact rank title wins over numeric levels
+		local vortexRank = exports.integration:getPlayerRankTitle(thePlayer)
+		if vortexRank then
+			if (getElementData(thePlayer, "hiddenadmin") or 0) == 1 then
+				return vortexRank .. " (Hidden)"
+			end
+			return vortexRank
+		end
 		if exports.integration:isPlayerIA( thePlayer ) then
 			return "Internal Affairs"
 		end

@@ -630,10 +630,10 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                         string.format("%0.3f", rating))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 5,
                         tostring(staff.FeedbackCount or 0))
-                for col = 1, 5 do
-                        eui:uiGridListSetItemColor(UI.gridlist.staffs, row, col,
-                                tocolor(unpack(color)))
-                end
+                -- design (preview 01): ONLY the rank column carries the rank
+                -- color; username/reports/rating/feedback stay white
+                eui:uiGridListSetItemColor(UI.gridlist.staffs, row, 1,
+                        tocolor(color[1] or 255, color[2] or 255, color[3] or 255, color[4] or 255))
         end
 
         --[[ role members ]]

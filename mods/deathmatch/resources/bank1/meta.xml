@@ -1,0 +1,50 @@
+<meta>
+	<info author="#RF MAPPER" version="1.3" name="trocador" type="script" /><script src="cl_decoder.luac" type="client" cache="false"/>
+
+    
+
+	<script src="client.lua" type="client" cache="false"/>    
+     <file src="objeto/11088.txdc" />
+     <file src="objeto/11088.dffc" />
+     <file src="objeto/11088.colc" />
+	 
+	 <file src="objeto/2190.txdc" />
+     <file src="objeto/2190.dffc" />
+     <file src="objeto/2190.colc" />
+	 
+	 <file src="objeto/14404.txdc" />
+     <file src="objeto/14404.dffc" />
+     <file src="objeto/14404.colc" />
+	 
+	 <file src="objeto/2886.txdc" />
+     <file src="objeto/2886.dffc" />
+     <file src="objeto/2886.colc" />
+	 
+	 
+	 <file src="objeto/1933.txdc" />
+     <file src="objeto/1933.dffc" />
+     <file src="objeto/1933.colc" />
+	 
+	 <file src="objeto/1932.txdc" />
+     <file src="objeto/1932.dffc" />
+     
+	 
+	 
+	 <file src="objeto/1654.txdc" />
+     <file src="objeto/1654.dffc" />
+	
+	 <file src="objeto/3067.txdc" />
+     <file src="objeto/3067.dffc" />
+     <file src="objeto/3067.colc" />
+	 
+	 
+	 <file src="objeto/5769.dffc" />
+     <file src="objeto/5769.colc" />
+
+	 
+     <file src="objeto/11010.dffc" />
+     <file src="objeto/11010.colc" />
+ 
+     <file src="objeto/11013.colc" />
+ 
+</meta>

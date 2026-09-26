@@ -1,0 +1,8 @@
+﻿<?xml version="1.0" encoding="utf-8" standalone="yes"?>
+<meta>
+     <info author="R3D" type="misc" name="Modelagem" description="Modelagem" />
+     <script src="script.lua" type="client" />
+     <file src="1.txd" />
+     <file src="1.dff" />
+     <file src="1.col" />
+</meta>

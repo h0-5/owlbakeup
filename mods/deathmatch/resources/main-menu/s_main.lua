@@ -33,7 +33,11 @@ end
 
 local function reply(thePlayer, eventName, ...)
         if isElement(thePlayer) then
-                triggerClientEvent(eventName, thePlayer, ...)
+                -- [Vortex fix] MTA's targeted form is (sendTo, eventName, source, ...);
+                -- the old (eventName, thePlayer) order was read by MTA as the BROADCAST
+                -- form (string first arg), so every online client received and rendered
+                -- this player's vehicles/interiors/staff data.
+                triggerClientEvent(thePlayer, eventName, thePlayer, ...)
         end
 end
 
@@ -56,9 +60,13 @@ local function buildVehiclesList(characterId)
         if characterId < 0 then return {}, 0 end
         if not getResourceRunning("mysql") then return {}, 0 end
 
+        -- [Vortex fix] v.Hidden does not exist in this server's vehicles
+        -- table, so the WHOLE query errored and the F1 list was always empty.
+        -- Select only columns that really exist (verified against
+        -- vehicle-system/s_vehicle_system.lua: id/model/plate/Impounded).
         local ok, rows = pcall(function()
                 return mysql:query(
-                        "SELECT v.id, v.model, v.plate, v.Impounded, v.Hidden, " ..
+                        "SELECT v.id, v.model, v.plate, v.Impounded, " ..
                         "       s.vehbrand, s.vehmodel, s.vehyear " ..
                         "FROM `vehicles` v " ..
                         "LEFT JOIN `vehicles_shop` s ON v.vehicle_shop_id = s.id " ..
@@ -75,7 +83,6 @@ local function buildVehiclesList(characterId)
                         Name      = getVehicleDisplayName(row),
                         plate     = tostring(row["plate"] or "--------"),
                         impounded = (tonumber(row["Impounded"]) or 0) == 1,
-                        hidden    = tonumber(row["Hidden"]) or 0,
                 }
         end
         return list, #list
@@ -95,11 +102,16 @@ local function buildInteriorsList(characterId)
         if characterId < 0 then return {}, 0 end
         if not getResourceRunning("mysql") then return {}, 0 end
 
+        -- [Vortex fix] the interiors table has no `status`/`price` columns
+        -- (verified against interior-system/s_interior_system.lua): the query
+        -- always errored and the F1 list stayed empty. Real columns are
+        -- locked/cost + deleted; status is derived from them.
         local ok, rows = pcall(function()
                 return mysql:query(
-                        "SELECT i.id, i.name, i.status, i.price, i.owner " ..
+                        "SELECT i.id, i.name, i.locked, i.cost " ..
                         "FROM `interiors` i " ..
                         "WHERE i.owner = " .. mysql:escape_string(characterId) .. " " ..
+                        "AND (i.deleted = 0 OR i.deleted IS NULL) " ..
                         "ORDER BY i.id ASC"
                 )
         end)
@@ -107,11 +119,12 @@ local function buildInteriorsList(characterId)
 
         local list = {}
         for _, row in ipairs(rows) do
+                local locked = (tonumber(row["locked"]) or 0) == 1
                 list[#list + 1] = {
                         id     = tonumber(row["id"]) or 0,
                         name   = tostring(row["name"] or "Interior"),
-                        status = tostring(row["status"] or "-"),
-                        price  = tonumber(row["price"]) or 0,
+                        status = locked and "locked" or "owned",
+                        price  = tonumber(row["cost"]) or 0,
                 }
         end
         return list, #list
@@ -135,19 +148,24 @@ addEventHandler("admin:showStaff", root, function()
 
         local list = {}
         for _, player in ipairs(getElementsByType("player")) do
-                local level = false
-                if getResourceRunning("global") then
+                -- [Vortex fix] rank-aware classification for the 21-rank ladder:
+                -- admin_level>0  -> Admins Team (Trial Moderator and above)
+                -- supporter_level>0 (without admin) -> Supports Team (Trial
+                -- Support / Support) -- these were invisible before.
+                local admin = tonumber(getElementData(player, "admin_level")) or 0
+                local support = tonumber(getElementData(player, "supporter_level")) or 0
+                if admin == 0 and getResourceRunning("global") then
                         local ok, value = pcall(function()
                                 return exports.global:getPlayerAdminLevel(player)
                         end)
-                        if ok then level = tonumber(value) or 0 end
+                        if ok and value then admin = tonumber(value) or admin end
                 end
-                if level and level > 0 then
+                if admin > 0 or support > 0 then
                         list[#list + 1] = {
-                                level == 1,                                -- [1] isSupport
+                                admin == 0 and support > 0,                -- [1] isSupport
                                 getPlayerIDStrSafe(player),                -- [2] id
                                 getPlayerName(player):gsub("_", " "),      -- [3] name
-                                false,                                     -- [4] hidden
+                                (getElementData(player, "hiddenadmin") or 0) == 1, -- [4] hidden
                         }
                 end
         end

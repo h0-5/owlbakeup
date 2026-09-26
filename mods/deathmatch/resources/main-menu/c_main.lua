@@ -544,6 +544,11 @@ function UIKitReady()
 
         addEventHandler("onClientUIClick", root, function()
                 if source == UI.button["character:quit"] then
+                        -- [Vortex fix] the change-character request used to sit in
+                        -- a 6s timer (leftover of the original loading-screen flow);
+                        -- with no `public` loading screen on this server the player
+                        -- just saw "nothing happen". Fire it IMMEDIATELY, exactly
+                        -- like the proven F10 options flow.
                         addEventHandler("onClientKey", root, cancelBindsEvent)
                         showSideBar(false)
                         if resRunning("public") then
@@ -551,19 +556,19 @@ function UIKitReady()
                         end
                         if resRunning("roleplay") then
                                 pcall(function() exports.roleplay:switchOutPlayer() end)
+                        else
+                                -- this server's account system: real change-character flow
+                                triggerServerEvent("accounts:characters:change", localPlayer, "Change Character")
                         end
                         setTimer(function()
                                 if resRunning("roleplay") then
                                         triggerServerEvent("character:quit", localPlayer)
-                                else
-                                        -- this server's account system: real change-character flow
-                                        triggerServerEvent("accounts:characters:change", localPlayer, "Change Character")
                                 end
                                 removeEventHandler("onClientKey", root, cancelBindsEvent)
                                 if resRunning("public") then
                                         pcall(function() exports.public:loading("character:quit", false) end)
                                 end
-                        end, 6000, 1)
+                        end, 3000, 1)
                 elseif source == UI.button.copy_discord then
                         setClipboard(LINKS.discord)
                         notify({ en = "Link copied", ar = "تم نسخ الرابط" }, 3000, "success")

@@ -129,7 +129,13 @@ function formatText(arg0)
   if type(arg0) ~= "string" then
     return arg0
   end
-  arg0 = string.gsub(arg0, "${color.primary}", (RGBToHex(dxGetColor("primary"))))
+  -- [Vortex fix] dxGetColor returns (r,g,b,a); forwarding all four into
+  -- RGBToHex emitted an 8-digit "#RRGGBBAA" code that MTA's color_coded
+  -- parser cannot read -- it consumed "#RRGGBB" and rendered the leftover
+  -- "FF" as literal text in EVERY "${color.primary}" string (bullets, the
+  -- Level label, the Vehicles counter...). Pass RGB only -> valid "#RRGGBB".
+  local r, g, b = dxGetColor("primary")
+  arg0 = string.gsub(arg0, "${color.primary}", (RGBToHex(r, g, b)) or "")
   return arg0
 end
 function RGBToHex(arg0, arg1, arg2, arg3)

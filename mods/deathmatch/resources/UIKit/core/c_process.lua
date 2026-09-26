@@ -25,11 +25,35 @@ function UI.updateDrawingList()
   for i = 1, #UI.Elements do
     local el = UI.Elements[i]
     if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] and UI.isHierarchyVisible(el) then
-      UI.DrawElements[#UI.DrawElements + 1] = el
-      -- [Vortex fix] ui-tab children are armed per-frame by their tabpanel
-      -- draw (selected tab only); arming them here would flash every tab
-      if getElementType(el) ~= "ui-tab" then
-        UI.isDraw[el] = true
+      -- [Vortex fix] an element nested ANYWHERE under a ui-tab is armed ONLY
+      -- while that tab is its tabpanel's selected tab. Arming every tab's
+      -- subtree drew ALL tab contents stacked on the selected one (info
+      -- cards under the vehicles grid, doubled gridlist headers, phantom
+      -- white lines, stolen clicks). The tab may sit higher in the tree
+      -- (tab -> card rectangle -> label), so walk the whole chain.
+      local owningTab, owningTabpanel = nil, nil
+      local ancestor = getElementParent(el)
+      while ancestor and isElement(ancestor) and isUIElement(ancestor) do
+        if getElementType(ancestor) == "ui-tab" then
+          owningTab = ancestor
+          owningTabpanel = getElementParent(ancestor)
+          break
+        end
+        ancestor = getElementParent(ancestor)
+      end
+      if owningTab then
+        if owningTabpanel and isElement(owningTabpanel) and UI.DB[owningTabpanel]
+                and UI.DB[owningTabpanel].data and UI.DB[owningTabpanel].data.selected_tab == owningTab then
+          UI.DrawElements[#UI.DrawElements + 1] = el
+          UI.isDraw[el] = true
+        end
+      else
+        UI.DrawElements[#UI.DrawElements + 1] = el
+        -- [Vortex fix] ui-tab elements themselves are armed per-frame by
+        -- their tabpanel draw (selected tab only)
+        if getElementType(el) ~= "ui-tab" then
+          UI.isDraw[el] = true
+        end
       end
     end
   end

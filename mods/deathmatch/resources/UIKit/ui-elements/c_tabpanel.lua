@@ -135,6 +135,10 @@ function uiSetSelectedTab(arg0, arg1)
   assert(isUIElement(arg1, "tab") or type(arg1) == "nil", "Bad argument @ 'uiSetSelectedTab' [Expected ui-tab or nil at argument 2, got " .. (isElement(arg1) and getElementType(arg1) or type(arg1)) .. "]")
   if UI.DB[arg0].data.selected_tab ~= arg1 then
     UI.DB[arg0].data.selected_tab = arg1
+    -- [Vortex fix] tab children are armed by UI.updateDrawingList; switching
+    -- tabs must re-run it or the freshly selected tab stays invisible (and
+    -- the old one keeps drawing) until some other visibility change happens.
+    UI.updateDrawingList()
     triggerEvent("onClientUITabSwitched", arg0, UI.DB[arg0].data.selected_tab, arg1)
     return true
   end

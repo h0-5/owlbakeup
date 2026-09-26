@@ -146,6 +146,8 @@ addEventHandler("onClientClick", root, function(button, state, absoluteX, absolu
                 end
             elseif item.id == "finance" then
                 loadFinance()
+            elseif item.id == "logs" then
+                loadFinance()
             end
             return
         end
@@ -223,15 +225,18 @@ addEventHandler("onClientClick", root, function(button, state, absoluteX, absolu
     if F.section == "ranks" and F.isLeader then
         local cx, cy, cw = contentX(), contentY(), contentW()
         local listW = cw * 0.5 - 5 * scale
-        if px >= cx and px <= cx + listW and py >= cy + 35 * scale and py <= cy + 35 * scale + 20 * rowH then
-            local idx = math.floor((py - (cy + 35 * scale)) / rowH) + 1
-            if idx >= 1 and idx <= 20 then
-                F.ranksSelected = idx
-                F.rankNameBuffer = ""
-                F.rankWageBuffer = ""
-                activeEdit = nil
+        local headerH2 = 30 * scale
+        local listY = cy + headerH2 + 5 * scale
+        if F._rankRows then
+            for _, r in pairs(F._rankRows) do
+                if pointInBox(px, py, r) then
+                    F.ranksSelected = r.idx
+                    F.rankNameBuffer = ""
+                    F.rankWageBuffer = ""
+                    activeEdit = nil
+                    return
+                end
             end
-            return
         end
         if pointInBox(px, py, F._rankSaveBtn) then
             local ranks = F.data.factionRanks or {}
@@ -329,16 +334,20 @@ local function handleScrollwheel(key)
     local step = rowH
     if key == "mouse_wheel_up" then
         if F.section == "members" then F.membersScroll = math.max(0, F.membersScroll - step)
+        elseif F.section == "ranks" then F.ranksScroll = math.max(0, F.ranksScroll - step)
         elseif F.section == "vehicles" then F.vehiclesScroll = math.max(0, F.vehiclesScroll - step)
         elseif F.section == "finance" then F.financeScroll = math.max(0, F.financeScroll - step)
+        elseif F.section == "logs" then F.logsScroll = math.max(0, F.logsScroll - step)
         elseif F.section == "duty" then F.dutyScroll = math.max(0, F.dutyScroll - step)
         elseif F.section == "dutylocations" then F.dutyLocationsScroll = math.max(0, F.dutyLocationsScroll - step)
         elseif F.section == "dutyvehicles" then F.dutyVehiclesScroll = math.max(0, F.dutyVehiclesScroll - step)
         end
     elseif key == "mouse_wheel_down" then
         if F.section == "members" then F.membersScroll = F.membersScroll + step
+        elseif F.section == "ranks" then F.ranksScroll = F.ranksScroll + step
         elseif F.section == "vehicles" then F.vehiclesScroll = F.vehiclesScroll + step
         elseif F.section == "finance" then F.financeScroll = F.financeScroll + step
+        elseif F.section == "logs" then F.logsScroll = F.logsScroll + step
         elseif F.section == "duty" then F.dutyScroll = F.dutyScroll + step
         elseif F.section == "dutylocations" then F.dutyLocationsScroll = F.dutyLocationsScroll + step
         elseif F.section == "dutyvehicles" then F.dutyVehiclesScroll = F.dutyVehiclesScroll + step

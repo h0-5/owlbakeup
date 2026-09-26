@@ -6762,3 +6762,295 @@ debuguptime              sfakelag
 [2026-09-26 15:02:29] ERROR: vehicle-interiors\s_vehicle_interiors.lua:593: exports: Call to non-running server resource (anticheat) [string "?"]
 [2026-09-26 15:02:29] ERROR: vehicle-interiors\s_vehicle_interiors.lua:593: exports: Call to non-running server resource (anticheat) [string "?"]  [DUP x10]
 [2026-09-26 15:02:29] Closing SQLite3 database
+==================================================================
+= Multi Theft Auto: San Andreas v1.6
+==================================================================
+= Server name      : Direct Backup V3
+= Server IP address: auto
+= Server port      : 22221
+= 
+= Log file         : ../MTA/server/mods/deathmatch/logs/server.log
+= Maximum players  : 32
+= HTTP port        : 22221
+= Voice Chat       : Disabled
+= Bandwidth saving : None
+==================================================================
+[2026-09-26 17:24:12] WARNING: Ignoring duplicate client file in resource 'vrp': 'Imagens/Fundo.png'
+[2026-09-26 17:24:12] Resources: 163 loaded, 0 failed
+[2026-09-26 17:24:12] Starting resources...
+[2026-09-26 17:24:14] [MYSQL] Connected to database 'pdz' at 127.0.0.1:3306
+[2026-09-26 17:24:14] Server minclientversion is now 1.6.0-9.24109.0
+[2026-09-26 17:24:14] WARNING: hud/c_overlay_top_right.lua(Line 106) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:14] WARNING: hud/c_overlay_bottom_center.lua(Line 90) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:14] Some files in 'hud' use deprecated functions.
+[2026-09-26 17:24:14] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 5) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 7) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 9) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 11) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 13) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 15) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 17) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 19) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 21) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 23) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_main.lua(Line 25) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_characters.lua(Line 13) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:15] WARNING: account/c_options.lua(Line 519) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:15] Some files in 'account' use deprecated functions.
+[2026-09-26 17:24:15] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 123) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 313) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 534) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 792) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 1176) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/Player/s_teleport.lua(Line 1326) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: admin-system/c_overlay.lua(Line 460) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:15] Some files in 'admin-system' use deprecated functions.
+[2026-09-26 17:24:15] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] Server password cleared
+[2026-09-26 17:24:15] WARNING: driveby/driveby_client.lua(Line 1024) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:15] Some files in 'driveby' use deprecated functions.
+[2026-09-26 17:24:15] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] WARNING: elevator-system/s_elevator_system.lua(Line 1445) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] WARNING: elevator-system/s_elevator_system.lua(Line 1553) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] Some files in 'elevator-system' use deprecated functions.
+[2026-09-26 17:24:15] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] WARNING: fuel-system/s_fuel_peds.lua(Line 2522) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:15] Some files in 'fuel-system' use deprecated functions.
+[2026-09-26 17:24:15] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:15] Please wait...
+[2026-09-26 17:24:16] WARNING: heligrab/c_heli.lua(Line 756) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] Some files in 'heligrab' use deprecated functions.
+[2026-09-26 17:24:16] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:16] WARNING: item-system/c_itemchange.lua(Line 9) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:16] WARNING: item-system/c_itemchange.lua(Line 13) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:16] Some files in 'item-system' use deprecated functions.
+[2026-09-26 17:24:16] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:16] WARNING: item-texture\s_itemtexture.lua:173: Bad argument @ 'getElementsByType' [Expected element at argument 2, got boolean]
+[2026-09-26 17:24:16] INFO: item-texture: Loading textures for 0 world items
+[2026-09-26 17:24:16] INFO: item-texture: 0 clients waiting on initial sync.
+[2026-09-26 17:24:16] INFO: item-texture: 0 textured elements were added for initial sync.
+[2026-09-26 17:24:16] INFO: [ITEM WORLD] Loading 0 world items will be finished in approximately 0.05 seconds.
+[2026-09-26 17:24:16] WARNING: job-system-trucker/s_trucker_job.lua(Line 2690) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:16] WARNING: job-system-trucker/s_trucker_job.lua(Line 2750) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:16] WARNING: job-system-trucker/s_trucker_job.lua(Line 2810) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:16] WARNING: job-system-trucker/s_trucker_job.lua(Line 2870) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:16] WARNING: job-system-trucker/c_overlay.lua(Line 1166) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] Some files in 'job-system-trucker' use deprecated functions.
+[2026-09-26 17:24:16] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:16] INFO: [JOB-SYSTEM-TRUCKER] Fetched 2 actual orders sucessfully from SQL
+[2026-09-26 17:24:16] WARNING: pd-system/c_policedeagle.lua(Line 437) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: pd-system/c_policeshotgun.lua(Line 331) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] Some files in 'pd-system' use deprecated functions.
+[2026-09-26 17:24:16] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:16] WARNING: File 'icons/admin3.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/admin_badge.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/AFK.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/blindfold.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/booster.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/car_lights.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/car_lock.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/classic.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/developer_badge.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/developer_badge2.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/diamond.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/discord_tag.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/engine.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/facbadge.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/gasmask.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/gloves.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/gold_member.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/handbrake.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/handcuffs.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/head_turning.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/heart.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/mask.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/medical_mask.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/phone.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/police.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/premium.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/pro.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/reportpanel.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/rope.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/seatbelt.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/silver_member.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/support_badge.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/support_badge_4.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/tagmode.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/togpm.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/vehicle_engine.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/vehicle_handbrake.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/vehicle_lights.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/vehicle_lock.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/vehicle_seatbelt.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/verified.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/walkingstyle.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/warrior.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] WARNING: File 'icons/youtuber.png' in resource 'main-menu' is invalid.
+[2026-09-26 17:24:16] SCRIPT ERROR: main-menu\s_main.lua:33: cannot use '...' outside a vararg function near '...'
+[2026-09-26 17:24:16] ERROR: Loading script failed: main-menu\s_main.lua:33: cannot use '...' outside a vararg function near '...'
+[2026-09-26 17:24:16] WARNING: realism-system/c_backup_bleepers.lua(Line 333) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_cruise_control.lua(Line 141) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_cruise_control.lua(Line 149) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_cruise_control.lua(Line 201) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_fpview.lua(Line 439) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_fpview.lua(Line 451) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_fpview.lua(Line 463) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/c_heli_rotors.lua(Line 17) [Client] getHelicopterRotorSpeed is deprecated and may not work in future versions. Please replace with getVehicleRotorSpeed.
+[2026-09-26 17:24:16] WARNING: realism-system/c_heli_rotors.lua(Line 21) [Client] getHelicopterRotorSpeed is deprecated and may not work in future versions. Please replace with getVehicleRotorSpeed.
+[2026-09-26 17:24:16] WARNING: realism-system/c_heli_rotors.lua(Line 25) [Client] setHelicopterRotorSpeed is deprecated and may not work in future versions. Please replace with setVehicleRotorSpeed.
+[2026-09-26 17:24:16] WARNING: realism-system/c_carrealism.lua(Line 353) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/handbrake_c.lua(Line 217) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:16] WARNING: realism-system/handbrake_c.lua(Line 221) [Client] setControlState is deprecated and may not work in future versions. Please replace with setPedControlState.
+[2026-09-26 17:24:16] Some files in 'realism-system' use deprecated functions.
+[2026-09-26 17:24:16] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] WARNING: report-system/c_external_report_box.lua(Line 265) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: report-system/c_top_right_box.lua(Line 84) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] Some files in 'report-system' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] INFO: Loaded 0 reports.
+[2026-09-26 17:24:17] WARNING: File 'icons/premium.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: File 'icons/booster.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: File 'icons/classic.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: File 'icons/gold_member.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: File 'icons/verified.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: File 'icons/youtuber.png' in resource 'scoreboard' is invalid.
+[2026-09-26 17:24:17] WARNING: shop-system/s_generalshop_system.lua(Line 672) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:17] Some files in 'shop-system' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] WARNING: spike-system/c_spikes.lua(Line 93) [Client] getVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with getElementAngularVelocity.
+[2026-09-26 17:24:17] WARNING: spike-system/c_spikes.lua(Line 97) [Client] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:17] Some files in 'spike-system' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] WARNING: vehicle-interiors/s_vehicle_interiors.lua(Line 1936) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:17] Some files in 'vehicle-interiors' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1352) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1391) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1399) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1415) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1423) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1459) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1487) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 1499) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] WARNING: superman/c_superman.lua(Line 2094) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:17] Some files in 'superman' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:17] WARNING: gate-manager/s_gate_manager.lua(Line 802) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:17] Some files in 'gate-manager' use deprecated functions.
+[2026-09-26 17:24:17] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:18] WARNING: sfia/s_airtrack.lua(Line 227) [Server] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:18] WARNING: sfia/s_airtrack.lua(Line 263) [Server] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:18] Some files in 'sfia' use deprecated functions.
+[2026-09-26 17:24:18] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:18] WARNING: vehicle-manager/s_vehicle_commands.lua(Line 789) [Server] setVehicleTurnVelocity is deprecated and may not work in future versions. Please replace with setElementAngularVelocity.
+[2026-09-26 17:24:18] Some files in 'vehicle-manager' use deprecated functions.
+[2026-09-26 17:24:18] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:18] INFO: Loaded 0 texture records for all interiors in 0ms
+[2026-09-26 17:24:18] WARNING: announcement/client.lua(Line 76) [Client] getControlState is deprecated and may not work in future versions. Please replace with getPedControlState.
+[2026-09-26 17:24:18] Some files in 'announcement' use deprecated functions.
+[2026-09-26 17:24:18] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:18] INFO: LeFire Script loaded ...
+[2026-09-26 17:24:18] INFO: Loaded 0 animated texture records in 0ms
+[2026-09-26 17:24:18] INFO: PRISON-SYSTEM: Loaded 24 cell gates from s_gates.lua
+[2026-09-26 17:24:19] WARNING: vrp/client.lua(Line 246) [Client] showPlayerHudComponent is deprecated and may not work in future versions. Please replace with setPlayerHudComponentVisible.
+[2026-09-26 17:24:19] Some files in 'vrp' use deprecated functions.
+[2026-09-26 17:24:19] Use the 'upgrade' command to perform a basic upgrade of resources.
+[2026-09-26 17:24:19] Querying MTA master server... success! (Auto detected IP:185.225.40.32)
+[2026-09-26 17:24:19] Authorized serial account protection is enabled for the ACL group(s): `Admin`  See http://multitheftauto.com/authserial
+[2026-09-26 17:24:19] WARNING: <owner_email_address> not set
+[2026-09-26 17:24:19] Server started and is ready to accept connections!
+[2026-09-26 17:24:19] To stop the server, type 'shutdown' or press Ctrl-C
+[2026-09-26 17:24:19] Type 'help' for a list of commands.
+[2026-09-26 17:24:22] INFO: [WEATHER] / Line 57 / SQL Settings for weather successfully altered.
+[2026-09-26 17:24:44] CONNECT: GlossyHarp91 connected (IP: 127.0.0.1  Serial: 5476DADC39B41BA9B017E8EF2EE22433  Version: 1.6.0-9.24149.0)
+[2026-09-26 17:24:45] JOIN: GlossyHarp91 joined the game (IP: 127.0.0.1)
+[2026-09-26 17:24:45] NICK: GlossyHarp91 is now known as Direct-Hosting.6694
+[2026-09-26 17:24:45] INFO: [ELEVATOR] Spawning 0 elevators will be finished in approx. 0 seconds.
+[2026-09-26 17:25:16] Stopping item-texture
+[2026-09-26 17:25:16] Starting item-texture
+[2026-09-26 17:25:16] INFO: item-texture: Loading textures for 0 world items
+[2026-09-26 17:25:16] INFO: item-texture: 0 clients waiting on initial sync.
+[2026-09-26 17:25:16] INFO: item-texture: 0 textured elements were added for initial sync.
+[2026-09-26 17:25:16] item-texture restarted successfully
+[2026-09-26 17:25:20] INFO: Loading 2 account settings to client #1
+[2026-09-26 17:25:28] NICK: Direct-Hosting.6694 is now known as Robson_Walton
+[2026-09-26 17:26:44] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:26:50] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x362]
+[2026-09-26 17:26:50] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:26:56] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x350]
+[2026-09-26 17:28:54] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:29:00] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x127]
+[2026-09-26 17:29:51] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:29:51] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:29:57] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x7]
+[2026-09-26 17:29:57] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x7]
+[2026-09-26 17:29:57] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:29:57] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:30:03] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x11]
+[2026-09-26 17:30:03] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x11]
+[2026-09-26 17:30:03] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:30:03] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:30:09] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x7]
+[2026-09-26 17:30:09] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x7]
+[2026-09-26 17:30:09] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:30:09] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:30:15] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x4]
+[2026-09-26 17:30:15] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x4]
+[2026-09-26 17:30:15] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:30:15] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:30:21] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x3]
+[2026-09-26 17:30:21] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x3]
+[2026-09-26 17:30:21] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:30:21] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:30:27] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)  [DUP x4]
+[2026-09-26 17:30:27] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]  [DUP x4]
+[2026-09-26 17:30:27] ERROR: integration\s_forums.lua:49: attempt to concatenate local 'firstID' (a boolean value)
+[2026-09-26 17:30:27] ERROR: admin-system\Player\s_player_commands.lua:5747: call: failed to call 'integration:createForumThread' [string "?"]
+[2026-09-26 17:32:05] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:34:16] INFO: [JOB-SYSTEM-TRUCKER] Fetched 0 actual orders sucessfully from SQL
+[2026-09-26 17:34:25] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:34:47] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:39:23] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:40:22] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:40:41] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:40:47] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:41:10] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:41:18] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:44:16] INFO: [JOB-SYSTEM-TRUCKER] Fetched 0 actual orders sucessfully from SQL
+[2026-09-26 17:44:33] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:44:40] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:46:48] Stopping faction-system
+[2026-09-26 17:46:48] INFO: [Factions] Saving duty allow changes...
+[2026-09-26 17:46:48] INFO: [Factions] Completed in 0 seconds.
+[2026-09-26 17:46:48] Resource 'faction-system' changed, reloading and starting
+[2026-09-26 17:46:48] Starting faction-system
+[2026-09-26 17:46:48] faction-system restarted successfully
+[2026-09-26 17:47:05] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:47:11] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x115]
+[2026-09-26 17:50:28] WARNING: interior-system\s_interior_system.lua:55: Bad argument @ 'getResourceState' [Expected resource-data at argument 1, got boolean]
+[2026-09-26 17:52:13] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:52:19] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x91]
+[2026-09-26 17:52:22] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)
+[2026-09-26 17:52:28] ERROR: faction-system\s_faction_system.lua:1619: attempt to index field 'characterfrom' (a boolean value)  [DUP x49]
+[2026-09-26 17:53:22] INFO: [WEATHER] / Line 57 / SQL Settings for weather successfully altered.
+[2026-09-26 17:53:59] INFO: (frozen=0)
+[2026-09-26 17:53:59] INFO: frozen='0'
+[2026-09-26 17:53:59] INFO: reloadPed(1)
+[2026-09-26 17:53:59] INFO: ped = userdata: 00002B32
+[2026-09-26 17:54:16] INFO: [JOB-SYSTEM-TRUCKER] Fetched 0 actual orders sucessfully from SQL
+[2026-09-26 17:54:55] INFO: (frozen=1)
+[2026-09-26 17:54:55] INFO: frozen='1'
+[2026-09-26 17:54:55] INFO: reloadPed(1)
+[2026-09-26 17:54:55] INFO: ped = userdata: 00002B33
+[2026-09-26 17:55:13] INFO: reloadPed(1)
+[2026-09-26 17:55:13] INFO: ped = userdata: 00002BB5
+[2026-09-26 17:55:13] INFO: Successfully respawned ped with dbid 1
+[2026-09-26 17:55:26] INFO: (frozen=1)
+[2026-09-26 17:55:26] INFO: frozen='1'
+[2026-09-26 17:55:26] INFO: reloadPed(1)
+[2026-09-26 17:55:26] INFO: ped = userdata: 00002BB6
+[2026-09-26 17:55:35] INFO: reloadPed(1)
+[2026-09-26 17:55:35] INFO: ped = userdata: 00002BB7
+[2026-09-26 17:55:35] INFO: Successfully respawned ped with dbid 1

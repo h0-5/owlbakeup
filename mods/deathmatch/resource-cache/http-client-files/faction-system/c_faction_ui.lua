@@ -18,6 +18,7 @@ T = {
     dutyveh   = "\217\133\216\177\226\128\145\216\167\216\170 \216\167\217\132\216\175\217\138\217\136\216\170\217\138", -- سيارات الديوتي
     mgmt      = "\216\167\217\132\216\165\216\175\216\167\216\177\216\169",          -- الإدارة
     finance   = "\216\167\217\132\217\133\216\167\217\132\217\138\216\169",          -- المالية
+    logs      = "\216\167\217\132\216\179\216\172\217\132",                          -- السجل
     note      = "\216\167\217\132\217\133\217\132\216\167\216\184\216\157\216\167\216\170", -- الملاحظات
     online    = "\217\133\216\170\216\181\217\132",                                   -- متصل
     offline   = "\216\186\217\138\216\177 \217\133\216\170\216\181\217\132",         -- غير متصل
@@ -193,6 +194,7 @@ function buildMenu()
         end
         table.insert(F.menu, { id = "management", title = T.mgmt, icon = "cog" })
         table.insert(F.menu, { id = "finance", title = T.finance, icon = "bank" })
+        table.insert(F.menu, { id = "logs", title = T.logs, icon = "log" })
     end
     table.insert(F.menu, { id = "note", title = T.note, icon = "note" })
 end
@@ -215,17 +217,19 @@ function drawHeader()
 
     -- title
     local fType = factionTypes[F.factionType] or "OTHER"
-    local title = "#E24848" .. "\226\128\162" .. " #FFFFFF" .. ((F.team and getTeamName(F.team)) or "Faction") .. "  #7F7F7F(" .. fType .. ")"
+    local fID = tonumber(F.factionID) or -1
+    local fTitle = ((F.team and getTeamName(F.team)) or "Faction")
+    local title = "#E24848# " .. fID .. " #FFFFFF" .. fTitle .. "  #7F7F7F(" .. fType .. ")"
     dxDrawText(title, contentX(), y + 12 * scale, contentX() + 500 * scale, y + 45 * scale,
         tocolor(255, 255, 255, 255), 1.0, "default-bold", "left", "center", true, false, true)
 
     -- info
     local infoY = y + 48 * scale
-    dxDrawText("#E24848" .. "\226\128\162" .. " #FFFFFF" .. T.members .. ": " .. F.maxMembers .. "   #00FF00" .. F.onlineCount .. " " .. T.online .. "#FFFFFF",
+    dxDrawText("#00FF00\226\128\162 #FFFFFF" .. F.onlineCount .. " " .. T.online .. "  #FF0000\226\128\162 #FFFFFF" .. (F.maxMembers - F.onlineCount) .. " " .. T.offline,
         contentX(), infoY, contentX() + 500 * scale, infoY + 22 * scale, tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
 
     if F.phone then
-        dxDrawText("#E24848" .. "\226\128\162" .. " #FFFFFF" .. "\216\167\217\132\216\174\216\183 \216\167\217\132\216\179\216\167\216\174\217\134: " .. tostring(F.phone),
+        dxDrawText("#E24848\226\128\162 #FFFFFF" .. "\216\167\217\132\216\174\216\183 \216\167\217\132\216\179\216\167\216\174\217\134: " .. tostring(F.phone),
             contentX(), infoY + 22 * scale, contentX() + 500 * scale, infoY + 44 * scale,
             tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
     end

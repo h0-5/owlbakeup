@@ -15,7 +15,9 @@ F = {
     vehiclesScroll = 0,
     vehiclesSelected = 0,
     ranksSelected = 0,
+    ranksScroll = 0,
     financeScroll = 0,
+    logsScroll = 0,
     dutyScroll = 0,
     dutyLocationsScroll = 0,
     dutyVehiclesScroll = 0,
@@ -150,7 +152,7 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
             perks = myPerks,
         })
     end
-    F.maxMembers = #F.members + 1
+    F.maxMembers = #F.members
     F.slotLimit = 20
 
     buildMenu()
@@ -160,6 +162,8 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
     F.vehiclesScroll = 0
     F.vehiclesSelected = 0
     F.financeScroll = 0
+    F.logsScroll = 0
+    F.ranksScroll = 0
     F.financeLoaded = false
     F.finance = nil
 

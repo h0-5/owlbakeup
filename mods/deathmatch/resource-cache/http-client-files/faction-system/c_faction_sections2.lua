@@ -73,6 +73,7 @@ function drawFinance()
     dxDrawRoundedRect(aX, cy, aW, 110 * scale, tocolor(15, 18, 24, 255), 6, true)
     dxDrawText(T.assets, aX + 10 * scale, cy + 8 * scale, aX + aW, cy + 30 * scale,
         THEME.text, 1.0, "default-bold", "left", "top")
+    local totalVal = (tonumber(fin.bankmoney) or 0) + (tonumber(fin.vehiclesvalue) or 0) + (tonumber(fin.propertiesvalue) or 0)
     local rows = {
         { T.bank,  "$" .. formatMoney(fin.bankmoney) },
         { T.vehs,  "$" .. formatMoney(fin.vehiclesvalue) },
@@ -89,7 +90,7 @@ function drawFinance()
     dxDrawRectangle(aX + 10 * scale, aY, aW - 20 * scale, 1, THEME.lineStrong, true)
     dxDrawText(T.total, aX + 10 * scale, aY + 4 * scale, aX + aW * 0.6, aY + 26 * scale,
         THEME.text, 0.95, "default-bold", "left", "center")
-    dxDrawText("$" .. formatMoney(fin.bankmoney + fin.vehiclesvalue + fin.propertiesvalue),
+    dxDrawText("$" .. formatMoney(totalVal),
         aX + aW * 0.5, aY + 4 * scale, aX + aW - 10 * scale, aY + 26 * scale,
         THEME.online, 0.95, "default-bold", "right", "center")
 
@@ -188,6 +189,90 @@ end
 -- ============================================================
 -- Duty sections
 -- ============================================================
+-- ============================================================
+-- Logs section (faction transaction log)
+-- ============================================================
+local logCols = {
+    { name = "ID",     frac = 0.08 },
+    { name = "\216\167\217\132\217\136\217\130\216\170",  frac = 0.24 }, -- الوقت
+    { name = "\216\167\217\132\217\134\217\136\216\185",  frac = 0.10 }, -- النوع
+    { name = "\217\133\217\134",       frac = 0.19 }, -- من
+    { name = "\216\165\217\132\217\137",       frac = 0.19 }, -- إلى
+    { name = "\216\167\217\132\217\133\216\168\217\132\216\159",  frac = 0.20 }, -- المبلغ
+}
+
+function drawLogs()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+
+    if not F.financeLoaded then
+        loadFinance()
+        dxDrawText(T.loading, cx, cy, cx + cw, cy + 60 * scale,
+            THEME.textDim, 1.0, "default", "center", "center", true, false, true)
+        return
+    end
+
+    local fin = F.finance
+    if not fin then return end
+
+    local logIconSize = 20 * scale
+    drawIcon("log", cx + cw - logIconSize - 4 * scale, cy + 3 * scale, logIconSize, tocolor(255, 255, 255, 130))
+
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 10 * scale
+    local colX = cx
+    for _, col in ipairs(logCols) do
+        local colW = cw * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    local txs = {}
+    for _, t in ipairs(fin.thisWeek or {}) do table.insert(txs, t) end
+    for _, t in ipairs(fin.prevWeek or {}) do table.insert(txs, t) end
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #txs - visibleRows) * rowH
+    F.logsScroll = math.min(F.logsScroll, maxScroll)
+    F.logsScroll = math.max(0, F.logsScroll)
+    local startIdx = math.floor(F.logsScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #txs) do
+        local t = txs[i]
+        if not t then break end
+        local rowY = listY + (i - startIdx) * rowH
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        local cX2 = cx
+        dxDrawText(tostring(t.id or "-"), cX2 + 8 * scale, rowY, cX2 + cw * 0.08, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.08
+        dxDrawText(truncate(tostring(t.time or "-"), cw * 0.24 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + cw * 0.24, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.24
+        dxDrawText(tostring(t.type or "-"), cX2 + 8 * scale, rowY, cX2 + cw * 0.10, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.10
+        dxDrawText(truncate(tostring(t.from or "-"), cw * 0.19 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + cw * 0.19, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.19
+        dxDrawText(truncate(tostring(t.to or "-"), cw * 0.19 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + cw * 0.19, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.19
+        local amount = tonumber(t.amount) or 0
+        dxDrawText((amount >= 0 and "+" or "") .. "$" .. formatMoney(amount), cX2 + 8 * scale, rowY, cX2 + cw * 0.20, rowY + rowH,
+            amount >= 0 and THEME.online or THEME.offline, 0.95, "default", "left", "center", true, false, true)
+
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + cw - 12 * scale, listY, listH, F.logsScroll, maxScroll)
+    end
+end
+
 function drawDuty()
     local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
     local listY = cy + 34 * scale

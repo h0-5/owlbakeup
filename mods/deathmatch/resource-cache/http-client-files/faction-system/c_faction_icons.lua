@@ -10,12 +10,28 @@ local function ic(x, y, w, h, color, thick)
     return { x = x, y = y, w = w, h = h, color = color, thick = thick }
 end
 
--- draw a stroked line (as a rotated rectangle via dxDrawLine)
+-- draw a stroked line (as a thin rectangle; approximation for slopes)
 local function line(x1, y1, x2, y2, color, thick)
     local dx, dy = x2 - x1, y2 - y1
     local len = math.sqrt(dx * dx + dy * dy)
     if len < 0.1 then return end
-    dxDrawLine(x1, y1, x2, y2, color, thick, true)
+    local ang = math.atan2(dy, dx)
+    local mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+    -- axis-aligned fast path
+    if math.abs(dy) < 0.5 then
+        dxDrawRectangle(math.min(x1, x2), y1 - thick / 2, len, thick, color, true)
+    elseif math.abs(dx) < 0.5 then
+        dxDrawRectangle(x1 - thick / 2, math.min(y1, y2), thick, len, color, true)
+    else
+        -- rotated: draw small squares along the line for smooth appearance
+        local steps = math.max(2, math.floor(len / (thick * 0.7)))
+        for i = 0, steps do
+            local t = i / steps
+            local px = x1 + dx * t
+            local py = y1 + dy * t
+            dxDrawRectangle(px - thick / 2, py - thick / 2, thick, thick, color, true)
+        end
+    end
 end
 
 function drawIcon(name, x, y, size, color)
@@ -31,18 +47,22 @@ function drawIcon(name, x, y, size, color)
         dxDrawRectangle(x + s * 0.22, y + s * 0.42, s * 0.2, s * 0.16, color)
         dxDrawRectangle(x + s * 0.58, y + s * 0.42, s * 0.2, s * 0.16, color)
     elseif name == "star" or name == "ranks" then
-        -- star
-        local r1, r2 = s * 0.34, s * 0.15
+        -- star (filled triangle approximation)
+        local r1 = s * 0.36
         local pts = {}
         for i = 0, 9 do
-            local r = (i % 2 == 0) and r1 or r2
+            local r = (i % 2 == 0) and r1 or (r1 * 0.45)
             local a = -math.pi / 2 + i * math.pi / 5
             table.insert(pts, { x = cx + r * math.cos(a), y = cy + r * math.sin(a) })
         end
+        -- draw as filled polygon using triangles from center
         for i = 1, #pts do
             local p1, p2 = pts[i], pts[i % #pts + 1]
-            line(p1.x, p1.y, p2.x, p2.y, color, t)
+            -- draw a thick line segment between consecutive points
+            line(p1.x, p1.y, p2.x, p2.y, color, t * 1.2)
         end
+        -- fill center
+        dxDrawCircle(cx, cy, r1 * 0.5, 0, 360, color, color, 14, 1, true)
     elseif name == "car" or name == "vehicles" then
         -- car body
         dxDrawRectangle(x + s * 0.1, y + s * 0.38, s * 0.8, s * 0.22, color)

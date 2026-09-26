@@ -1,0 +1,25 @@
+<meta>	
+
+    <info name="Hud FiveM" author="Sr »[M]atheus#1425" version="2.0" type="script" />
+
+	<script src="client.lua" type="client" />
+	<script src="st_c.lua" type="client" />
+	<script src="client1.lua" type="client" />
+	<script src="server.lua" type="server" />
+	
+	<file src="Fontes/Fonte.ttf" type="client"/>
+	
+	<file src="Imagens/Vida.png" />
+	<file src="Imagens/Stamina.png" />
+
+	<file src="Imagens/Money.png" />
+	<file src="Imagens/Banco.png" />
+	<file src="Imagens/Fundo.png" />
+	<file src="Imagens/Fundo_Money.png" />
+    
+    <file src="Imagens/Fundo.png" />	
+    <file src="Imagens/Fundo_1.png" />
+    <file src="Imagens/Fundo_2.png" />
+    <file src="Imagens/Fundo_3.png" />
+
+</meta>

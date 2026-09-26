@@ -1,0 +1,163 @@
+--[[
+	PDZ - Main Menu (F1)
+
+	A faithful port of the original Wnash/Owl main-menu design taken from
+	4mTE4d3/[rp]/main-menu/client_decompiled.lua.
+
+	The original drew its whole interface through the UIKit resource. That
+	resource is not usable on this server (its files are decompiler output
+	that calls undefined locals such as var0..var6 as if they were functions),
+	so the layout is reproduced here directly with dx calls, keeping the
+	original geometry, colours and behaviour 1:1:
+
+	  * the menu slides in from the left edge over a dark full-screen veil
+	  * a 220px icon menu on the left, a 916x621 panel to its right
+	  * four 10x2 white corner accents on the panel
+	  * the five original sections, with their original tabs and grid lists
+	  * the level / discord systems are intentionally left empty in their
+	    original layout, ready to be wired to a real system later
+]]
+
+local sw, sh = guiGetScreenSize()
+
+-- UIKit's reference resolution, the original sized everything against it
+local REF_SX, REF_SY = 1728, 972
+local function refScreen() return REF_SX, REF_SY end
+
+-- original window metrics
+local W        = REF_SX * 0.75 - 130   -- 1166, full panel width
+local H        = REF_SY * 0.65         --  631.8, full panel height
+local MENU_W   = 220                   -- left menu column
+local PANEL_X  = MENU_W + 30           -- 250, content panel offset
+local PANEL_Y  = 5
+local PANEL_W  = W - MENU_W - 30       -- 916
+local PANEL_H  = H - 10                -- 621.8
+local SIDEBAR_W = 250                  -- dark strip on the left
+local ROW_H    = 33                    -- menu row height
+
+-- original palette
+local C_VEIL      = tocolor(0, 0, 0)
+local C_SIDEBAR   = tocolor(0, 3, 8)
+local C_PANEL     = tocolor(3, 6, 11, 240)
+local C_ROW_SEL   = tocolor(3, 6, 11, 250)
+local C_ROW_HOVER = tocolor(9, 12, 17, 100)
+local C_CARD      = tocolor(9, 12, 17, 180)
+local C_CARD_ROW  = tocolor(19, 22, 27, 240)
+local C_TAB_SEL   = tocolor(9, 12, 17, 220)
+local C_TAB_HOVER = tocolor(9, 12, 17, 100)
+local C_TAB_BAR   = tocolor(29, 32, 37, 0)
+local C_PRIMARY   = tocolor(255, 55, 95)
+local C_WHITE     = tocolor(255, 255, 255)
+local C_LINE      = tocolor(255, 255, 255, 10)
+local C_ACCENT    = tocolor(255, 255, 255, 240)
+local C_DIM       = tocolor(255, 255, 255, 50)
+local C_FAINT     = tocolor(255, 255, 255, 150)
+
+--[[ ==================== fonts ==================== ]]
+
+local fontUI, fontLarge
+local function loadFonts()
+	fontUI    = dxCreateFont("fonts/Font2.ttf", 15) or "default"
+	fontLarge = dxCreateFont("fonts/PFDinDisplayPro-Bold.ttf", 21) or "default-bold"
+end
+
+--[[ ==================== textures ==================== ]]
+
+local texLogo, texLogoText, texGradient, texCircle, texDiscord, texYoutube, texLink
+local function loadTextures()
+	texLogo      = dxCreateTexture(":assets/images/logo.png", "argb", true, "clamp")
+	texLogoText  = dxCreateTexture(":assets/images/logo-text.png", "argb", true, "clamp")
+	texGradient = dxCreateTexture(":assets/images/bg_gradient.png", "argb", true, "clamp")
+	texCircle    = dxCreateTexture(":assets/images/logo-circle.png", "argb", true, "clamp")
+	texDiscord   = dxCreateTexture(":assets/icons/discord.png", "argb", true, "clamp")
+	texYoutube   = dxCreateTexture(":assets/icons/web.png", "argb", true, "clamp")
+	texLink      = dxCreateTexture(":assets/icons/link.png", "argb", true, "clamp")
+end
+
+--[[ ==================== state ==================== ]]
+
+local state = {
+	open     = false,
+	alpha    = 0,
+	sideX    = -260,
+	anim     = nil,
+	section  = 1,
+	tab      = { [1] = 1, [3] = 1 },   -- character info tab, leaderboard tab
+	hoverRow = false,
+	linked   = false,
+	code     = "",
+	tag      = "-",
+	discordId = "XXXXXXXXXXXXXXXXXXXX",
+	scrolling = {},
+}
+
+-- data pulled from the server
+local data = {
+	vehicles = {},
+	vehicleMax = 0,
+	interiors = {},
+	interiorMax = 0,
+	admins = {},
+	supports = {},
+	levels = {},
+	activities = {},
+}
+
+-- hit regions rebuilt every frame, consumed by the click handler
+local hits = {}
+
+local function addHit(id, x, y, w, h)
+	hits[#hits + 1] = { id = id, x = x, y = y, w = w, h = h }
+end
+
+--[[ ==================== menu definition ==================== ]]
+
+local SECTIONS = {
+	{ id = "character:info", title = "Character Info" },
+	{ id = "onlinestaff",    title = "Online Staff"   },
+	{ id = "leaderboard",    title = "Leaderboard"    },
+	{ id = "linkdiscord",    title = "Link Discord"    },
+	{ id = "about",          title = "About"          },
+}
+
+--[[ ==================== small helpers ==================== ]]
+
+local function round(x, y, w, h, color)
+	dxDrawRectangle(x + 3, y, w - 6, h, color)
+	dxDrawRectangle(x, y + 3, w, h - 6, color)
+end
+
+local function fmtTime(sec)
+	sec = tonumber(sec) or 0
+	return ("%dd %dh %dm"):format(
+		math.floor(sec / 86400),
+		math.floor(sec % 86400 / 3600),
+		math.floor(sec % 86400 % 3600 / 60))
+end
+
+local function fmtNumber(n)
+	local s = tostring(math.floor(tonumber(n) or 0))
+	local out = s
+	while true do
+		local k, r = out:gsub("^(-?%d+)(%d%d%d)", "%1,%2")
+		out = k
+		if r == 0 then break end
+	end
+	return out
+end
+
+local function charInfo()
+	local p = localPlayer
+	if not isElement(p) then return nil end
+	return {
+		name   = tostring(getElementData(p, "charactername") or getPlayerName(p) or "Unknown"):gsub("_", " "),
+		id     = tonumber(getElementData(p, "playerid")) or 0,
+		age    = tonumber(getElementData(p, "age")) or 18,
+		month  = tonumber(getElementData(p, "month")) or 1,
+		day    = tonumber(getElementData(p, "day")) or 1,
+		gender = tonumber(getElementData(p, "gender")) or 0,
+		job    = tostring(getElementData(p, "job") or "Unemployed"),
+		money  = tonumber(getElementData(p, "money")) or tonumber(getElementData(p, "bankmoney")) or 0,
+		play   = tonumber(getElementData(p, "timeinserver")) or 0,
+	}
+end

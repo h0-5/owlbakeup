@@ -1,0 +1,1821 @@
+-- ============================================================
+-- Faction System - Client (OWL Design Rebuild)
+-- Modern dxDraw UI rebuilt to match OwlGaming faction panel
+-- Wired to the existing server events (no server changes needed)
+-- Optimized for high population (200+ players)
+-- ============================================================
+
+local sx, sy = guiGetScreenSize()
+local scale = math.min(sx / 1728, sy / 972) -- reference res 1728x972 like Owl UIKit
+scale = math.max(scale, 0.55)
+
+-- Theme colors (OwlGaming dark theme)
+local THEME = {
+    bg           = tocolor(6, 9, 14, 245),
+    bgSoft       = tocolor(11, 14, 19, 235),
+    panel        = tocolor(15, 18, 24, 250),
+    sidebar      = tocolor(19, 22, 27, 255),
+    rowHover     = tocolor(9, 12, 17, 200),
+    rowSelected  = tocolor(3, 6, 11, 255),
+    line         = tocolor(255, 255, 255, 18),
+    lineStrong   = tocolor(255, 255, 255, 35),
+    text         = tocolor(255, 255, 255, 255),
+    textDim      = tocolor(255, 255, 255, 170),
+    textFaint    = tocolor(255, 255, 255, 110),
+    primary      = tocolor(226, 72, 72, 255),   -- Owl-ish red accent
+    primarySoft  = tocolor(226, 72, 72, 60),
+    online       = tocolor(0, 255, 0, 255),
+    offline      = tocolor(255, 0, 0, 255),
+    success      = tocolor(168, 255, 61, 255),
+    darkOverlay  = tocolor(0, 0, 0, 200),
+}
+
+local factionTypes = {
+    [1] = "GANG", [2] = "MAFIA", [3] = "LAW", [4] = "GOV", [5] = "MED",
+    [6] = "OTHER", [7] = "NEWS", [8] = "MECHANIC", [9] = "ELECTRIC",
+    [10] = "TRAFFIC", [11] = "BUSINESS", [12] = "FAMILY",
+}
+
+-- ============================================================
+-- State
+-- ============================================================
+Faction = {
+    visible = false,
+    data = nil,           -- full payload from showFactionMenu
+    section = "members",  -- current right-side section
+    membersScroll = 0,
+    membersSelected = 0,
+    vehiclesScroll = 0,
+    vehiclesSelected = 0,
+    ranksSelected = 0,
+    financeScroll = 0,
+    dutyScroll = 0,
+    dutyLocationsScroll = 0,
+    dutyVehiclesScroll = 0,
+    logsScroll = 0,
+    -- computed
+    members = {},         -- sorted member rows
+    onlineCount = 0,
+    maxMembers = 0,
+    isLeader = false,
+    factionType = 0,
+    factionID = -1,
+    team = nil,
+    -- duty data (importDutyData)
+    custom = {},
+    locations = {},
+    -- finance
+    finance = nil,
+    financeLoaded = false,
+    -- editing buffers
+    rankNameBuffer = "",
+    rankWageBuffer = "",
+    noteBuffer = "",
+    motdBuffer = "",
+    -- sub-windows
+    sub = {
+        promote  = false,   -- promote/demote picker
+        addMember = false,
+        addMemberText = "",
+        addMemberResult = "",
+        phone     = false,
+        phoneText = "",
+        dutyPerks = false,
+        dutyPerksSelected = {},
+        confirm   = false,
+        confirmText = "",
+        confirmAction = nil,
+    },
+    -- menu items (sidebar)
+    menu = {},
+    -- scroll drag state
+    dragging = false,
+    dragOffset = 0,
+    -- cursor state
+    cursorOn = false,
+    -- F3 anti-spam
+    lastToggle = 0,
+    -- row hover
+    hoveredRow = -1,
+    hoveredMenu = -1,
+}
+
+local rowH = 30 * scale
+local menuW = 150 * scale
+local winW, winH = 955 * scale, 625 * scale
+
+-- ============================================================
+-- Utilities
+-- ============================================================
+-- cached cursor position per frame (perf: avoid 200+ getCursorPosition calls)
+local cursorCache = { x = 0, y = 0, valid = false }
+
+local function updateCursorCache()
+    if isCursorShowing() then
+        local cx, cy = getCursorPosition()
+        cursorCache.x, cursorCache.y = cx * sx, cy * sy
+        cursorCache.valid = true
+    else
+        cursorCache.valid = false
+    end
+end
+
+local function isMouseIn(x, y, w, h)
+    if not cursorCache.valid then return false end
+    local cx, cy = cursorCache.x, cursorCache.y
+    return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+end
+
+local function dxDrawRoundedRect(x, y, w, h, color, radius, postGUI)
+    radius = radius or 6
+    postGUI = postGUI ~= false
+    dxDrawRectangle(x + radius, y, w - radius * 2, h, color, postGUI)
+    dxDrawRectangle(x, y + radius, radius, h - radius * 2, color, postGUI)
+    dxDrawRectangle(x + w - radius, y + radius, radius, h - radius * 2, color, postGUI)
+    dxDrawCircle(x + radius, y + radius, radius, 180, 270, color, color, 10, 1, postGUI)
+    dxDrawCircle(x + w - radius, y + radius, radius, 270, 360, color, color, 10, 1, postGUI)
+    dxDrawCircle(x + radius, y + h - radius, radius, 90, 180, color, color, 10, 1, postGUI)
+    dxDrawCircle(x + w - radius, y + h - radius, radius, 0, 90, color, color, 10, 1, postGUI)
+end
+
+local function formatMoney(amount)
+    amount = tonumber(amount) or 0
+    local formatted = tostring(math.floor(amount))
+    while true do
+        local k = string.gsub(formatted, "^(-?%d+)(%d%d%d)", "%1,%2")
+        if k == formatted then break end
+        formatted = k
+    end
+    return formatted
+end
+
+local function truncate(text, maxW, font)
+    if not text or text == "" then return "" end
+    if dxGetTextWidth(text, 1, font) <= maxW then return text end
+    while #text > 0 and dxGetTextWidth(text .. "...", 1, font) > maxW do
+        text = string.sub(text, 1, -2)
+    end
+    return text .. "..."
+end
+
+-- ============================================================
+-- Scroll helpers
+-- ============================================================
+local function drawScrollbar(x, y, h, scroll, maxScroll, color)
+    if maxScroll <= 0 then return end
+    local trackH = h
+    local thumbH = math.max(trackH * (trackH / (trackH + maxScroll)), 20)
+    local thumbY = y + (scroll / maxScroll) * (trackH - thumbH)
+    dxDrawRectangle(x, y, 4, trackH, tocolor(255, 255, 255, 15), true)
+    dxDrawRectangle(x, thumbY, 4, thumbH, color or THEME.primary, true)
+end
+
+local function handleScrollwheel(key)
+    if not Faction.visible or not Faction.data then return end
+    -- scroll target depends on active section
+    local step = rowH
+    if key == "mouse_wheel_up" then
+        if Faction.section == "members" then
+            Faction.membersScroll = math.max(0, Faction.membersScroll - step)
+        elseif Faction.section == "vehicles" then
+            Faction.vehiclesScroll = math.max(0, Faction.vehiclesScroll - step)
+        elseif Faction.section == "finance" then
+            Faction.financeScroll = math.max(0, Faction.financeScroll - step)
+        elseif Faction.section == "duty" then
+            Faction.dutyScroll = math.max(0, Faction.dutyScroll - step)
+        elseif Faction.section == "dutylocations" then
+            Faction.dutyLocationsScroll = math.max(0, Faction.dutyLocationsScroll - step)
+        elseif Faction.section == "dutyvehicles" then
+            Faction.dutyVehiclesScroll = math.max(0, Faction.dutyVehiclesScroll - step)
+        end
+    elseif key == "mouse_wheel_down" then
+        if Faction.section == "members" then
+            Faction.membersScroll = math.min(#Faction.members, Faction.membersScroll + step)
+        elseif Faction.section == "vehicles" then
+            Faction.vehiclesScroll = math.min(#(Faction.data.vehicleIDs or {}), Faction.vehiclesScroll + step)
+        elseif Faction.section == "finance" then
+            Faction.financeScroll = Faction.financeScroll + step
+        elseif Faction.section == "duty" then
+            Faction.dutyScroll = Faction.dutyScroll + step
+        elseif Faction.section == "dutylocations" then
+            Faction.dutyLocationsScroll = Faction.dutyLocationsScroll + step
+        elseif Faction.section == "dutyvehicles" then
+            Faction.dutyVehiclesScroll = Faction.dutyVehiclesScroll + step
+        end
+    end
+end
+bindKey("mouse_wheel_up", "both", function() handleScrollwheel("mouse_wheel_up") end)
+bindKey("mouse_wheel_down", "both", function() handleScrollwheel("mouse_wheel_down") end)
+
+-- text input for edit boxes (dx based)
+local function handleCharacter(char)
+    if not Faction.visible then return end
+    if Faction.sub.addMember and char and char ~= "" then
+        -- handled via onClientKey for backspace; typing uses this
+    end
+end
+
+-- ============================================================
+-- Menu (sidebar) definition
+-- ============================================================
+local function buildMenu()
+    Faction.menu = {
+        { id = "members",   title = "الأعضاء",        icon = "group" },
+    }
+    if Faction.isLeader then
+        table.insert(Faction.menu, { id = "ranks",     title = "الرتب",        icon = "star" })
+        table.insert(Faction.menu, { id = "vehicles",  title = "المركبات",     icon = "car" })
+        if Faction.factionType >= 2 then
+            table.insert(Faction.menu, { id = "duty",      title = "الديوتي",      icon = "box" })
+            table.insert(Faction.menu, { id = "dutylocations", title = "مواقع الديوتي", icon = "pin" })
+            table.insert(Faction.menu, { id = "dutyvehicles", title = "سيارات الديوتي", icon = "truck" })
+        end
+        table.insert(Faction.menu, { id = "management", title = "الإدارة",       icon = "cog" })
+        table.insert(Faction.menu, { id = "finance",    title = "المالية",       icon = "bank" })
+    end
+    table.insert(Faction.menu, { id = "note",      title = "الملاحظات",    icon = "note" })
+end
+
+-- ============================================================
+-- Data received from server
+-- ============================================================
+addEvent("showFactionMenu", true)
+addEventHandler("showFactionMenu", getRootElement(),
+function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberOnline, memberLastLogin, factionRanks, factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels, vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, membersPhone, fromShowF, factionID)
+    if not theTeam then return end
+
+    Faction.data = {
+        motd = motd, memberUsernames = memberUsernames, memberRanks = memberRanks,
+        memberPerks = memberPerks, memberLeaders = memberLeaders, memberOnline = memberOnline,
+        memberLastLogin = memberLastLogin, factionRanks = factionRanks, factionWages = factionWages,
+        team = theTeam, note = note, fnote = fnote, vehicleIDs = vehicleIDs,
+        vehicleModels = vehicleModels, vehiclePlates = vehiclePlates,
+        vehicleLocations = vehicleLocations, memberOnDuty = memberOnDuty,
+        towstats = towstats, phone = phone, membersPhone = membersPhone,
+    }
+
+    Faction.factionID = factionID or getElementData(localPlayer, "faction") or -1
+    Faction.factionType = tonumber(getElementData(theTeam, "type")) or 0
+    Faction.team = theTeam
+    Faction.isLeader = fromShowF or false
+    Faction.noteBuffer = note or ""
+    Faction.motdBuffer = motd or ""
+
+    -- detect leadership from member list (more reliable fallback)
+    if not Faction.isLeader then
+        local myName = getPlayerName(localPlayer)
+        for k, v in ipairs(memberUsernames or {}) do
+            if v == myName and memberLeaders and memberLeaders[k] then
+                Faction.isLeader = true
+            end
+        end
+    end
+
+    -- build sorted member rows (sorted by rank desc, name asc — server already sorted)
+    Faction.members = {}
+    Faction.onlineCount = 0
+    for k, name in ipairs(memberUsernames or {}) do
+        local rank = tonumber(memberRanks[k]) or 1
+        local rankName = (factionRanks and factionRanks[rank]) or ("Rank " .. rank)
+        local wage = (factionWages and factionWages[rank]) or 0
+        local lastLogin = tonumber(memberLastLogin[k])
+        local loginText = "أبداً"
+        if lastLogin == 0 then loginText = "اليوم"
+        elseif lastLogin == 1 then loginText = "أمس"
+        elseif lastLogin and lastLogin > 1 then loginText = lastLogin .. " يوم" end
+
+        local isOnline = memberOnline and memberOnline[k] == true
+        if isOnline then Faction.onlineCount = Faction.onlineCount + 1 end
+
+        local onDuty = memberOnDuty and memberOnDuty[k] == true
+        local phoneTxt = ""
+        if phone and membersPhone and membersPhone[k] then
+            phoneTxt = tostring(phone) .. "-" .. tostring(membersPhone[k])
+        end
+
+        table.insert(Faction.members, {
+            name = name:gsub("_", " "),
+            rawName = name,
+            rank = rank,
+            rankName = rankName,
+            wage = wage,
+            login = loginText,
+            online = isOnline,
+            duty = onDuty,
+            leader = memberLeaders and memberLeaders[k] or false,
+            phone = phoneTxt,
+        })
+    end
+    Faction.maxMembers = #Faction.members
+
+    buildMenu()
+    Faction.section = "members"
+    Faction.membersScroll = 0
+    Faction.membersSelected = 0
+    Faction.vehiclesScroll = 0
+    Faction.financeScroll = 0
+
+    Faction.visible = true
+    showCursor(true)
+    triggerEvent("factionmenu:opened", localPlayer)
+end)
+
+addEvent("hideFactionMenu", true)
+addEventHandler("hideFactionMenu", getRootElement(), function()
+    Faction.visible = false
+    Faction.sub = { promote = false, addMember = false, addMemberText = "", addMemberResult = "",
+                    phone = false, phoneText = "", dutyPerks = false, dutyPerksSelected = {},
+                    confirm = false, confirmText = "", confirmAction = nil }
+    showCursor(false)
+    triggerServerEvent("factionmenu:hide", localPlayer)
+end)
+
+addEventHandler("onClientPlayerWasted", localPlayer, function()
+    if Faction.visible then
+        triggerEvent("hideFactionMenu", localPlayer)
+    end
+end)
+
+-- F3 toggle (matches server bind)
+bindKey("F3", "down", function()
+    if not Faction.visible then
+        return -- server opens the menu via showFactionMenu; nothing to do here
+    end
+end)
+
+-- the server bound F3 -> showFactionMenu on its side, and when menu is visible
+-- pressing F3 again must close it. Handle locally:
+addEventHandler("onClientKey", root, function(button, press)
+    if button == "F3" and press and Faction.visible then
+        cancelEvent()
+        triggerEvent("hideFactionMenu", localPlayer)
+    end
+end)
+
+-- ============================================================
+-- Finance data
+-- ============================================================
+addEvent("factionmenu:fillFinance", true)
+addEventHandler("factionmenu:fillFinance", getRootElement(),
+function(factionID, bankThisWeek, bankPrevWeek, bankmoney, vehiclesvalue, propertiesvalue)
+    Faction.finance = {
+        thisWeek = bankThisWeek or {}, prevWeek = bankPrevWeek or {},
+        bankmoney = bankmoney or 0, vehiclesvalue = vehiclesvalue or 0,
+        propertiesvalue = propertiesvalue or 0,
+    }
+    Faction.financeLoaded = true
+end)
+
+function loadFinance()
+    if not Faction.financeLoaded then
+        triggerServerEvent("factionmenu:getFinance", getResourceRootElement())
+    end
+end
+
+-- ============================================================
+-- Duty data
+-- ============================================================
+customg = {}
+locationsg = {}
+
+addEvent("importDutyData", true)
+addEventHandler("importDutyData", resourceRoot, function(custom, locations, factionID, message)
+    customg = custom or {}
+    locationsg = locations or {}
+    if message then
+        outputChatBox(message, 255, 194, 14)
+    end
+    refreshDutyUI()
+end)
+
+addEvent("Duty:GotPackages", true)
+addEventHandler("Duty:GotPackages", resourceRoot, function(packages)
+    Faction.dutyPackages = packages or {}
+end)
+
+function refreshDutyUI()
+    -- handled in draw functions; data is read directly from customg/locationsg
+end
+
+function fetchDutyInfo()
+    triggerServerEvent("fetchDutyInfo", resourceRoot, Faction.factionID)
+end
+
+function populateDuty(allowList)
+    Faction.dutyAllow = allowList or {}
+end
+addEvent("gotAllow", true)
+addEventHandler("gotAllow", resourceRoot, populateDuty)
+
+-- ============================================================
+-- Layout geometry
+-- ============================================================
+local function winPos()
+    local x = (sx - winW) / 2
+    local y = (sy - winH) / 2
+    return x, y
+end
+
+local headerH = 125 * scale
+local contentX = function() local x, y = winPos() return x + menuW + 10 * scale end
+local contentY = function() local x, y = winPos() return y + headerH + 5 * scale end
+local contentW = function() return winW - menuW - 15 * scale end
+local contentH = function() return winH - headerH - 15 * scale end
+
+-- ============================================================
+-- Render: header
+-- ============================================================
+local function drawHeader()
+    local x, y = winPos()
+    -- faction logo (drawn circle with initials, no external asset needed)
+    local logoSize = 100 * scale
+    local logoX = x + (menuW - logoSize) / 2
+    local logoY = y + 15 * scale
+    dxDrawCircle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2, 0, 360, tocolor(20, 24, 30, 255), tocolor(20, 24, 30, 255), 30, 1, true)
+    dxDrawCircle(logoX + logoSize / 2, logoY + logoSize / 2, logoSize / 2 - 3 * scale, 0, 360, THEME.primary, THEME.primary, 30, 1, true)
+    local fname = Faction.team and getTeamName(Faction.team) or "F"
+    local initials = string.upper(string.sub(fname, 1, 2))
+    dxDrawText(initials, logoX, logoY, logoX + logoSize, logoY + logoSize, tocolor(255, 255, 255, 255), 1.6 * scale, "default-bold", "center", "center", true, false, true)
+
+    -- faction title
+    local title = "#FFFFFF" .. (Faction.team and getTeamName(Faction.team) or "Faction")
+    local fType = factionTypes[Faction.factionType] or "OTHER"
+    dxDrawText("#E24848● #FFFFFF" .. title .. "  #FFFFFF(" .. fType .. ")", contentX(), y + 12 * scale,
+        contentX() + 400 * scale, y + 45 * scale, tocolor(255, 255, 255, 255), 1.0, "default-bold", "left", "center", true, false, true)
+
+    -- info lines
+    local infoY = y + 48 * scale
+    local online = Faction.onlineCount
+    dxDrawText("#E24848● #FFFFFFالأعضاء: " .. Faction.maxMembers .. "   #00FF00" .. online .. " متصل#FFFFFF",
+        contentX(), infoY, contentX() + 400 * scale, infoY + 22 * scale, tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
+
+    if Faction.phone then
+        dxDrawText("#E24848● #FFFFFFالخط الساخن: " .. tostring(Faction.phone),
+            contentX(), infoY + 22 * scale, contentX() + 400 * scale, infoY + 44 * scale,
+            tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
+    end
+
+    -- level/online box (right side of header)
+    local boxW, boxH = 150 * scale, 60 * scale
+    local boxX = x + winW - boxW - 15 * scale
+    local boxY = y + 50 * scale
+    dxDrawRoundedRect(boxX, boxY, boxW, boxH, tocolor(20, 20, 20, 240), 6, true)
+    dxDrawText("المتصلون", boxX + 10 * scale, boxY + 6 * scale, boxX + boxW, boxY + 26 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "left", "top")
+    local pct = Faction.maxMembers > 0 and (online / Faction.maxMembers) or 0
+    dxDrawText(online .. " / " .. Faction.maxMembers, boxX + 10 * scale, boxY + 30 * scale, boxX + boxW, boxY + 50 * scale,
+        THEME.primary, 1.0, "default-bold", "left", "top")
+    -- small bar
+    local barW = boxW - 20 * scale
+    dxDrawRectangle(boxX + 10 * scale, boxY + boxH - 8 * scale, barW, 4, tocolor(30, 30, 30, 255), true)
+    dxDrawRectangle(boxX + 10 * scale, boxY + boxH - 8 * scale, barW * pct, 4, THEME.primary, true)
+
+    -- close button (top right)
+    local closeSize = 30 * scale
+    local closeX = x + winW - closeSize - 12 * scale
+    local closeY = y + 12 * scale
+    local hover = isMouseIn(closeX, closeY, closeSize, closeSize)
+    dxDrawRoundedRect(closeX, closeY, closeSize, closeSize, hover and tocolor(226, 72, 72, 200) or tocolor(20, 20, 20, 240), 6, true)
+    dxDrawText("✕", closeX, closeY, closeX + closeSize, closeY + closeSize, tocolor(255, 255, 255, 220), 1.2, "default-bold", "center", "center")
+    Faction._closeBtn = { x = closeX, y = closeY, w = closeSize, h = closeSize }
+
+    -- separator line under header
+    dxDrawRectangle(x + 10 * scale, y + headerH, winW - 20 * scale, 1, THEME.lineStrong, true)
+end
+
+-- ============================================================
+-- Render: sidebar menu
+-- ============================================================
+local function drawSidebar()
+    local x, y = winPos()
+    local itemH = 34 * scale
+    local startY = y + headerH + 15 * scale
+
+    Faction.hoveredMenu = -1
+    for i, item in ipairs(Faction.menu) do
+        local itemY = startY + (i - 1) * itemH
+        local selected = Faction.section == item.id
+        local hover = isMouseIn(x + 10 * scale, itemY, menuW - 10 * scale, itemH)
+
+        if selected then
+            dxDrawRoundedRect(x + 10 * scale, itemY, menuW - 10 * scale, itemH, THEME.rowSelected, 6, true)
+            -- accent bar
+            dxDrawRectangle(x + 10 * scale, itemY, 3, itemH, THEME.primary, true)
+        elseif hover then
+            dxDrawRoundedRect(x + 10 * scale, itemY, menuW - 10 * scale, itemH, THEME.rowHover, 6, true)
+            Faction.hoveredMenu = i
+        end
+
+        dxDrawText(item.title, x + 26 * scale, itemY, x + menuW, itemY + itemH,
+            selected and THEME.primary or THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+    end
+end
+
+-- ============================================================
+-- Render: members section
+-- ============================================================
+local memberCols = {
+    { name = "الاسم",   frac = 0.30 },
+    { name = "الرتبة",  frac = 0.22 },
+    { name = "الحالة",  frac = 0.11 },
+    { name = "آخر دخول", frac = 0.15 },
+    { name = "الراتب",  frac = 0.10 },
+    { name = "الديوتي", frac = 0.12 },
+}
+
+local function drawMembers()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - (Faction.isLeader and 46 * scale or 10 * scale)
+
+    -- column headers
+    local colX = cx
+    for i, col in ipairs(memberCols) do
+        local colW = cw * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    -- rows
+    local rows = Faction.members
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #rows - visibleRows) * rowH
+    Faction.membersScroll = math.min(Faction.membersScroll, maxScroll)
+    local startIdx = math.floor(Faction.membersScroll / rowH) + 1
+
+    Faction.hoveredRow = -1
+    for i = startIdx, math.min(startIdx + visibleRows, #rows) do
+        local row = rows[i]
+        if not row then break end
+        local rowY = listY + (i - startIdx) * rowH
+        local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
+        local selected = Faction.membersSelected == i
+
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        if selected then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, THEME.primarySoft, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        elseif hover then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+            Faction.hoveredRow = i
+        end
+
+        local colX2 = cx
+        local colW2 = cw * memberCols[1].frac
+        dxDrawText(truncate(row.name, colW2 - 16 * scale, "default"), colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+            row.online and THEME.text or THEME.textFaint, 1.0, "default", "left", "center", true, false, true)
+
+        colX2 = colX2 + colW2
+        colW2 = cw * memberCols[2].frac
+        dxDrawText(truncate(row.rankName, colW2 - 16 * scale, "default"), colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+
+        colX2 = colX2 + colW2
+        colW2 = cw * memberCols[3].frac
+        dxDrawText(row.online and "متصل" or "غير متصل", colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+            row.online and THEME.online or THEME.offline, 1.0, "default", "left", "center", true, false, true)
+
+        colX2 = colX2 + colW2
+        colW2 = cw * memberCols[4].frac
+        dxDrawText(row.login, colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+
+        colX2 = colX2 + colW2
+        colW2 = cw * memberCols[5].frac
+        if Faction.factionType >= 2 then
+            dxDrawText("$" .. formatMoney(row.wage), colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+                THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        end
+
+        colX2 = colX2 + colW2
+        colW2 = cw * memberCols[6].frac
+        if Faction.factionType >= 2 then
+            dxDrawText(row.duty and "في الخدمة" or "خارج", colX2 + 8 * scale, rowY, colX2 + colW2, rowY + rowH,
+                row.duty and THEME.online or THEME.textFaint, 1.0, "default", "left", "center", true, false, true)
+        end
+
+        -- separator
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    -- scrollbar
+    if maxScroll > 0 then
+        local sbX = cx + cw - 12 * scale
+        drawScrollbar(sbX, listY, listH, Faction.membersScroll, maxScroll)
+        Faction._memberScroll = { x = sbX, y = listY, h = listH, max = maxScroll }
+    else
+        Faction._memberScroll = nil
+    end
+
+    -- leader action buttons
+    if Faction.isLeader then
+        local btnY = cy + ch - 40 * scale
+        local btnW, btnH = 120 * scale, 30 * scale
+        local gap = 8 * scale
+        local buttons = {
+            { id = "kick",    label = "طرد" },
+            { id = "promote", label = "ترقية/خفض" },
+            { id = "leader",  label = "قائد" },
+            { id = "add",     label = "إضافة" },
+            { id = "perks",   label = "ديوتي" },
+        }
+        local bx = cx
+        Faction._actionButtons = {}
+        for _, b in ipairs(buttons) do
+            local hover = isMouseIn(bx, btnY, btnW, btnH)
+            dxDrawRoundedRect(bx, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+            dxDrawRectangle(bx, btnY, btnW, 2, hover and THEME.primary or tocolor(255, 255, 255, 20), true)
+            dxDrawText(b.label, bx, btnY, bx + btnW, btnY + btnH,
+                hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+            Faction._actionButtons[b.id] = { x = bx, y = btnY, w = btnW, h = btnH }
+            bx = bx + btnW + gap
+        end
+        -- respawn vehicles button
+        local rvW = 130 * scale
+        local hover = isMouseIn(bx, btnY, rvW, btnH)
+        dxDrawRoundedRect(bx, btnY, rvW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+        dxDrawText("رسبنة السيارات", bx, btnY, bx + rvW, btnY + btnH,
+            hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+        Faction._actionButtons["respawn"] = { x = bx, y = btnY, w = rvW, h = btnH }
+    end
+
+    -- legend
+    if Faction.isLeader then
+        local lgY = cy + ch - 40 * scale + 34 * scale
+        dxDrawText("#00FF00● #FFFFFFمتصل   #FF0000● #FFFFFFغير متصل",
+            cx, lgY, cx + 300 * scale, lgY + 14 * scale, tocolor(255, 255, 255, 255), 0.85, "default", "left", "center", true, false, true)
+    end
+end
+-- ============================================================
+-- Render: ranks section
+-- ============================================================
+local rankCols = {
+    { name = "#",     frac = 0.10 },
+    { name = "الرتبة", frac = 0.55 },
+    { name = "الراتب", frac = 0.35 },
+}
+
+local function drawRanks()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local ranks = Faction.data.factionRanks or {}
+    local wages = Faction.data.factionWages or {}
+
+    -- left list
+    local listW = cw * 0.5 - 5 * scale
+    local listH = ch - 50 * scale
+    dxDrawRectangle(cx, cy, listW, 30 * scale, tocolor(255, 255, 255, 8), true)
+    dxDrawText("الرتب (1 - 20)", cx + 8 * scale, cy, cx + listW, cy + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+
+    Faction.ranksSelected = math.min(Faction.ranksSelected, 20)
+    Faction.ranksSelected = math.max(Faction.ranksSelected, 0)
+
+    local rowY = cy + 35 * scale
+    for i = 1, 20 do
+        local rankName = ranks[i] or ("Rank " .. i)
+        local wage = wages[i] or 0
+        local hover = isMouseIn(cx, rowY, listW, rowH)
+        local selected = Faction.ranksSelected == i
+        if selected then
+            dxDrawRectangle(cx, rowY, listW, rowH, THEME.primarySoft, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        elseif hover then
+            dxDrawRectangle(cx, rowY, listW, rowH, tocolor(255, 255, 255, 10), true)
+        end
+        dxDrawText("#" .. i, cx + 8 * scale, rowY, cx + listW * 0.1, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(rankName), cx + listW * 0.12, rowY, cx + listW * 0.65, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText("$" .. formatMoney(wage), cx + listW * 0.65, rowY, cx + listW, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawRectangle(cx, rowY + rowH - 1, listW, 1, THEME.line, true)
+        rowY = rowY + rowH
+        if rowY > cy + 35 * scale + listH - rowH then break end
+    end
+
+    -- right editor
+    local edX = cx + cw * 0.5 + 5 * scale
+    local edW = cw * 0.5 - 5 * scale
+    dxDrawText("تعديل الرتبة #" .. (Faction.ranksSelected > 0 and Faction.ranksSelected or "-"),
+        edX, cy, edX + edW, cy + 24 * scale, THEME.text, 1.0, "default-bold", "left", "center", true, false, true)
+
+    -- rank name edit
+    local nameY = cy + 30 * scale
+    local hover = isMouseIn(edX, nameY, edW, 30 * scale)
+    dxDrawRoundedRect(edX, nameY, edW, 30 * scale, hover and tocolor(25, 28, 35, 255) or tocolor(15, 18, 24, 255), 5, true)
+    dxDrawRectangle(edX, nameY + 29 * scale, edW, 1, THEME.lineStrong, true)
+    local curName = Faction.rankNameBuffer
+    if curName == "" and Faction.ranksSelected > 0 then
+        curName = ranks[Faction.ranksSelected] or ""
+    end
+    dxDrawText(curName ~= "" and curName or "اسم الرتبة...", edX + 10 * scale, nameY, edX + edW, nameY + 30 * scale,
+        curName ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "center", true, false, true)
+    Faction._rankNameEdit = { x = edX, y = nameY, w = edW, h = 30 * scale }
+
+    -- wage edit
+    local wageY = nameY + 38 * scale
+    hover = isMouseIn(edX, wageY, edW, 30 * scale)
+    dxDrawRoundedRect(edX, wageY, edW, 30 * scale, hover and tocolor(25, 28, 35, 255) or tocolor(15, 18, 24, 255), 5, true)
+    dxDrawRectangle(edX, wageY + 29 * scale, edW, 1, THEME.lineStrong, true)
+    local curWage = Faction.rankWageBuffer
+    if curWage == "" and Faction.ranksSelected > 0 then
+        curWage = tostring(wages[Faction.ranksSelected] or 0)
+    end
+    dxDrawText(curWage ~= "" and curWage or "الراتب...", edX + 10 * scale, wageY, edX + edW, wageY + 30 * scale,
+        curWage ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "center", true, false, true)
+    Faction._rankWageEdit = { x = edX, y = wageY, w = edW, h = 30 * scale }
+
+    -- save button
+    local saveY = wageY + 40 * scale
+    local saveW = 130 * scale
+    hover = isMouseIn(edX, saveY, saveW, 32 * scale)
+    dxDrawRoundedRect(edX, saveY, saveW, 32 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+    dxDrawText("حفظ التغييرات", edX, saveY, edX + saveW, saveY + 32 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._rankSaveBtn = { x = edX, y = saveY, w = saveW, h = 32 * scale }
+end
+
+-- ============================================================
+-- Render: vehicles section
+-- ============================================================
+local vehCols = {
+    { name = "ID",      frac = 0.12 },
+    { name = "المركبة", frac = 0.42 },
+    { name = "اللوحة",  frac = 0.16 },
+    { name = "الموقع",  frac = 0.30 },
+}
+
+local function drawVehicles()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local ids = Faction.data.vehicleIDs or {}
+    local models = Faction.data.vehicleModels or {}
+    local plates = Faction.data.vehiclePlates or {}
+    local locs = Faction.data.vehicleLocations or {}
+
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 46 * scale
+
+    local colX = cx
+    for _, col in ipairs(vehCols) do
+        local colW = cw * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #ids - visibleRows) * rowH
+    Faction.vehiclesScroll = math.min(Faction.vehiclesScroll, maxScroll)
+    local startIdx = math.floor(Faction.vehiclesScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #ids) do
+        local rowY = listY + (i - startIdx) * rowH
+        local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
+        local selected = Faction.vehiclesSelected == i
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        if selected then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, THEME.primarySoft, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        elseif hover then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+
+        local cX2 = cx
+        dxDrawText(tostring(ids[i]), cX2 + 8 * scale, rowY, cX2 + cw * 0.12, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.12
+        dxDrawText(truncate(tostring(models[i] or "-"), cw * 0.42 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + cw * 0.42, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.42
+        dxDrawText(tostring(plates[i] or "-"), cX2 + 8 * scale, rowY, cX2 + cw * 0.16, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        cX2 = cX2 + cw * 0.16
+        dxDrawText(truncate(tostring(locs[i] or "-"), cw * 0.30 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + cw * 0.30, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + cw - 12 * scale, listY, listH, Faction.vehiclesScroll, maxScroll)
+    end
+
+    -- buttons
+    local btnY = cy + ch - 40 * scale
+    local btnW, btnH = 140 * scale, 30 * scale
+    local hover = isMouseIn(cx, btnY, btnW, btnH)
+    dxDrawRoundedRect(cx, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+    dxDrawText("رسبنة هذه المركبة", cx, btnY, cx + btnW, btnY + btnH,
+        hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._vehRespawnBtn = { x = cx, y = btnY, w = btnW, h = btnH }
+
+    local btn2X = cx + btnW + 8 * scale
+    hover = isMouseIn(btn2X, btnY, btnW, btnH)
+    dxDrawRoundedRect(btn2X, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+    dxDrawText("رسبنة الكل", btn2X, btnY, btn2X + btnW, btnY + btnH,
+        hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._vehRespawnAllBtn = { x = btn2X, y = btnY, w = btnW, h = btnH }
+
+    dxDrawText("#FFFFFFالمركبات: #E24848" .. #ids, cx, cy + ch - 18 * scale, cx + 300 * scale, cy + ch - 4 * scale,
+        tocolor(255, 255, 255, 255), 0.9, "default", "left", "center", true, false, true)
+end
+
+-- ============================================================
+-- Render: management section
+-- ============================================================
+local function drawManagement()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+
+    dxDrawText("إدارة الفاكشن", cx, cy, cx + cw, cy + 26 * scale,
+        THEME.text, 1.1, "default-bold", "left", "center", true, false, true)
+
+    -- MOTD editor
+    local mY = cy + 36 * scale
+    dxDrawText("رسالة اليوم (MOTD)", cx, mY, cx + 300 * scale, mY + 20 * scale,
+        THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+    local mEditY = mY + 24 * scale
+    local hover = isMouseIn(cx, mEditY, cw, 60 * scale)
+    dxDrawRoundedRect(cx, mEditY, cw, 60 * scale, hover and tocolor(25, 28, 35, 255) or tocolor(15, 18, 24, 255), 5, true)
+    dxDrawRectangle(cx, mEditY + 59 * scale, cw, 1, THEME.lineStrong, true)
+    dxDrawText(Faction.motdBuffer ~= "" and Faction.motdBuffer or "اكتب رسالة اليوم...",
+        cx + 10 * scale, mEditY, cx + cw - 10 * scale, mEditY + 60 * scale,
+        Faction.motdBuffer ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "top", true, false, true)
+    Faction._motdEdit = { x = cx, y = mEditY, w = cw, h = 60 * scale }
+
+    -- save MOTD
+    local sY = mEditY + 68 * scale
+    local sW = 130 * scale
+    hover = isMouseIn(cx, sY, sW, 32 * scale)
+    dxDrawRoundedRect(cx, sY, sW, 32 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+    dxDrawText("حفظ الرسالة", cx, sY, cx + sW, sY + 32 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._motdSaveBtn = { x = cx, y = sY, w = sW, h = 32 * scale }
+
+    -- quit faction button
+    local qY = sY + 44 * scale
+    hover = isMouseIn(cx, qY, sW, 32 * scale)
+    dxDrawRoundedRect(cx, qY, sW, 32 * scale, hover and tocolor(180, 40, 40, 220) or tocolor(120, 30, 30, 160), 5, true)
+    dxDrawText("مغادرة الفاكشن", cx, qY, cx + sW, qY + 32 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._quitBtn = { x = cx, y = qY, w = sW, h = 32 * scale }
+end
+
+-- ============================================================
+-- Render: finance section
+-- ============================================================
+local finCols = {
+    { name = "ID",       frac = 0.10 },
+    { name = "الوقت",    frac = 0.25 },
+    { name = "النوع",    frac = 0.10 },
+    { name = "من",       frac = 0.18 },
+    { name = "إلى",      frac = 0.18 },
+    { name = "المبلغ",   frac = 0.19 },
+}
+
+local function drawFinance()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+
+    if not Faction.financeLoaded then
+        loadFinance()
+        dxDrawText("جاري تحميل البيانات المالية...", cx, cy, cx + cw, cy + 60 * scale,
+            THEME.textDim, 1.0, "default", "center", "center", true, false, true)
+        return
+    end
+
+    local fin = Faction.finance
+    if not fin then return end
+
+    -- assets summary (right)
+    local aW = cw * 0.32
+    local aX = cx + cw - aW
+    dxDrawRoundedRect(aX, cy, aW, 110 * scale, tocolor(15, 18, 24, 255), 6, true)
+    dxDrawText("الأصول", aX + 10 * scale, cy + 8 * scale, aX + aW, cy + 30 * scale,
+        THEME.text, 1.0, "default-bold", "left", "top")
+    local rows = {
+        { "حساب البنك", "$" .. formatMoney(fin.bankmoney) },
+        { "المركبات", "$" .. formatMoney(fin.vehiclesvalue) },
+        { "الخصائص", "$" .. formatMoney(fin.propertiesvalue) },
+    }
+    local aY = cy + 34 * scale
+    for _, r in ipairs(rows) do
+        dxDrawText(r[1], aX + 10 * scale, aY, aX + aW * 0.6, aY + 20 * scale,
+            THEME.textDim, 0.95, "default", "left", "center")
+        dxDrawText(r[2], aX + aW * 0.5, aY, aX + aW - 10 * scale, aY + 20 * scale,
+            THEME.online, 0.95, "default", "right", "center")
+        aY = aY + 22 * scale
+    end
+    dxDrawRectangle(aX + 10 * scale, aY, aW - 20 * scale, 1, THEME.lineStrong, true)
+    dxDrawText("المجموع", aX + 10 * scale, aY + 4 * scale, aX + aW * 0.6, aY + 26 * scale,
+        THEME.text, 0.95, "default-bold", "left", "center")
+    dxDrawText("$" .. formatMoney(fin.bankmoney + fin.vehiclesvalue + fin.propertiesvalue),
+        aX + aW * 0.5, aY + 4 * scale, aX + aW - 10 * scale, aY + 26 * scale,
+        THEME.online, 0.95, "default-bold", "right", "center")
+
+    -- transactions list
+    local tW = cw - aW - 15 * scale
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 10 * scale
+    local colX = cx
+    for _, col in ipairs(finCols) do
+        local colW = tW * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, tW, 1, THEME.lineStrong, true)
+
+    local txs = {}
+    for _, t in ipairs(fin.thisWeek or {}) do table.insert(txs, t) end
+    for _, t in ipairs(fin.prevWeek or {}) do table.insert(txs, t) end
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #txs - visibleRows) * rowH
+    Faction.financeScroll = math.min(Faction.financeScroll, maxScroll)
+    local startIdx = math.floor(Faction.financeScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #txs) do
+        local t = txs[i]
+        if not t then break end
+        local rowY = listY + (i - startIdx) * rowH
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, tW, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        local cX2 = cx
+        dxDrawText(tostring(t.id or "-"), cX2 + 8 * scale, rowY, cX2 + tW * 0.10, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + tW * 0.10
+        dxDrawText(truncate(tostring(t.time or "-"), tW * 0.25 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + tW * 0.25, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + tW * 0.25
+        dxDrawText(tostring(t.type or "-"), cX2 + 8 * scale, rowY, cX2 + tW * 0.10, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + tW * 0.10
+        dxDrawText(truncate(tostring(t.from or "-"), tW * 0.18 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + tW * 0.18, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + tW * 0.18
+        dxDrawText(truncate(tostring(t.to or "-"), tW * 0.18 - 16 * scale, "default"), cX2 + 8 * scale, rowY, cX2 + tW * 0.18, rowY + rowH,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        cX2 = cX2 + tW * 0.18
+        local amount = tonumber(t.amount) or 0
+        dxDrawText((amount >= 0 and "+" or "") .. "$" .. formatMoney(amount), cX2 + 8 * scale, rowY, cX2 + tW * 0.19, rowY + rowH,
+            amount >= 0 and THEME.online or THEME.offline, 0.95, "default", "left", "center", true, false, true)
+
+        dxDrawRectangle(cx, rowY + rowH - 1, tW, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + tW - 12 * scale, listY, listH, Faction.financeScroll, maxScroll)
+    end
+end
+
+-- ============================================================
+-- Render: note section
+-- ============================================================
+local function drawNote()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local isLeaderNote = Faction.isLeader and Faction.section == "note"
+
+    dxDrawText(isLeaderNote and "ملاحظات القائد" or "ملاحظات الفاكشن", cx, cy, cx + cw, cy + 26 * scale,
+        THEME.text, 1.1, "default-bold", "left", "center", true, false, true)
+
+    local nY = cy + 36 * scale
+    local nH = ch - 36 * scale - 50 * scale
+    local hover = isMouseIn(cx, nY, cw, nH)
+    dxDrawRoundedRect(cx, nY, cw, nH, hover and tocolor(25, 28, 35, 255) or tocolor(15, 18, 24, 255), 5, true)
+    dxDrawRectangle(cx, nY + nH - 1, cw, 1, THEME.lineStrong, true)
+
+    local txt = isLeaderNote and Faction.noteBuffer or (Faction.data.fnote or "")
+    dxDrawText(txt ~= "" and txt or "لا توجد ملاحظات...",
+        cx + 10 * scale, nY, cx + cw - 10 * scale, nY + nH,
+        txt ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "top", true, false, true)
+    Faction._noteEdit = { x = cx, y = nY, w = cw, h = nH }
+
+    if isLeaderNote then
+        local sY = nY + nH + 10 * scale
+        local sW = 130 * scale
+        hover = isMouseIn(cx, sY, sW, 32 * scale)
+        dxDrawRoundedRect(cx, sY, sW, 32 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+        dxDrawText("حفظ الملاحظات", cx, sY, cx + sW, sY + 32 * scale,
+            tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+        Faction._noteSaveBtn = { x = cx, y = sY, w = sW, h = 32 * scale }
+    end
+end
+-- ============================================================
+-- Render: duty section
+-- ============================================================
+local dutyCols = {
+    { name = "ID",   frac = 0.15 },
+    { name = "الاسم", frac = 0.45 },
+    { name = "المواقع", frac = 0.40 },
+}
+
+local function drawDuty()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 46 * scale
+
+    local colX = cx
+    for _, col in ipairs(dutyCols) do
+        local colW = cw * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    local duties = {}
+    for k, v in pairs(customg or {}) do
+        table.insert(duties, { id = v[1], name = v[2], locs = v[4] })
+    end
+    table.sort(duties, function(a, b) return tostring(a.id) < tostring(b.id) end)
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #duties - visibleRows) * rowH
+    Faction.dutyScroll = math.min(Faction.dutyScroll, maxScroll)
+    local startIdx = math.floor(Faction.dutyScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #duties) do
+        local d = duties[i]
+        if not d then break end
+        local rowY = listY + (i - startIdx) * rowH
+        local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        if hover then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+        dxDrawText(tostring(d.id), cx + 8 * scale, rowY, cx + cw * 0.15, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(d.name), cx + cw * 0.15 + 8 * scale, rowY, cx + cw * 0.60, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        local locStr = ""
+        if type(d.locs) == "table" then
+            local names = {}
+            for _, l in pairs(d.locs) do
+                if type(l) == "table" and l[2] then table.insert(names, tostring(l[2]))
+                elseif type(l) ~= "table" then table.insert(names, tostring(l)) end
+            end
+            locStr = table.concat(names, ", ")
+        end
+        dxDrawText(truncate(locStr, cw * 0.40 - 16 * scale, "default"), cx + cw * 0.60 + 8 * scale, rowY, cx + cw, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + cw - 12 * scale, listY, listH, Faction.dutyScroll, maxScroll)
+    end
+
+    -- buttons
+    local btnY = cy + ch - 40 * scale
+    local btnW, btnH = 130 * scale, 30 * scale
+    local labels = { "إضافة ديبوتي", "حذف ديبوتي" }
+    Faction._dutyBtns = {}
+    local bx = cx
+    for i = 1, 2 do
+        local hover = isMouseIn(bx, btnY, btnW, btnH)
+        dxDrawRoundedRect(bx, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+        dxDrawText(labels[i], bx, btnY, bx + btnW, btnY + btnH,
+            hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+        Faction._dutyBtns[i] = { x = bx, y = btnY, w = btnW, h = btnH }
+        bx = bx + btnW + 8 * scale
+    end
+end
+
+-- ============================================================
+-- Render: duty locations section
+-- ============================================================
+local dlCols = {
+    { name = "ID",     frac = 0.10 },
+    { name = "الاسم",   frac = 0.25 },
+    { name = "النطاق",  frac = 0.10 },
+    { name = "الداخلي", frac = 0.10 },
+    { name = "البعد",   frac = 0.10 },
+    { name = "X, Y, Z", frac = 0.35 },
+}
+
+local function drawDutyLocations()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 46 * scale
+
+    local colX = cx
+    for _, col in ipairs(dlCols) do
+        local colW = cw * col.frac
+        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+            THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        colX = colX + colW
+    end
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    local locs = {}
+    for k, v in pairs(locationsg or {}) do
+        if not v[10] then
+            table.insert(locs, v)
+        end
+    end
+    table.sort(locs, function(a, b) return tostring(a[1]) < tostring(b[1]) end)
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #locs - visibleRows) * rowH
+    Faction.dutyLocationsScroll = math.min(Faction.dutyLocationsScroll, maxScroll)
+    local startIdx = math.floor(Faction.dutyLocationsScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #locs) do
+        local l = locs[i]
+        if not l then break end
+        local rowY = listY + (i - startIdx) * rowH
+        local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        if hover then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+        dxDrawText(tostring(l[1] or "-"), cx + 8 * scale, rowY, cx + cw * 0.10, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(l[2] or "-"), cx + cw * 0.10 + 8 * scale, rowY, cx + cw * 0.35, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(l[6] or "-"), cx + cw * 0.35 + 8 * scale, rowY, cx + cw * 0.45, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(l[8] or "-"), cx + cw * 0.45 + 8 * scale, rowY, cx + cw * 0.55, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(l[7] or "-"), cx + cw * 0.55 + 8 * scale, rowY, cx + cw * 0.65, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(string.format("%s, %s, %s", tostring(l[3] or 0), tostring(l[4] or 0), tostring(l[5] or 0)),
+            cx + cw * 0.65 + 8 * scale, rowY, cx + cw, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + cw - 12 * scale, listY, listH, Faction.dutyLocationsScroll, maxScroll)
+    end
+
+    local btnY = cy + ch - 40 * scale
+    local btnW, btnH = 130 * scale, 30 * scale
+    Faction._dlBtns = {}
+    local bx = cx
+    local labels = { "إضافة موقع", "حذف موقع" }
+    for i = 1, 2 do
+        local hover = isMouseIn(bx, btnY, btnW, btnH)
+        dxDrawRoundedRect(bx, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+        dxDrawText(labels[i], bx, btnY, bx + btnW, btnY + btnH,
+            hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+        Faction._dlBtns[i] = { x = bx, y = btnY, w = btnW, h = btnH }
+        bx = bx + btnW + 8 * scale
+    end
+end
+
+-- ============================================================
+-- Render: duty vehicles section
+-- ============================================================
+local function drawDutyVehicles()
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    local listY = cy + 34 * scale
+    local listH = ch - 34 * scale - 46 * scale
+
+    local colX = cx
+    dxDrawText("ID", colX + 8 * scale, cy, colX + cw * 0.2, cy + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+    colX = colX + cw * 0.2
+    dxDrawText("رقم المركبة", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+    colX = colX + cw * 0.4
+    dxDrawText("الاسم", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+
+    local vehs = {}
+    for k, v in pairs(locationsg or {}) do
+        if v[10] then
+            table.insert(vehs, v)
+        end
+    end
+    table.sort(vehs, function(a, b) return tostring(a[1]) < tostring(b[1]) end)
+
+    local visibleRows = math.floor(listH / rowH)
+    local maxScroll = math.max(0, #vehs - visibleRows) * rowH
+    Faction.dutyVehiclesScroll = math.min(Faction.dutyVehiclesScroll, maxScroll)
+    local startIdx = math.floor(Faction.dutyVehiclesScroll / rowH) + 1
+
+    for i = startIdx, math.min(startIdx + visibleRows, #vehs) do
+        local v = vehs[i]
+        if not v then break end
+        local rowY = listY + (i - startIdx) * rowH
+        local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
+        if i % 2 == 0 then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+        end
+        if hover then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+        dxDrawText(tostring(v[1] or "-"), cx + 8 * scale, rowY, cx + cw * 0.2, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(v[9] or "-"), cx + cw * 0.2 + 8 * scale, rowY, cx + cw * 0.6, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(getVehicleNameFromModel(v[10]) or "-"), cx + cw * 0.6 + 8 * scale, rowY, cx + cw, rowY + rowH,
+            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+        dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if maxScroll > 0 then
+        drawScrollbar(cx + cw - 12 * scale, listY, listH, Faction.dutyVehiclesScroll, maxScroll)
+    end
+
+    local btnY = cy + ch - 40 * scale
+    local btnW, btnH = 130 * scale, 30 * scale
+    Faction._dvBtns = {}
+    local bx = cx
+    local labels = { "إضافة مركبة", "حذف مركبة" }
+    for i = 1, 2 do
+        local hover = isMouseIn(bx, btnY, btnW, btnH)
+        dxDrawRoundedRect(bx, btnY, btnW, btnH, hover and tocolor(30, 34, 42, 255) or tocolor(20, 24, 30, 255), 5, true)
+        dxDrawText(labels[i], bx, btnY, bx + btnW, btnY + btnH,
+            hover and THEME.primary or THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+        Faction._dvBtns[i] = { x = bx, y = btnY, w = btnW, h = btnH }
+        bx = bx + btnW + 8 * scale
+    end
+end
+-- ============================================================
+-- Sub-window: promote / demote picker
+-- ============================================================
+local function drawPromoteWindow()
+    if not Faction.sub.promote then return end
+    local w, h = 400 * scale, 380 * scale
+    local x, y = (sx - w) / 2, (sy - h) / 2
+    dxDrawRoundedRect(x, y, w, h, THEME.darkOverlay, 8, true)
+    dxDrawText("ترقية / خفض العضو", x, y + 12 * scale, x + w, y + 42 * scale,
+        THEME.text, 1.1, "default-bold", "center", "center", true, false, true)
+
+    local sel = Faction.members[Faction.membersSelected]
+    if not sel then Faction.sub.promote = false return end
+    dxDrawText("العضو: #E24848" .. sel.name, x, y + 44 * scale, x + w, y + 66 * scale,
+        tocolor(255, 255, 255, 220), 1.0, "default", "center", "center", true, false, true)
+
+    local listY = y + 70 * scale
+    local listH = h - 70 * scale - 50 * scale
+    local ranks = Faction.data.factionRanks or {}
+    Faction._promoteRows = {}
+    for i = 1, #ranks do
+        local rowY = listY + (i - 1) * rowH
+        if rowY + rowH > listY + listH then break end
+        local hover = isMouseIn(x + 10 * scale, rowY, w - 20 * scale, rowH)
+        local isCurrent = sel.rank == i
+        if isCurrent then
+            dxDrawRectangle(x + 10 * scale, rowY, w - 20 * scale, rowH, THEME.primarySoft, true)
+        elseif hover then
+            dxDrawRectangle(x + 10 * scale, rowY, w - 20 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+        dxDrawText("#" .. i .. "  " .. tostring(ranks[i]), x + 20 * scale, rowY, x + w - 20 * scale, rowY + rowH,
+            isCurrent and THEME.primary or THEME.text, 1.0, "default", "left", "center", true, false, true)
+        Faction._promoteRows[i] = { x = x + 10 * scale, y = rowY, w = w - 20 * scale, h = rowH, rank = i }
+    end
+
+    -- cancel button
+    local cY = y + h - 36 * scale
+    local hover = isMouseIn(x + 10 * scale, cY, w - 20 * scale, 30 * scale)
+    dxDrawRoundedRect(x + 10 * scale, cY, w - 20 * scale, 30 * scale, hover and tocolor(40, 44, 52, 255) or tocolor(25, 28, 35, 255), 5, true)
+    dxDrawText("إغلاق", x + 10 * scale, cY, x + w - 10 * scale, cY + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._promoteCancel = { x = x + 10 * scale, y = cY, w = w - 20 * scale, h = 30 * scale }
+end
+
+-- ============================================================
+-- Sub-window: add member
+-- ============================================================
+local function drawAddMemberWindow()
+    if not Faction.sub.addMember then return end
+    local w, h = 300 * scale, 170 * scale
+    local x, y = (sx - w) / 2, (sy - h) / 2
+    dxDrawRoundedRect(x, y, w, h, THEME.darkOverlay, 8, true)
+    dxDrawText("إضافة عضو", x, y + 12 * scale, x + w, y + 38 * scale,
+        THEME.text, 1.1, "default-bold", "center", "center", true, false, true)
+
+    local eY = y + 46 * scale
+    local hover = isMouseIn(x + 15 * scale, eY, w - 30 * scale, 32 * scale)
+    dxDrawRoundedRect(x + 15 * scale, eY, w - 30 * scale, 32 * scale, hover and tocolor(25, 28, 35, 255) or tocolor(15, 18, 24, 255), 5, true)
+    dxDrawText(Faction.sub.addMemberText ~= "" and Faction.sub.addMemberText or "اسم الشخصية...",
+        x + 25 * scale, eY, x + w - 25 * scale, eY + 32 * scale,
+        Faction.sub.addMemberText ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "center", true, false, true)
+    Faction._addMemberEdit = { x = x + 15 * scale, y = eY, w = w - 30 * scale, h = 32 * scale }
+
+    dxDrawText(Faction.sub.addMemberResult, x + 15 * scale, eY + 36 * scale, x + w - 15 * scale, eY + 54 * scale,
+        THEME.textDim, 0.9, "default", "center", "center", true, false, true)
+
+    local bY = y + h - 42 * scale
+    local bW = (w - 40 * scale) / 2
+    hover = isMouseIn(x + 15 * scale, bY, bW, 30 * scale)
+    dxDrawRoundedRect(x + 15 * scale, bY, bW, 30 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+    dxDrawText("إضافة", x + 15 * scale, bY, x + 15 * scale + bW, bY + 30 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._addMemberOk = { x = x + 15 * scale, y = bY, w = bW, h = 30 * scale }
+
+    hover = isMouseIn(x + 25 * scale + bW, bY, bW, 30 * scale)
+    dxDrawRoundedRect(x + 25 * scale + bW, bY, bW, 30 * scale, hover and tocolor(40, 44, 52, 255) or tocolor(25, 28, 35, 255), 5, true)
+    dxDrawText("إغلاق", x + 25 * scale + bW, bY, x + w - 15 * scale, bY + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._addMemberCancel = { x = x + 25 * scale + bW, y = bY, w = bW, h = 30 * scale }
+end
+
+-- ============================================================
+-- Sub-window: confirm dialog
+-- ============================================================
+local function drawConfirmWindow()
+    if not Faction.sub.confirm then return end
+    local w, h = 360 * scale, 160 * scale
+    local x, y = (sx - w) / 2, (sy - h) / 2
+    dxDrawRoundedRect(x, y, w, h, THEME.darkOverlay, 8, true)
+    dxDrawText(Faction.sub.confirmText, x + 15 * scale, y + 15 * scale, x + w - 15 * scale, y + h - 55 * scale,
+        THEME.text, 1.0, "default", "center", "center", true, true, true)
+
+    local bY = y + h - 42 * scale
+    local bW = (w - 45 * scale) / 2
+    local hover = isMouseIn(x + 15 * scale, bY, bW, 30 * scale)
+    dxDrawRoundedRect(x + 15 * scale, bY, bW, 30 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+    dxDrawText("نعم", x + 15 * scale, bY, x + 15 * scale + bW, bY + 30 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._confirmYes = { x = x + 15 * scale, y = bY, w = bW, h = 30 * scale }
+
+    hover = isMouseIn(x + 30 * scale + bW, bY, bW, 30 * scale)
+    dxDrawRoundedRect(x + 30 * scale + bW, bY, bW, 30 * scale, hover and tocolor(40, 44, 52, 255) or tocolor(25, 28, 35, 255), 5, true)
+    dxDrawText("لا", x + 30 * scale + bW, bY, x + w - 15 * scale, bY + 30 * scale,
+        THEME.textDim, 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._confirmNo = { x = x + 30 * scale + bW, y = bY, w = bW, h = 30 * scale }
+end
+
+-- ============================================================
+-- Sub-window: duty perks (packages) picker
+-- ============================================================
+local function drawDutyPerksWindow()
+    if not Faction.sub.dutyPerks then return end
+    local w, h = 400 * scale, 350 * scale
+    local x, y = (sx - w) / 2, (sy - h) / 2
+    dxDrawRoundedRect(x, y, w, h, THEME.darkOverlay, 8, true)
+    dxDrawText("حزم الديوتي للعضو", x, y + 12 * scale, x + w, y + 40 * scale,
+        THEME.text, 1.1, "default-bold", "center", "center", true, false, true)
+
+    local sel = Faction.members[Faction.membersSelected]
+    if not sel then Faction.sub.dutyPerks = false return end
+
+    local listY = y + 50 * scale
+    local listH = h - 50 * scale - 50 * scale
+    Faction._perkRows = {}
+    local packages = Faction.dutyPackages or {}
+    local i = 0
+    for k, v in pairs(packages) do
+        i = i + 1
+        local rowY = listY + (i - 1) * rowH
+        if rowY + rowH > listY + listH then break end
+        local name = type(v) == "table" and (v[2] or v.name) or tostring(v)
+        local id = type(v) == "table" and (v[1] or v.id) or k
+        local checked = Faction.sub.dutyPerksSelected[tostring(id)] == true
+        local hover = isMouseIn(x + 10 * scale, rowY, w - 20 * scale, rowH)
+        if checked then
+            dxDrawRectangle(x + 10 * scale, rowY, w - 20 * scale, rowH, THEME.primarySoft, true)
+        elseif hover then
+            dxDrawRectangle(x + 10 * scale, rowY, w - 20 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        end
+        dxDrawText(checked and "☑" or "☐", x + 18 * scale, rowY, x + 40 * scale, rowY + rowH,
+            checked and THEME.primary or THEME.text, 1.1, "default", "left", "center", true, false, true)
+        dxDrawText(tostring(name), x + 42 * scale, rowY, x + w - 20 * scale, rowY + rowH,
+            THEME.text, 1.0, "default", "left", "center", true, false, true)
+        Faction._perkRows[i] = { x = x + 10 * scale, y = rowY, w = w - 20 * scale, h = rowH, id = tostring(id) }
+    end
+
+    local bY = y + h - 38 * scale
+    local hover = isMouseIn(x + 10 * scale, bY, w - 20 * scale, 30 * scale)
+    dxDrawRoundedRect(x + 10 * scale, bY, w - 20 * scale, 30 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+    dxDrawText("حفظ", x + 10 * scale, bY, x + w - 10 * scale, bY + 30 * scale,
+        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+    Faction._perkSave = { x = x + 10 * scale, y = bY, w = w - 20 * scale, h = 30 * scale }
+end
+
+-- ============================================================
+-- Main render
+-- ============================================================
+local function render()
+    if not Faction.visible or not Faction.data then return end
+    updateCursorCache()
+    local x, y = winPos()
+
+    -- background dim
+    dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, 120), false, true)
+
+    -- main window
+    dxDrawRoundedRect(x, y, winW, winH, THEME.bg, 10, true)
+    -- sidebar background
+    dxDrawRectangle(x, y + headerH + 5 * scale, menuW, winH - headerH - 10 * scale, THEME.sidebar, true)
+    -- accent top bar
+    dxDrawRectangle(x, y, winW, 3 * scale, THEME.primary, true)
+
+    drawHeader()
+    drawSidebar()
+
+    -- content area background
+    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+    dxDrawRoundedRect(cx - 5 * scale, cy - 5 * scale, cw + 10 * scale, ch + 10 * scale, THEME.bgSoft, 8, true)
+
+    if Faction.section == "members" then
+        drawMembers()
+    elseif Faction.section == "ranks" then
+        drawRanks()
+    elseif Faction.section == "vehicles" then
+        drawVehicles()
+    elseif Faction.section == "management" then
+        drawManagement()
+    elseif Faction.section == "finance" then
+        drawFinance()
+    elseif Faction.section == "note" then
+        drawNote()
+    elseif Faction.section == "duty" then
+        drawDuty()
+    elseif Faction.section == "dutylocations" then
+        drawDutyLocations()
+    elseif Faction.section == "dutyvehicles" then
+        drawDutyVehicles()
+    end
+
+    -- sub windows
+    drawPromoteWindow()
+    drawAddMemberWindow()
+    drawDutyPerksWindow()
+    drawConfirmWindow()
+end
+addEventHandler("onClientRender", root, render)
+
+-- ============================================================
+-- Click handling
+-- ============================================================
+local function pointInBox(px, py, box)
+    return box and px >= box.x and px <= box.x + box.w and py >= box.y and py <= box.y + box.h
+end
+
+addEventHandler("onClientClick", root, function(button, state, absoluteX, absoluteY, worldX, worldY, worldZ, clickedElement)
+    if button ~= "left" or state ~= "down" then return end
+    if not Faction.visible then return end
+    local px, py = absoluteX, absoluteY
+
+    -- ignore clicks on edit boxes (handled by the edit selector)
+    if pointInBox(px, py, Faction._rankNameEdit) or pointInBox(px, py, Faction._rankWageEdit)
+    or pointInBox(px, py, Faction._motdEdit) or pointInBox(px, py, Faction._noteEdit)
+    or pointInBox(px, py, Faction._addMemberEdit) then
+        return
+    end
+
+    -- close button
+    if pointInBox(px, py, Faction._closeBtn) then
+        triggerEvent("hideFactionMenu", localPlayer)
+        return
+    end
+
+    -- sub-windows take priority
+    if Faction.sub.confirm then
+        if pointInBox(px, py, Faction._confirmYes) then
+            local action = Faction.sub.confirmAction
+            Faction.sub.confirm = false
+            Faction.sub.confirmAction = nil
+            if action then action() end
+            return
+        elseif pointInBox(px, py, Faction._confirmNo) then
+            Faction.sub.confirm = false
+            Faction.sub.confirmAction = nil
+            return
+        end
+        return
+    end
+
+    if Faction.sub.promote then
+        if pointInBox(px, py, Faction._promoteCancel) then
+            Faction.sub.promote = false
+            return
+        end
+        if Faction._promoteRows then
+            for _, r in pairs(Faction._promoteRows) do
+                if pointInBox(px, py, r) then
+                    local sel = Faction.members[Faction.membersSelected]
+                    if sel then
+                        local oldRank = sel.rank
+                        local newRank = r.rank
+                        local ranksList = Faction.data.factionRanks or {}
+                        if newRank > oldRank then
+                            triggerServerEvent("cguiPromotePlayer", localPlayer, sel.rawName, newRank,
+                                tostring(ranksList[oldRank] or ""), tostring(ranksList[newRank] or ""))
+                        else
+                            triggerServerEvent("cguiDemotePlayer", localPlayer, sel.rawName, newRank,
+                                tostring(ranksList[oldRank] or ""), tostring(ranksList[newRank] or ""))
+                        end
+                        Faction.sub.promote = false
+                        triggerEvent("hideFactionMenu", localPlayer)
+                    end
+                    return
+                end
+            end
+        end
+        return
+    end
+
+    if Faction.sub.addMember then
+        if pointInBox(px, py, Faction._addMemberCancel) then
+            Faction.sub.addMember = false
+            Faction.sub.addMemberText = ""
+            Faction.sub.addMemberResult = ""
+            return
+        end
+        if pointInBox(px, py, Faction._addMemberOk) then
+            local text = Faction.sub.addMemberText:gsub(" ", "_")
+            if text ~= "" then
+                local found = getPlayerFromName(text)
+                if found then
+                    triggerServerEvent("cguiInvitePlayer", localPlayer, found)
+                    Faction.sub.addMember = false
+                    Faction.sub.addMemberText = ""
+                    Faction.sub.addMemberResult = ""
+                    triggerEvent("hideFactionMenu", localPlayer)
+                else
+                    Faction.sub.addMemberResult = "اللاعب غير متصل"
+                end
+            end
+            return
+        end
+        return
+    end
+
+    if Faction.sub.dutyPerks then
+        if pointInBox(px, py, Faction._perkSave) then
+            local sel = Faction.members[Faction.membersSelected]
+            if sel then
+                local perkTable = {}
+                for id, v in pairs(Faction.sub.dutyPerksSelected) do
+                    if v then perkTable[id] = true end
+                end
+                triggerServerEvent("faction:perks:edit", localPlayer, perkTable, sel.rawName)
+            end
+            Faction.sub.dutyPerks = false
+            Faction.sub.dutyPerksSelected = {}
+            triggerEvent("hideFactionMenu", localPlayer)
+            return
+        end
+        if Faction._perkRows then
+            for _, r in pairs(Faction._perkRows) do
+                if pointInBox(px, py, r) then
+                    Faction.sub.dutyPerksSelected[r.id] = not Faction.sub.dutyPerksSelected[r.id]
+                    return
+                end
+            end
+        end
+        return
+    end
+
+    -- sidebar menu
+    local x, y = winPos()
+    local itemH = 34 * scale
+    local startY = y + headerH + 15 * scale
+    for i, item in ipairs(Faction.menu) do
+        local itemY = startY + (i - 1) * itemH
+        if px >= x + 10 * scale and px <= x + menuW and py >= itemY and py <= itemY + itemH then
+            Faction.section = item.id
+            if item.id == "duty" or item.id == "dutylocations" or item.id == "dutyvehicles" then
+                if not customg or not next(customg or {}) then
+                    fetchDutyInfo()
+                end
+            elseif item.id == "finance" then
+                if not Faction.financeLoaded then loadFinance() end
+            elseif item.id == "duty" and Faction.factionType >= 2 then
+                triggerServerEvent("Duty:GetPackages", resourceRoot, Faction.factionID)
+            end
+            return
+        end
+    end
+
+    -- member list row click
+    if Faction.section == "members" then
+        local cx2, cy2, cw2, ch2 = contentX(), contentY(), contentW(), contentH()
+        local listY = cy2 + 34 * scale
+        local listH = ch2 - 34 * scale - (Faction.isLeader and 46 * scale or 10 * scale)
+        if py >= listY and py <= listY + listH and px >= cx2 and px <= cx2 + cw2 - 14 * scale then
+            local startIdx = math.floor(Faction.membersScroll / rowH) + 1
+            local idx = startIdx + math.floor((py - listY) / rowH)
+            if idx >= 1 and idx <= #Faction.members then
+                Faction.membersSelected = idx
+            end
+            return
+        end
+    end
+
+    -- action buttons
+    if Faction.section == "members" and Faction.isLeader and Faction._actionButtons then
+        local sel = Faction.members[Faction.membersSelected]
+        for id, box in pairs(Faction._actionButtons) do
+            if pointInBox(px, py, box) then
+                if id == "kick" and sel then
+                    Faction.sub.confirmText = "هل أنت متأكد من طرد " .. sel.name .. "؟"
+                    Faction.sub.confirmAction = function()
+                        triggerServerEvent("cguiKickPlayer", localPlayer, sel.rawName)
+                        triggerEvent("hideFactionMenu", localPlayer)
+                    end
+                    Faction.sub.confirm = true
+                elseif id == "promote" and sel then
+                    Faction.sub.promote = true
+                elseif id == "leader" and sel then
+                    Faction.sub.confirmText = sel.leader and "خفض " .. sel.name .. " من القيادة؟" or "ترقية " .. sel.name .. " إلى قائد؟"
+                    Faction.sub.confirmAction = function()
+                        triggerServerEvent("cguiToggleLeader", localPlayer, sel.rawName, not sel.leader)
+                        triggerEvent("hideFactionMenu", localPlayer)
+                    end
+                    Faction.sub.confirm = true
+                elseif id == "add" then
+                    Faction.sub.addMember = true
+                    Faction.sub.addMemberText = ""
+                    Faction.sub.addMemberResult = ""
+                elseif id == "perks" and sel then
+                    Faction.sub.dutyPerks = true
+                    Faction.sub.dutyPerksSelected = {}
+                    triggerServerEvent("Duty:GetPackages", resourceRoot, Faction.factionID)
+                    local perks = sel.perks or Faction.data.memberPerks or {}
+                    for k, v in pairs(perks) do
+                        if v then Faction.sub.dutyPerksSelected[tostring(k)] = true end
+                    end
+                elseif id == "respawn" then
+                    Faction.sub.confirmText = "هل أنت متأكد من رسبنة جميع المركبات؟"
+                    Faction.sub.confirmAction = function()
+                        triggerServerEvent("cguiRespawnVehicles", localPlayer)
+                        triggerEvent("hideFactionMenu", localPlayer)
+                    end
+                    Faction.sub.confirm = true
+                end
+                return
+            end
+        end
+    end
+
+    -- ranks section
+    if Faction.section == "ranks" then
+        local cx2, cy2, cw2, ch2 = contentX(), contentY(), contentW(), contentH()
+        local listW = cw2 * 0.5 - 5 * scale
+        local listH = ch2 - 50 * scale
+        if px >= cx2 and px <= cx2 + listW and py >= cy2 + 35 * scale and py <= cy2 + 35 * scale + 20 * rowH then
+            local idx = math.floor((py - (cy2 + 35 * scale)) / rowH) + 1
+            if idx >= 1 and idx <= 20 then
+                Faction.ranksSelected = idx
+                Faction.rankNameBuffer = ""
+                Faction.rankWageBuffer = ""
+            end
+            return
+        end
+        if pointInBox(px, py, Faction._rankSaveBtn) then
+            local ranks = Faction.data.factionRanks or {}
+            local wages = Faction.data.factionWages or {}
+            if Faction.ranksSelected > 0 then
+                if Faction.rankNameBuffer ~= "" then
+                    ranks[Faction.ranksSelected] = Faction.rankNameBuffer
+                end
+                local w = tonumber(Faction.rankWageBuffer)
+                if w then
+                    wages[Faction.ranksSelected] = math.min(2500, math.max(0, w))
+                end
+                triggerServerEvent("cguiUpdateRanks", localPlayer, ranks, wages)
+                Faction.rankNameBuffer = ""
+                Faction.rankWageBuffer = ""
+                triggerEvent("hideFactionMenu", localPlayer)
+            end
+            return
+        end
+    end
+
+    -- vehicles section
+    if Faction.section == "vehicles" and Faction.isLeader then
+        if pointInBox(px, py, Faction._vehRespawnBtn) then
+            if Faction.vehiclesSelected > 0 and Faction.data.vehicleIDs[Faction.vehiclesSelected] then
+                triggerServerEvent("cguiRespawnOneVehicle", localPlayer, tostring(Faction.data.vehicleIDs[Faction.vehiclesSelected]))
+            end
+            return
+        end
+        if pointInBox(px, py, Faction._vehRespawnAllBtn) then
+            Faction.sub.confirmText = "هل أنت متأكد من رسبنة جميع المركبات؟"
+            Faction.sub.confirmAction = function()
+                triggerServerEvent("cguiRespawnVehicles", localPlayer)
+                triggerEvent("hideFactionMenu", localPlayer)
+            end
+            Faction.sub.confirm = true
+            return
+        end
+        -- vehicle row click
+        local cx2, cy2, cw2, ch2 = contentX(), contentY(), contentW(), contentH()
+        local listY = cy2 + 34 * scale
+        local listH = ch2 - 34 * scale - 46 * scale
+        if py >= listY and py <= listY + listH and px >= cx2 and px <= cx2 + cw2 - 14 * scale then
+            local startIdx = math.floor(Faction.vehiclesScroll / rowH) + 1
+            local idx = startIdx + math.floor((py - listY) / rowH)
+            if idx >= 1 and idx <= #(Faction.data.vehicleIDs or {}) then
+                Faction.vehiclesSelected = idx
+            end
+        end
+    end
+
+    -- management section
+    if Faction.section == "management" and Faction.isLeader then
+        if pointInBox(px, py, Faction._motdSaveBtn) then
+            triggerServerEvent("cguiUpdateMOTD", localPlayer, Faction.motdBuffer)
+            triggerEvent("hideFactionMenu", localPlayer)
+            return
+        end
+        if pointInBox(px, py, Faction._quitBtn) then
+            Faction.sub.confirmText = "هل أنت متأكد من مغادرة الفاكشن؟"
+            Faction.sub.confirmAction = function()
+                triggerServerEvent("cguiQuitFaction", localPlayer)
+                triggerEvent("hideFactionMenu", localPlayer)
+            end
+            Faction.sub.confirm = true
+            return
+        end
+    end
+
+    -- note section
+    if Faction.section == "note" and Faction.isLeader then
+        if pointInBox(px, py, Faction._noteSaveBtn) then
+            triggerServerEvent("faction:note", localPlayer, Faction.noteBuffer)
+            triggerEvent("hideFactionMenu", localPlayer)
+            return
+        end
+    end
+
+    -- duty buttons
+    if Faction.section == "duty" and Faction._dutyBtns then
+        if pointInBox(px, py, Faction._dutyBtns[1]) then
+            outputChatBox("نظام إضافة الديوتي يتطلب واجهة الإدمان - استخدم /duty", 255, 194, 14)
+            return
+        end
+        if pointInBox(px, py, Faction._dutyBtns[2]) then
+            outputChatBox("اختر ديبوتي للحذف من القائمة", 255, 194, 14)
+            return
+        end
+    end
+end)
+
+-- ============================================================
+-- Text input for edit fields
+-- ============================================================
+local activeEdit = nil
+
+-- select edit box on click
+addEventHandler("onClientClick", root, function(button, state, absoluteX, absoluteY)
+    if button ~= "left" or state ~= "down" then return end
+    if not Faction.visible then return end
+    activeEdit = nil
+    if pointInBox(absoluteX, absoluteY, Faction._rankNameEdit) then activeEdit = "rankName"
+    elseif pointInBox(absoluteX, absoluteY, Faction._rankWageEdit) then activeEdit = "rankWage"
+    elseif pointInBox(absoluteX, absoluteY, Faction._motdEdit) then activeEdit = "motd"
+    elseif pointInBox(absoluteX, absoluteY, Faction._noteEdit) then activeEdit = "note"
+    elseif pointInBox(absoluteX, absoluteY, Faction._addMemberEdit) then activeEdit = "addMember"
+    end
+end)
+
+addEventHandler("onClientKey", root, function(button, press)
+    if not press or not Faction.visible then return end
+    if not activeEdit then return end
+
+    if button == "backspace" then
+        cancelEvent()
+        if activeEdit == "rankName" then Faction.rankNameBuffer = string.sub(Faction.rankNameBuffer, 1, -2)
+        elseif activeEdit == "rankWage" then Faction.rankWageBuffer = string.sub(Faction.rankWageBuffer, 1, -2)
+        elseif activeEdit == "motd" then Faction.motdBuffer = string.sub(Faction.motdBuffer, 1, -2)
+        elseif activeEdit == "note" then Faction.noteBuffer = string.sub(Faction.noteBuffer, 1, -2)
+        elseif activeEdit == "addMember" then Faction.sub.addMemberText = string.sub(Faction.sub.addMemberText, 1, -2) end
+    elseif button == "escape" then
+        cancelEvent()
+        activeEdit = nil
+    end
+end)
+
+addEventHandler("onClientCharacter", root, function(char)
+    if not Faction.visible or not activeEdit then return end
+    if #char == 0 then return end
+    local c = char:byte(1)
+    if c < 32 then return end
+    cancelEvent()
+    if activeEdit == "rankName" then Faction.rankNameBuffer = Faction.rankNameBuffer .. char
+    elseif activeEdit == "rankWage" then
+        if tonumber(char) or char == "0" then Faction.rankWageBuffer = Faction.rankWageBuffer .. char end
+    elseif activeEdit == "motd" then Faction.motdBuffer = Faction.motdBuffer .. char
+    elseif activeEdit == "note" then Faction.noteBuffer = Faction.noteBuffer .. char
+    elseif activeEdit == "addMember" then
+        Faction.sub.addMemberText = Faction.sub.addMemberText .. char
+        Faction.sub.addMemberResult = ""
+    end
+end)
+
+-- ============================================================
+-- Resource cleanup
+-- ============================================================
+addEventHandler("onClientResourceStop", resourceRoot, function()
+    showCursor(false)
+end)

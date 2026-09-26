@@ -1,0 +1,6 @@
+<meta>
+	<info author="Maxime- OWL MTA Scripting Team" type="script" description="Debug utilities"/>
+	<script src="g_debug.lua" type="server"/>
+	<script src="g_debug.lua" type="client"/>
+	<script src="debug_s.lua" type="server"/>
+</meta>

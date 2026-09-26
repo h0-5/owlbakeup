@@ -1,0 +1,288 @@
+-- Decompiled by Owl Decompiler
+-- Version App : 1.0
+-- discord.gg/owwl
+
+function uiCreateGridList(arg0, arg1, arg2, arg3, arg4, arg5)
+  local element = createElement("ui-gridlist")
+  UI.DB[element] = {
+    visible = true,
+    related_dimensions = {
+      x = arg0,
+      y = arg1,
+      width = arg2,
+      height = arg3
+    },
+    colors = {
+      arg4 or tocolor(0, 0, 0)
+    },
+    data = {
+      columns = {},
+      rows = {},
+      page = 1,
+      selected_row = -1,
+      row_i = 1,
+      row_f = 1
+    },
+    align = {
+      X = alignX or "left",
+      Y = alignY or "center"
+    },
+    font = {name = dxFont, size = 1},
+    properties = {
+      column_font_scale = {value = 1, valueType = "number"},
+      column_height = {value = 25, valueType = "number"},
+      row_font_scale = {value = 1, valueType = "number"},
+      row_height = {value = 20, valueType = "number"},
+      Disabled = {
+        value = "False",
+        valueType = "string",
+        acceptedValues = {"True", "False"}
+      },
+      DisableFocus = {
+        value = "False",
+        valueType = "string",
+        acceptedValues = {"True", "False"}
+      },
+      columns_names_visible = {
+        value = "True",
+        valueType = "string",
+        acceptedValues = {"True", "False"}
+      },
+      color_coded = {value = false, valueType = "boolean"}
+    }
+  }
+  addUIElement(element, arg5, sourceResource)
+  UI.DB[element].data.scrollbar = uiCreateScrollBar(arg2 - 8, UI.DB[element].properties.column_height.value + 3, 6, arg3 - UI.DB[element].properties.column_height.value - 5, theme.COLORS.scrollbar_default, tocolor(255, 255, 255, 0), false, element, tocolor(0, 0, 0, 0))
+  uiSetVisible(UI.DB[element].data.scrollbar, false)
+  return (element)
+end
+function uiGridListAddColumn(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListAddColumn' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(type(arg1) == "string", "Bad argument @ 'uiGridListAddColumn' [Expected string at argument 2, got " .. type(arg1) .. "]")
+  assert(type(arg2) == "number", "Bad argument @ 'uiGridListAddColumn' [Expected number at argument 3, got " .. type(arg2) .. "]")
+  table.insert(UI.DB[arg0].data.columns, {
+    text = arg1,
+    width = math.max(math.min(arg2, 1), 0)
+  })
+  return #UI.DB[arg0].data.columns
+end
+function uiGridListAddRow(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListAddRow' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.columns) do
+    table.insert({}, {
+      text = "",
+      height = math.min(math.max(UI.DB[arg0].dimensions.height - 2, 0), UI.DB[arg0].properties.row_height.value * SCALE_Y),
+      width = forvar6.width,
+      alignX = "left"
+    })
+  end
+  table.insert(UI.DB[arg0].data.rows, {})
+  if doesGridlistNeedScrollBar(arg0) then
+    if not uiGetVisible(UI.DB[arg0].data.scrollbar) then
+      uiSetVisible(UI.DB[arg0].data.scrollbar, true)
+      addEventHandler("onClientUIScroll", UI.DB[arg0].data.scrollbar, scrollGridList)
+    end
+  elseif uiGetVisible(UI.DB[arg0].data.scrollbar) then
+    removeEventHandler("onClientUIScroll", UI.DB[arg0].data.scrollbar, scrollGridList)
+    uiSetVisible(UI.DB[arg0].data.scrollbar, false)
+    scrollGridList(0, arg0)
+  end
+  UI.DB[arg0].data.row_f = findLastRow(arg0)
+  return #UI.DB[arg0].data.rows - 1
+end
+function scrollGridList(arg0, arg1)
+  if not isUIElement(arg1 or getElementParent(source), "gridlist") then
+    return
+  end
+  for forvar8 = 1, #UI.DB[arg1 or getElementParent(source)].data.rows do
+    if calcRowsHeight(arg1 or getElementParent(source)) / 100 * arg0 <= 2 + UI.DB[arg1 or getElementParent(source)].properties.column_height.value + UI.DB[arg1 or getElementParent(source)].data.rows[forvar8][1].height * (forvar8 - 1) then
+      UI.DB[arg1 or getElementParent(source)].data.row_i = forvar8
+      break
+    end
+  end
+  _FOR_.DB[arg1 or getElementParent(source)].data.row_f = findLastRow(arg1 or getElementParent(source))
+end
+function calcRowsHeight(arg0)
+  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows or {}) do
+  end
+  return 2 + forvar6[1].height
+end
+function findLastRow(arg0)
+  for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
+    if UI.DB[arg0].properties.column_height.value + 2 + UI.DB[arg0].data.rows[forvar5][1].height > UI.DB[arg0].dimensions.height then
+      return forvar5 - 1
+    end
+  end
+  return #_FOR_.DB[arg0].data.rows
+end
+function doesGridlistNeedScrollBar(arg0)
+  return UI.DB[arg0].properties.column_height.value + calcRowsHeight(arg0) > UI.DB[arg0].dimensions.height
+end
+function uiGridListRemoveRow(arg0, arg1)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListRemoveRow' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListRemoveRow' [There's no such row index]")
+  table.remove(UI.DB[arg0].data.rows, arg1 + 1)
+  if doesGridlistNeedScrollBar(arg0) then
+    if not uiGetVisible(UI.DB[arg0].data.scrollbar) then
+      uiSetVisible(UI.DB[arg0].data.scrollbar, true)
+      addEventHandler("onClientUIScroll", UI.DB[arg0].data.scrollbar, scrollGridList)
+    end
+  elseif uiGetVisible(UI.DB[arg0].data.scrollbar) then
+    removeEventHandler("onClientUIScroll", UI.DB[arg0].data.scrollbar, scrollGridList)
+    uiSetVisible(UI.DB[arg0].data.scrollbar, false)
+    scrollGridList(0, arg0)
+  end
+  UI.DB[arg0].data.row_f = findLastRow(arg0)
+  return true
+end
+function uiGridListRemoveColumn(arg0, arg1)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListRemoveColumn' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListRemoveColumn' [There's no such column index]")
+  table.remove(UI.DB[arg0].data.columns, arg1)
+  return true
+end
+function uiGridListClear(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListClear' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  UI.DB[arg0].data.rows = {}
+  UI.DB[arg0].data.selected_row = -1
+  scrollGridList(0, arg0)
+  return true
+end
+function uiGridListGetColumnCount(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetColumnCount' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  return #UI.DB[arg0].data.columns
+end
+function uiGridListGetRowCount(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetRowCount' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  return #UI.DB[arg0].data.rows
+end
+function uiGridListGetColumnText(arg0, arg1)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetColumnText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListGetColumnText' [There's no such column index]")
+  return UI.DB[arg0].data.columns[arg1].text
+end
+function uiGridListGetColumnColor(arg0, arg1)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetColumnColor' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListGetColumnColor' [There's no such column index]")
+  return dxGetColor(UI.DB[arg0].data.columns[arg1].color) or 255, 255, 255, 255
+end
+function uiGridListGetItemText(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetItemText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListGetItemText' [There's no such column index]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListGetItemText' [There's no such row index]")
+  return UI.DB[arg0].data.rows[arg1 + 1][arg2].text
+end
+function uiGridListGetItemData(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetItemData' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListGetItemData' [There's no such column index]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListGetItemData' [There's no such row index]")
+  return UI.DB[arg0].data.rows[arg1 + 1][arg2].data
+end
+function uiGridListGetSelectedItem(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetSelectedItem' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  if not UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row + 1] then
+    UI.DB[arg0].data.selected_row = -1
+  end
+  return UI.DB[arg0].data.selected_row
+end
+function uiGridListSetColumnText(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetColumnText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListSetColumnText' [There's no such column index]")
+  assert(type(arg2) == "string", "Bad argument @ 'uiGridListSetColumnText' [Expected string at argument 3, got " .. type(arg2) .. "]")
+  UI.DB[arg0].data.columns[arg1].text = arg2
+  return true
+end
+function uiGridListSetColumnColor(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetColumnColor' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListSetColumnColor' [There's no such column index]")
+  assert(type(arg2) == "number", "Bad argument @ 'uiGridListSetColumnColor' [Expected number at argument 3, got " .. type(arg2) .. "]")
+  UI.DB[arg0].data.columns[arg1].color = arg2
+  return true
+end
+function uiGridListSetItemText(arg0, arg1, arg2, arg3, arg4)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetItemText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetItemText' [There's no such row index]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListSetItemText' [There's no such column index]")
+  assert(type(arg3) == "string", "Bad argument @ 'uiGridListSetColumnText' [Expected string at argument 4, got " .. type(arg3) .. "]")
+  UI.DB[arg0].data.rows[arg1 + 1][arg2].text = arg3
+  UI.DB[arg0].data.rows[arg1 + 1][arg2].alignX = arg4 or "left"
+  return true
+end
+function uiGridListSetItemData(arg0, arg1, arg2, arg3)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetItemData' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetItemData' [There's no such row index]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListSetItemData' [There's no such column index]")
+  UI.DB[arg0].data.rows[arg1 + 1][arg2].data = arg3
+  return true
+end
+function uiGridListSetItemColor(arg0, arg1, arg2, arg3)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetItemColor' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetItemColor' [There's no such row index]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListSetItemColor' [There's no such column index]")
+  assert(type(arg3) == "number", "Bad argument @ 'uiGridListSetColumnColor' [Expected number at argument 4, got " .. type(arg3) .. "]")
+  UI.DB[arg0].data.rows[arg1 + 1][arg2].color = arg3
+  return true
+end
+function uiGridListGetItemColor(arg0, arg1, arg2)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetItemColor' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetItemColor' [There's no such row index]")
+  assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListSetItemColor' [There's no such column index]")
+  return dxGetColor(UI.DB[arg0].data.rows[arg1 + 1][arg2].color or tocolor(255, 255, 255, 255))
+end
+function uiGridListSetSelectedItem(arg0, arg1)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetSelectedItem' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  if arg1 ~= -1 then
+    assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetSelectedItem' [There's no such row index]")
+  end
+  UI.DB[arg0].data.selected_row = arg1
+  return true
+end
+UI.getDrawFunction["ui-gridlist"] = function(arg0)
+  hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
+  if dxGetColor(UI.DB[arg0].colors[1]) and dxGetColor(UI.DB[arg0].colors[1]) > 0 then
+    dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height, tocolor(dxGetColor(UI.DB[arg0].colors[1])), 5)
+  end
+  if 1 <= #UI.DB[arg0].data.columns then
+    for forvar17, forvar18 in ipairs(UI.DB[arg0].data.columns) do
+      ({})[forvar17] = UI.DB[arg0].dimensions.x
+      if UI.DB[arg0].properties.columns_names_visible.value == "True" then
+        dxDrawText(forvar18.text, UI.DB[arg0].dimensions.x + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI)
+      end
+    end
+    if UI.DB[arg0].properties.columns_names_visible.value == "True" then
+      dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, UI.DB[arg0].dimensions.width, 1.5, tocolor(255, 255, 255, 150), UI.postGUI)
+    end
+    if 1 <= #UI.DB[arg0].data.rows then
+      UI.DB[arg0].data.hovered_row = false
+      for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
+        for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
+          if UI.DB[arg0].data.selected_row == forvar19 - 1 and not false then
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(5, 125, 255, 155), UI.postGUI)
+            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
+              UI.DB[arg0].data.hovered_row = forvar19 - 1
+            end
+          elseif not isUIDisabled(arg0) and UI.HoveredElement == arg0 and forvar24 == 1 then
+            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
+              UI.DB[arg0].data.hovered_row = forvar19 - 1
+              if UI.DB[arg0].data.selected_row ~= forvar19 - 1 and forvar19 - 1 ~= forvar19 - 1 and not false then
+                dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(60, 60, 60, 100), UI.postGUI)
+              end
+            end
+          end
+          dxDrawText(forvar25.text, ({})[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), ({})[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, forvar25.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
+        end
+      end
+    end
+  end
+end
+function MouseWheel(arg0, arg1)
+  if not isUIElement(UI.HoveredElement, "gridlist") then
+    return
+  end
+  if isElement(UI.DB[UI.HoveredElement].data.scrollbar) then
+    uiScrollBarSetScrollPosition(UI.DB[UI.HoveredElement].data.scrollbar, (tonumber(UI.DB[UI.DB[UI.HoveredElement].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -1 or 1))
+  end
+end
+bindKey("mouse_wheel_up", "both", MouseWheel)
+bindKey("mouse_wheel_down", "both", MouseWheel)

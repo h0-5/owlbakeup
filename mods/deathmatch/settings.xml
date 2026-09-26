@@ -1,0 +1,7 @@
+<settings>
+	<setting name="@mysql.database" value="pdz" />
+    <setting name="@mysql.username" value="root" />
+    <setting name="@mysql.password" value="" />
+    <setting name="@mysql.hostname" value="127.0.0.1" />
+    <setting name="@mysql.port" value="3306" />
+</settings>

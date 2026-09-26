@@ -1,0 +1,107 @@
+<meta>
+
+	
+	
+	<!-- OwlGaming -->
+	<script src="OwlGaming/c_createObject.lua" type="client"/>
+    <script src="OwlGaming/s_cleanup.lua" type="server" />
+    <script src="OwlGaming/mapEditorScriptingExtension_s.lua" type="server"></script>
+    <script src="OwlGaming/mapEditorScriptingExtension_c.lua" type="client"></script>
+
+	
+	<map src="OwlGaming/fixes/missingwall_fix.map" dimension="0"></map>
+	<map src="OwlGaming/fixes/casper-wallace-project.map" dimension="0"></map>
+   	<map src="OwlGaming/fixes/kingis-exterior-fix-alptraum.map" dimension="0"></map>
+	<map src="OwlGaming/fixes/BRIDGE-MAP-FIX.map" dimension="0"></map>
+	<map src="OwlGaming/fixes/tokyotownflckz.map" dimension="0"></map>
+   	<script src="OwlGaming/fixes/swimmingPools.lua" type="client"/>
+
+   	<script src="OwlGaming/fixes/oci-office/c_oci_office.lua" type="client"/>
+	<file src="OwlGaming/fixes/oci-office/office.col"/>
+	<file src="OwlGaming/fixes/oci-office/office2.col"/>
+
+	<map src="OwlGaming/public/tolls.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-GasStations/Market-Gas-Station2.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-GasStations/Rodeo-Gas-Station.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-HousingProject/Studios-Additional.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-HousingProject/Studios-Extras.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-Sicily/Sicily.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-Hilltopfarm/Hilltopfarm.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-saints_blvd/saints_blvd.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-saints_blvd/STLAWERENCE_FENCES.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-CleaningC/CleaningC.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-GrooveStreetRemake/rp-highills1.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-WillowfieldTrailerPark/Willowfield-mc-clubhouse.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-BoatSalesDock/BoatDockOG.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-IrishBarLittleMoscow/ext-bar.map" dimension="0"></map>
+	<map src="OwlGaming/public/Ext-govcameras/rp-camprojectFINAL.map" dimension="0"></map>
+	<script src="OwlGaming/public/busstops.lua" type="server" />
+	<map src="OwlGaming/public/Ext-WillowfieldFences/wf_fences.map" />
+	<map src="OwlGaming/public/drag-map222.map" />
+	<map src="OwlGaming\public\DEPRECEATED\Ext-IdlewoodStack\idlewoodstack.map" />
+	
+
+	<map src="OwlGaming/interior/Int-UnitySewers\Sewers.map" dimension="655"></map>
+	<map src="OwlGaming/faction/LSIA/ext_lsia_exciter.map" dimension="0"></map>
+	<script src="OwlGaming/faction/LSIA/atctowerinteriors.lua" type="client" />
+
+	<map src="OwlGaming/faction/LSIA/int_LSA_1.map" dimension="1317"></map>
+	<map src="OwlGaming/faction/LSIA/int_LSA_2.map" dimension="2337"></map>
+	<map src="OwlGaming/faction/LSIA/int_LSA_term2.map" dimension="2340"></map>
+	<script src="OwlGaming/faction/SACMA/removeWorldObj.lua" type="client" />
+
+	<map src="OwlGaming/faction/prison/prison.map" dimension="0"></map>
+
+	<map src="OwlGaming/faction/SASD/PD-SD-Training-Grounds.map" dimension="0"></map>	
+	<map src="OwlGaming/faction/SASD/sahp-nogate.map" dimension="0"></map>	
+	<map src="OwlGaming/faction/SASD/SAHP-NoGates.map" dimension="0"></map>
+	<map src="OwlGaming/faction/SASD/pd-training-ground-ranch/pd-training-ground-ranch.map" dimension="0"></map>		
+	<map src="OwlGaming/faction/SASD/montgomery-precinct-Ext.map" dimension="0"></map>		
+
+
+	<map src="OwlGaming/faction/LSN/notrespasser.map" dimension="0"></map>
+	<map src="OwlGaming/faction/LSN/StarTower_TopFloor.map" dimension="0"></map>
+	<map src="OwlGaming/faction/LSN/Int-LSN.map" dimension="6"></map>
+
+	<map src="OwlGaming/faction/FD/FD.map" dimension="0"></map>
+	<map src="OwlGaming/faction/FD/FDparking.map" dimension="0"></map>
+	<map src="OwlGaming/faction/FD/CompleteHospitalInt.map" dimension="180"></map>
+
+	<map src="OwlGaming/faction/LSPD/LSPD-exterior.map" dimension="0"></map>
+	<map src="OwlGaming/faction/LSPD/detective.map" dimension="0"></map>
+	<map src="OwlGaming/faction/LSPD/lscsd.map" dimension="10"></map>
+	<script src="OwlGaming/faction/LSPD/s_lscsd.lua" type="server" />
+	<map src="OwlGaming/faction/LSPD/lspdinterior.map" dimension="10"></map>
+	<script src="OwlGaming/faction/LSPD/s_lspd.lua" type="server" />
+
+	<script src="OwlGaming/faction/towing/s_remove.lua" type="server" />
+	<map src="OwlGaming/faction/towing/RT_3_withoutgates.map" dimension="0"></map>
+
+	<map src="OwlGaming/faction/SAPT/SAPTReadyOwlMap.map" dimension="0"></map>
+
+	<map src="OwlGaming/faction/MontalvoConnection/cartelisland2.map" dimension="0"></map>
+	<map src="OwlGaming/faction/gov/int_CityHall.map" dimension="2695"></map>
+
+	<map src="OwlGaming/secondary/Ext-DonutDriftingMap/Ext-DonutDriftingMap.map" dimension="0"></map>
+	<map src="OwlGaming/secondary/tortuguilla/tortuguilla.map" dimension="0"></map>
+	<map src="OwlGaming/personal/einschtein/HotelParking.map" dimension="0"></map>
+	<map src="OwlGaming/personal/dfajoe/farm-map-adams.map"/>
+	<map src="OwlGaming/personal/Uzi/Ext-RodeoCasino.map"/>
+	<map src="OwlGaming/personal/saku446/Ext_1PasadenaBlvd.map"/>
+	<map src="OwlGaming/personal/jonthulhu/thefamilySHACK.map" dimension="0"></map>
+	<map src="OwlGaming/personal/LukeCorleon/flintcounty_farm.map" dimension="0"></map>
+	<map src="OwlGaming/personal/LukeCorleon/LukeCorleon_Finalbuild.map" dimension="0"></map>
+	<map src="OwlGaming/personal/Snipes/house.map" dimension="0"></map>
+	<map src="OwlGaming/personal/Crowex/House-annoying-garage-removal.map" dimension="0"></map>
+	<map src="OwlGaming/personal/Crowex/Crowex_RedCountyMansion.map" dimension="0"></map>
+	<map src="OwlGaming/personal/BrukONE/BrukONE-BlueberryFences.map" dimension="0"></map>
+	<map src="OwlGaming/personal/BrukONE/5_province_st_garage.map"/>
+	<map src="OwlGaming/personal/Exciter/bbhq.map"/>
+	<map src="OwlGaming/personal/Morris7878/Morris7878_PanopticonHillMansion.map" dimension="0"></map>
+	<map src="OwlGaming/personal/sloth/sloth_FlintCountyHilltopFarm.map" dimension="0"></map>
+	<map src="OwlGaming/personal/point45/point45_PalominoCreek.map" dimension="0"></map>
+	<map src="OwlGaming/personal/point45/palohouse-final.map" dimension="0"></map>
+	<map src="OwlGaming/personal/Pogis/Pogis_PalominoCreek21CleanStreet.map" dimension="0"></map>
+
+<min_mta_version client="1.3.0-9.03783"></min_mta_version>
+</meta>

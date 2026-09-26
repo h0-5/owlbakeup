@@ -1,0 +1,5 @@
+<meta>
+     <info author="iAnnas" type="script" version="1.1.0" description="You can state ur Advertising In this Panel" />
+     <script src="Advertising_c.lua" type="client" />
+     <script src="Advertising_s.lua" type="server" />
+</meta>

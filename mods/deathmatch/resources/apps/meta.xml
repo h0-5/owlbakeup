@@ -1,0 +1,17 @@
+<meta>
+	<info author="Maxime - OwlGaming MTA Server Development Team" type="script" description="Application System" />
+	<min_mta_version client="1.4.0" server="1.4.0" />
+	
+	<script src="app_manager_s.lua" type="server"/>
+	<script src="app_manager_c.lua" type="client"/>
+	
+	<script src="app_step1_s.lua" type="server"/>
+	<script src="app_step1_c.lua" type="client"/>
+	
+	<script src="app_step2_s.lua" type="server"/>
+	<script src="app_step2_c.lua" type="client"/>
+	
+	<script src="app_step3_s.lua" type="server"/>
+	<script src="app_step3_c.lua" type="client"/>
+	
+</meta>

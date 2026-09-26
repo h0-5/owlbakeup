@@ -233,8 +233,11 @@ function cancelBindsEvent(key, press)
 end
 
 function MainMenuKey()
-        -- 1:1 with the original: F1 works only after spawning into a character
-        if getElementData(localPlayer, "character:id") then
+        -- original gate is character:id (wnash RP core, not restored yet);
+        -- this server's account system sets SYNCED loggedin=1 on character
+        -- selection and 0 on quit — accept either so F1 works on both stacks
+        if getElementData(localPlayer, "character:id")
+                or getElementData(localPlayer, "loggedin") == 1 then
                 showSideBar(not state.state)
         end
 end
@@ -546,7 +549,12 @@ function UIKitReady()
                                 pcall(function() exports.roleplay:switchOutPlayer() end)
                         end
                         setTimer(function()
-                                triggerServerEvent("character:quit", localPlayer)
+                                if resRunning("roleplay") then
+                                        triggerServerEvent("character:quit", localPlayer)
+                                else
+                                        -- this server's account system: real change-character flow
+                                        triggerServerEvent("accounts:characters:change", localPlayer, "Change Character")
+                                end
                                 removeEventHandler("onClientKey", root, cancelBindsEvent)
                                 if resRunning("public") then
                                         pcall(function() exports.public:loading("character:quit", false) end)

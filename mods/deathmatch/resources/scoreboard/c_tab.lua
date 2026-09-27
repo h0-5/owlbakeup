@@ -75,7 +75,11 @@ local COLUMNS = {
 
 --[[ ==================== theme / fonts / textures ==================== ]]
 
-local ACCENT = { 56, 116, 255 }   -- the reference board's blue
+-- Fix #29 (user): the board follows the Maqsad reference panel - periwinkle
+-- accent (104,102,255) sampled from the reference shot, near-black indigo
+-- body, blue column headers, whole-row coloring, collapse chevron and the
+-- REAL server logo (vortex_logo.png) instead of the bare VV mark.
+local ACCENT = { 104, 102, 255 }   -- the reference board's periwinkle
 local function accent(a) return tocolor(ACCENT[1], ACCENT[2], ACCENT[3], a or 255) end
 
 local fontTitle, fontCol, fontRow
@@ -96,7 +100,7 @@ local function loadAssets()
                 badgeTex[name] = dxCreateTexture("icons/" .. name .. ".png", "dxt5", true, "clamp")
         end
         groupTex = dxCreateTexture("group.png", "argb", true, "clamp")
-        logoTex = dxCreateTexture("logo.png", "argb", true, "clamp") -- the white VV mark
+        logoTex = dxCreateTexture("vortex_logo.png", "argb", true, "clamp") -- the REAL server logo
         searchTex = dxCreateTexture("search.png", "argb", true, "clamp")
 end
 
@@ -164,6 +168,9 @@ local maxOnline = 0
 local searchOn = false
 local searchBuf = ""
 local searchBox = { x = 0, y = 0, w = 0, h = 0 }
+-- Fix #29: collapse chevron state (reference header button)
+local collapsed = false
+local chevronBox = { x = 0, y = 0, w = 0, h = 0 }
 
 -- per-player cached data (color, badges, rank, name, dim)
 local cache = {}
@@ -313,13 +320,26 @@ local function getRankColor(p, rankName)
         -- [Vortex] hidden AND off-duty staff read as plain players: the whole
         -- row goes white. Hidden also drops the rank title (see getRank).
         if isHidden(p) or isStaffOffDuty(p) then return PLAIN_COLOR end
-        -- the rank's own panel color wins over everything
+        -- Fix #29 (reference): donors read PURPLE, VCT/gold read CYAN-GREEN -
+        -- whole-row colors like the Maqsad board's VIP rows
+        if getElementData(p, "donation:nametag") == true then return tocolor(216, 112, 227, 255) end
+        local integ0 = getResourceFromName("integration")
+        if integ0 and getResourceState(integ0) == "running" then
+                local okG, isG = pcall(function() return exports.integration:isPlayerVCTMember(p) end)
+                if okG and isG then return tocolor(0, 243, 215, 255) end
+        end
+        return getRankColorRaw(p, rankName)
+end
+
+-- Fix #29: the RANK COLUMN keeps the rank's own color even when the player
+-- is off duty / plain (reference: the dimmed row still shows its orange
+-- rank text). No donor/VIP override here.
+function getRankColorRaw(p, rankName)
         local rc = getElementData(p, "rank:color")
         if type(rc) == "table" and rc[1] then
                 local r, g, b = clampSB(rc)
                 return tocolor(r, g, b, 255)
         end
-        -- fall back to the seeded ladder palette for the resolved title
         local lc = LADDER_COLOR[rankName]
         if lc then
                 local r, g, b = clampSB(lc)
@@ -370,7 +390,7 @@ end
 -- Fix #24: the old code used the WALL-CLOCK minute, which resets every
 -- hour and never matched real played time.
 local function getPlaytime(p)
-        if tonumber(getElementData(p, "loggedin")) ~= 1 then return "0h 00m" end
+        if tonumber(getElementData(p, "loggedin")) ~= 1 then return "0m 0s" end
         local hours = tonumber(getElementData(p, "hoursplayed")) or 0
         local tis = tonumber(getElementData(p, "timeinserver")) or 0
         local totalMin = hours * 60 + math.min(tis, 59)
@@ -383,9 +403,11 @@ local function refreshPlayer(p)
         cache[p] = {
                 rank = rank,
                 color = getRankColor(p, rank),
+                rankColor = getRankColorRaw(p, rank),
                 badges = getBadges(p),
                 dim = (tonumber(getElementData(p, "loggedin")) ~= 1) and 0.42
-                        or (getElementData(p, "afk") == true and 0.62 or 1),
+                        or (getElementData(p, "afk") == true and 0.62
+                        or (isStaffOffDuty(p) and 0.55 or 1)),
         }
 end
 
@@ -452,6 +474,11 @@ end
 
 addEventHandler("onClientClick", root, function(button, buttonState)
         if not state or button ~= "left" or buttonState ~= "down" then return end
+        -- Fix #29: collapse/expand chevron (reference header button)
+        if clickInRect(chevronBox.x, chevronBox.y, chevronBox.w, chevronBox.h) then
+                collapsed = not collapsed
+                return
+        end
         if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
                 searchOn = true
                 if not cursorOn then
@@ -525,11 +552,14 @@ local function cellData(colName, p, c, id)
         elseif colName == "Name" then
                 return getDisplayName(p, id), c.color
         elseif colName == "Rank" then
-                return c.rank, c.color
+                -- Fix #29: rank column = the rank's OWN color (no whitening on
+                -- hover, stays colored when off duty) like the reference
+                return c.rank, c.rankColor or c.color, nil, true
         elseif colName == "Playtime" then
-                return getPlaytime(p), tocolor(178, 187, 205, 235)
+                -- Fix #29: playtime + ping follow the ROW color like the ref
+                return getPlaytime(p), c.color
         elseif colName == "Ping" then
-                return tostring(getPlayerPing(p) or 0), pingColor(getPlayerPing(p))
+                return tostring(getPlayerPing(p) or 0), c.color
         end
         return "-", c.color
 end
@@ -570,7 +600,9 @@ local function drawHeader()
         searchBox.h = 32 * s
         searchBox.x = BOARD.x + (BOARD.w - searchBox.w) / 2
         searchBox.y = BOARD.y + (HEADER_H - searchBox.h) / 2 + 2 * s
-        drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(21, 25, 36, 255), true, searchBox.h / 2)
+        drawRoundRect(searchBox.x - 1, searchBox.y - 1, searchBox.w + 2, searchBox.h + 2,
+                tocolor(104, 102, 255, 70), true, (searchBox.h + 2) / 2)
+        drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(30, 23, 43, 255), true, searchBox.h / 2)
         if searchTex then
                 dxDrawImage(searchBox.x + 12 * s, searchBox.y + (searchBox.h - 14 * s) / 2, 14 * s, 14 * s,
                         searchTex, 0, 0, 0, tocolor(255, 255, 255, searchOn and 255 or 150), true)
@@ -598,18 +630,34 @@ local function drawHeader()
         dxDrawText("أعلى تواجد: " .. tostring(maxOnline), BOARD.x + BOARD.w * 0.55, BOARD.y + 36 * s,
                 rightEdge - 12 * s, BOARD.y + 62 * s,
                 tocolor(158, 167, 188, 240), 1, fontAR, "right", "center", true, false, true)
+
+        -- Fix #29: collapse chevron (reference) - click to fold the rows away
+        chevronBox.w = 22 * s
+        chevronBox.h = 16 * s
+        chevronBox.x = BOARD.x + BOARD.w - PAD_X - chevronBox.w
+        chevronBox.y = BOARD.y + 62 * s
+        local x0, y0 = chevronBox.x, chevronBox.y
+        local cw2, ch2 = chevronBox.w, chevronBox.h
+        local apexY = (not collapsed) and (y0 + 3 * s) or (y0 + ch2 - 3 * s)
+        local baseY = (not collapsed) and (y0 + ch2 - 3 * s) or (y0 + 3 * s)
+        dxDrawLine(x0, baseY, x0 + cw2 / 2, apexY, tocolor(191, 189, 195, 240), 1.6, true)
+        dxDrawLine(x0 + cw2 / 2, apexY, x0 + cw2, baseY, tocolor(191, 189, 195, 240), 1.6, true)
 end
 
 local function drawBoard()
         local list = filteredList()
 
         -- board body: dark rounded fill with a hairline outer border
+        -- Fix #29: near-black indigo fill + subtle navy border (reference)
+        local bodyH = collapsed and (HEADER_H + 12 * s) or BOARD.h
         local bw = 1 * s
-        drawRoundRect(BOARD.x - bw, BOARD.y - bw, BOARD.w + 2 * bw, BOARD.h + 2 * bw, tocolor(255, 255, 255, 14), true)
-        drawRoundRect(BOARD.x, BOARD.y, BOARD.w, BOARD.h, tocolor(9, 11, 17, 246), true)
+        drawRoundRect(BOARD.x - bw, BOARD.y - bw, BOARD.w + 2 * bw, bodyH + 2 * bw, tocolor(150, 150, 200, 26), true)
+        drawRoundRect(BOARD.x, BOARD.y, BOARD.w, bodyH, tocolor(5, 3, 9, 247), true)
 
         drawHeader()
 
+        -- Fix #29: collapsed mode = header only (chevron clicked)
+        if not collapsed then
         -- column header row
         local colY = BOARD.y + HEADER_H
         local cx = BOARD.x + PAD_X
@@ -617,7 +665,7 @@ local function drawBoard()
                 local cw = col.frac * CONTENT_W
                 if col.name ~= "" then
                         dxDrawText(col.name, cx, colY, cx + cw - 4 * s, colY + COL_H,
-                                tocolor(128, 138, 162, 235), 1, fontCol, "left", "center", true, false, true)
+                                tocolor(98, 96, 241, 235), 1, fontCol, "left", "center", true, false, true)
                 end
                 cx = cx + cw
         end
@@ -657,13 +705,16 @@ local function drawBoard()
                         end
                         local rowHover = (i == hoverRow) and hoverAnim or 0
 
-                        -- row background: local player and hovered rows get the
-                        -- lighter plate from the reference, plus a soft zebra
-                        local bgAlpha = rowHover * 22
-                        if isLocal then bgAlpha = math.max(bgAlpha, 12) end
-                        if i % 2 == 0 then bgAlpha = bgAlpha + 5 end
-                        if bgAlpha > 0.5 then
-                                drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(255, 255, 255, bgAlpha), true, 6 * s)
+                        -- row background: Fix #29 reference styling - clear zebra
+                        -- rows, the local row keeps a soft light plate and the
+                        -- hovered row goes DARKER with the accent bar
+                        local bgA = isLocal and 12 or 0
+                        if i % 2 == 0 then bgA = bgA + 9 end
+                        if bgA > 0.5 then
+                                drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(255, 255, 255, bgA), true, 6 * s)
+                        end
+                        if rowHover > 0.01 then
+                                drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(0, 0, 0, 110 * rowHover), true, 6 * s)
                         end
 
                         -- left accent bar: permanent on my row, slides in on hover
@@ -673,12 +724,12 @@ local function drawBoard()
                                         accent(barAlpha), true, 1.5 * s)
                         end
 
-                        local c = cache[p] or { color = tocolor(235, 240, 246, 255), badges = {}, rank = "-", dim = 1 }
+                        local c = cache[p] or { color = tocolor(235, 240, 246, 255), rankColor = tocolor(235, 240, 246, 255), badges = {}, rank = "-", dim = 1 }
                         local textShift = rowHover * 4 * s
                         local cellX = BOARD.x + PAD_X
                         for _, col in ipairs(COLUMNS) do
                                 local cw = col.frac * CONTENT_W
-                                local value, color, badges = cellData(col.name, p, c, pData.id)
+                                local value, color, badges, noWhiten = cellData(col.name, p, c, pData.id)
                                 if badges then
                                         for b = 1, #badges do
                                                 local tex = badgeTex[badges[b]]
@@ -694,13 +745,19 @@ local function drawBoard()
                                         local g2 = bitExtract(color, 8, 8)
                                         local b3 = bitExtract(color, 0, 8)
                                         local a3 = bitExtract(color, 24, 8) * (c.dim or 1)
-                                        -- hover whitens the text, dimming fades the whole row
-                                        local hc = tocolor(
-                                                math.floor(r2 + (255 - r2) * rowHover),
-                                                math.floor(g2 + (255 - g2) * rowHover),
-                                                math.floor(b3 + (255 - b3) * rowHover),
-                                                a3
-                                        )
+                                        -- Fix #29: hover whitens normal cells; the rank
+                                        -- column keeps its own color (noWhiten)
+                                        local hc
+                                        if noWhiten then
+                                                hc = tocolor(r2, g2, b3, a3)
+                                        else
+                                                hc = tocolor(
+                                                        math.floor(r2 + (255 - r2) * rowHover),
+                                                        math.floor(g2 + (255 - g2) * rowHover),
+                                                        math.floor(b3 + (255 - b3) * rowHover),
+                                                        a3
+                                                )
+                                        end
                                         dxDrawText(tostring(value), cellX + textShift, rowY,
                                                 cellX + cw - 4 * s + textShift, rowY + ROW_H,
                                                 hc, 1, fontRow, "left", "center", true, false, true)
@@ -717,6 +774,7 @@ local function drawBoard()
         end
 
         drawScrollbar()
+        end -- not collapsed
 end
 
 -- error-protected render entry point: reports the first draw error to chat
@@ -812,6 +870,7 @@ function getScoreboardTestTable()
                 isOnDuty = isOnDuty,
                 isStaffOffDuty = isStaffOffDuty,
                 canSeeAccounts = canSeeAccounts,
+                getRankColorRaw = getRankColorRaw,
                 LADDER = LADDER,
                 LADDER_COLOR = LADDER_COLOR,
         }

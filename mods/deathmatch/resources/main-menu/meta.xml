@@ -8,9 +8,7 @@
 
 	<file src="logo-circle.png" />
 
-	<!-- [Mod 2] rules + roleplay info for the F2 sections -->
-	<file src="rules.xml" />
-	<file src="whatisroleplaying.xml" />
+	<!-- [Fix #15] rules content moved into c_main.lua -->
 
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />

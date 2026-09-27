@@ -316,13 +316,16 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
         local rowH = (rowCell1 and rowCell1.height) or 20
         local rowY = UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i)
         if UI.DB[arg0].data.selected_row == forvar19 - 1 then
-          -- short, soft fade: 40 -> 110 over ~180ms (calm, not flashy)
+          -- [Vortex fix #15] the band is drawn ONCE per row (fix #14 killed the
+          -- per-cell overdraw), so it can be stronger without drowning the text:
+          -- fade 60 -> 170 over ~140ms = clearly "prominent + white" on the
+          -- promote/demote rank lists, text stays forced white and readable.
           local selTick = UI.DB[arg0].data.selection_tick
-          local selAlpha = 110
+          local selAlpha = 170
           if selTick then
             local selDT = getTickCount() - selTick
-            if selDT < 180 then
-              selAlpha = math.floor(40 + (110 - 40) * (selDT / 180))
+            if selDT < 140 then
+              selAlpha = math.floor(60 + (170 - 60) * (selDT / 140))
             end
           end
           dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)

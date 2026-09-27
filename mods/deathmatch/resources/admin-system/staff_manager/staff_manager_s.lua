@@ -522,6 +522,27 @@ local function refresh(player)
         end
 end
 
+-- [Fix #15] rank changes are PUBLIC chat logs. Format follows the classic
+-- admin-bot line: "[STAFF]: Hade promoted 'BO5' to Head Management."
+-- green = promotion, red = demotion/removal, visible to everyone.
+local function actorName()
+        if isElement(client) and getElementType(client) == "player" then
+                return getElementData(client, "account:username")
+                        or getPlayerName(client) or "?"
+        end
+        return "System"
+end
+
+local function broadcastRankChange(action, target, toRank, isNegative)
+        local line = "[STAFF]: " .. actorName() .. " " .. action .. " '" .. tostring(target) .. "'"
+                .. (toRank and (" to " .. tostring(toRank)) or "") .. "."
+        if isNegative then
+                outputChatBox(line, root, 255, 90, 90)
+        else
+                outputChatBox(line, root, 70, 200, 30)
+        end
+end
+
 -- add a staff member to a rank
 addEvent("rpadmin:addNewAdmin", true)
 addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelName)
@@ -568,6 +589,9 @@ addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelNam
         addChangelog(changeType, user.username, oldName, tostring(levelName or "-"))
         outputChatBox("Staff updated: " .. user.username .. " -> " .. tostring(levelName)
                 .. " (" .. changeType .. ")", client, 0, 255, 0)
+        -- [Fix #15] public chat log of the rank change
+        broadcastRankChange(changeType == "Demotion" and "demoted" or "promoted",
+                user.username, tostring(levelName or "-"), changeType == "Demotion")
         refresh(client)
         -- Vortex bridge: push the new rank onto the target immediately if online
         if type(refreshPlayerRank) == "function" then
@@ -609,6 +633,8 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(user.id))
         addChangelog("Demotion", user.username, oldName, "Player")
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
+        -- [Fix #15] public chat log of the removal
+        broadcastRankChange("removed", user.username, false, true)
         refresh(client)
         -- Vortex bridge: drop the target's live rank data if online
         if type(refreshPlayerRank) == "function" then
@@ -666,7 +692,10 @@ end)
 -- rename a rank
 addEvent("rpadmin:changeAdminLevelName", true)
 addEventHandler("rpadmin:changeAdminLevelName", root, function(levelID, newName)
-        if not hasEditRanks(client) then return end
+        if not hasEditRanks(client) then
+                outputChatBox("You don't have permission to edit ranks.", client, 255, 80, 80)
+                return
+        end
         if not tonumber(levelID) or not newName or newName == "" then return end
         local row = mysql:query_fetch_assoc("SELECT LevelName FROM staff_roles WHERE ID="
                 .. tonumber(levelID))
@@ -681,7 +710,10 @@ end)
 -- sends the CHECKED rights set and the original replaced the stored set
 -- with exactly that, so both paths share one implementation.
 local function updateRoleImpl(sender, levelID, rights, color)
-        if not hasEditRanks(sender) then return end
+        if not hasEditRanks(sender) then
+                outputChatBox("You don't have permission to edit ranks.", sender, 255, 80, 80)
+                return
+        end
         if not tonumber(levelID) then return end
         levelID = tonumber(levelID)
         local row = mysql:query_fetch_assoc("SELECT LevelName FROM staff_roles WHERE ID=" .. levelID)

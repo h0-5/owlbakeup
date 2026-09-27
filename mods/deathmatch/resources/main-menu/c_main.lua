@@ -67,10 +67,11 @@ local SECTIONS = {
         { id = "character_info", en = "Personal Info",  ar = "المعلومات الشخصية",  icon = "icons/menu_person.png" },
         { id = "onlinestaff",    en = "Online Staff",   ar = "الإدارة المتصلة",    icon = "icons/menu_shield.png" },
         { id = "leaderboard",    en = "Leaderboard",    ar = "المتصدرين",          icon = "icons/menu_trophy.png" },
-        -- [Mod 2] F2 sections: reports + rules + help, ABOVE link discord
-        { id = "reports",        en = "Reports",        ar = "البلاغات",           icon = "icons/reportpanel.png" },
+        -- [Fix #15] F2 sections: rules (categorized pages) then reports,
+        -- ABOVE link discord. The "help request" section was removed entirely
+        -- (user request) — its content folded into the rules pages.
         { id = "rules",          en = "Server Rules",   ar = "القوانين",           icon = "icons/verified.png" },
-        { id = "help",           en = "Help Center",    ar = "طلب المساعدة",       icon = "icons/heart.png" },
+        { id = "reports",        en = "Reports",        ar = "البلاغات",           icon = "icons/reportpanel.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/menu_chat.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
 }
@@ -194,7 +195,8 @@ end
 --[[ ============================== drawing ============================== ]]
 
 local logoTex = dxCreateTexture("logo-circle.png", "argb", true, "clamp")
-local logoTextTex = dxCreateTexture("images/logo_text.png", "argb", true, "clamp")
+-- [Fix #15] dead texture removed: images/logo_text.png does not exist, so the
+-- old line only produced a dx warning on every start
 local bgGradient = false
 if fileExists(":UIKit/images/gradient_x.png") then
         bgGradient = dxCreateTexture(":UIKit/images/gradient_x.png", "argb", true, "clamp")
@@ -216,23 +218,26 @@ function main_menu_draw()
         if state.sideX > 0 then
                 dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), true)
         end
-        -- [Mod 2] branding strip: big centered logo, then "Vortex" written
-        -- vertically (cursive pricedown, rotated 90 = reads top->bottom)
+        -- [Fix #15] branding strip: big centered logo (the crown of the
+        -- wordmark) + a BIGGER SILVER "Vortex" written vertically reading
+        -- BOTTOM -> TOP (rotation 270: the V sits at the bottom and the
+        -- letters rise up), exactly as wide as the logo.
         if logoTex and state.sideX > 60 then
                 local bigX = (state.sideX - LOGO_SIZE) / 2
                 local bigY = 26 * SCALE_Y
                 dxDrawImage(bigX, bigY, LOGO_SIZE, LOGO_SIZE, logoTex, 0, 0, 0, tocolor(255, 255, 255, 215), true)
-                local wordScale = 1.35 * SCALE_Y
-                local wordW = 64 * SCALE_Y
-                local wordH = 250 * SCALE_Y
+                local wordScale = 2.3 * SCALE_Y
+                local wordW = LOGO_SIZE
+                local wordH = 470 * SCALE_Y
                 local wordX = (state.sideX - wordW) / 2
-                local wordY = bigY + LOGO_SIZE + 40 * SCALE_Y
-                local wordColor = tocolor(255, 255, 255, 235)
-                local shadowColor = tocolor(94, 76, 252, 120)
+                local wordY = bigY + LOGO_SIZE + 34 * SCALE_Y
+                -- dark drop first, silver body, light sheen on top
                 dxDrawText("Vortex", wordX + 2, wordY + 2, wordX + wordW + 2, wordY + wordH + 2,
-                        shadowColor, wordScale, "pricedown", "center", "center", false, false, true, false, false, 90)
+                        tocolor(12, 8, 34, 150), wordScale, "pricedown", "center", "center", false, false, true, false, false, 270)
                 dxDrawText("Vortex", wordX, wordY, wordX + wordW, wordY + wordH,
-                        wordColor, wordScale, "pricedown", "center", "center", false, false, true, false, false, 90)
+                        tocolor(206, 210, 226, 255), wordScale, "pricedown", "center", "center", false, false, true, false, false, 270)
+                dxDrawText("Vortex", wordX - 1, wordY - 1, wordX + wordW - 1, wordY + wordH - 1,
+                        tocolor(255, 255, 255, 70), wordScale, "pricedown", "center", "center", false, false, true, false, false, 270)
         end
 end
 
@@ -425,23 +430,35 @@ function UIKitReady()
         UI.edit.report_target = eui:uiCreateEdit(30 + (contentW - 60) * 0.5, 78, (contentW - 60) * 0.5, 32,
                 "", "اسم اللاعب / رقمه", tocolor(9, 12, 17, 235), UI.container.reports)
         eui:uiSetProperty(UI.edit.report_target, "UnderLineVisible", "False")
+        -- [Fix #15] the reports rules are visible where the player types
+        local reportHint = eui:uiCreateLabel(30 + (contentW - 60) * 0.5, 116, (contentW - 60) * 0.5, 44,
+                { en = "Minimum 15 words - one report every 5 minutes",
+                  ar = "الحد الأدنى 15 كلمة — وبلاغ واحد كل 5 دقائق" },
+                tocolor(255, 195, 15, 160), "left", "top", UI.container.reports)
+        eui:uiSetProperty(reportHint, "word_break", true)
 
         UI.memo.report_text = eui:uiCreateMemo(30, 170, contentW - 60, contentH - 170 - 92,
                 "", tocolor(255, 255, 255, 255), UI.container.reports)
-        UI.label.report_counter = eui:uiCreateLabel(30, contentH - 84, 220, 24, "0 / 150",
+        UI.label.report_counter = eui:uiCreateLabel(30, contentH - 84, 240, 24, "0 / 15 كلمة",
                 tocolor(46, 213, 115, 255), "left", "center", UI.container.reports)
         UI.button.report_submit = eui:uiCreateButton(contentW - 30 - 190, contentH - 84, 190, 42,
                 { en = "Send Report", ar = "إرسال البلاغ" }, "primary", UI.container.reports)
         eui:uiSetProperty(UI.button.report_submit, "TextColor", tocolor(255, 255, 255, 255))
         eui:uiSetProperty(UI.button.report_submit, "HoverTextColor", tocolor(255, 255, 255, 255))
         eui:uiSetProperty(UI.button.report_submit, "HoverGlow", true)
+        -- [Fix #15] live countdown for the 5-minute cooldown
+        UI.label.report_cd = eui:uiCreateLabel(contentW - 30 - 190 - 250, contentH - 84, 240, 24, "",
+                tocolor(255, 195, 15, 255), "right", "center", UI.container.reports)
 
         if not UI._mod2WiredText then
         UI._mod2WiredText = true
 addEventHandler("onClientUITextChange", root, function()
                 if source == UI.memo.report_text and isElement(UI.label.report_counter) then
-                        local len = #tostring(eui:uiGetText(UI.memo.report_text) or "")
-                        eui:uiSetText(UI.label.report_counter, len .. " / 150")
+                        -- [Fix #15] live WORD counter against the 15-word minimum
+                        local text = tostring(eui:uiGetText(UI.memo.report_text) or "")
+                        local words = 0
+                        for _ in text:gmatch("%S+") do words = words + 1 end
+                        eui:uiSetText(UI.label.report_counter, words .. " / 15 كلمة")
                 end
         end)
         end
@@ -450,105 +467,177 @@ addEventHandler("onClientUITextChange", root, function()
         UI._mod2WiredReport = true
 addEventHandler("onClientUIClick", root, function()
                 if source ~= UI.button.report_submit then return end
+                if not (UI.memo.report_text and isElement(UI.memo.report_text)) then return end
                 local text = tostring(eui:uiGetText(UI.memo.report_text) or "")
                 local typeIdx = (tonumber(eui:uiComboBoxGetSelected(UI.combobox.report_type)) or 0) + 1
-                if text:len() < 10 then
-                        notify({ en = "Report is too short (min 10 chars)", ar = "البلاغ قصير جداً (10 أحرف على الأقل)" }, 3000, "error")
+                -- [Fix #15] word-based validation (the server enforces the same
+                -- rules authoritatively - see report-system s_reports.lua)
+                local words = 0
+                for _ in text:gmatch("%S+") do words = words + 1 end
+                if words < 15 then
+                        notify({ en = "Report rejected: write at least 15 words (" .. words .. "/15)",
+                                 ar = "تم رفض البلاغ: اكتب 15 كلمة على الأقل (" .. words .. "/15)" }, 3500, "error")
                         eui:uiLabelApplyShakeAnimation(UI.label.report_counter, tocolor(255, 65, 65, 255))
                         return
                 end
-                if text:len() > 150 then
-                        notify({ en = "Report is too long (max 150 chars)", ar = "البلاغ طويل جداً (150 حرفاً كحد أقصى)" }, 3000, "error")
+                if text:len() > 300 then
+                        notify({ en = "Report is too long (max 300 chars)", ar = "البلاغ طويل جداً (300 حرفاً كحد أقصى)" }, 3500, "error")
                         eui:uiLabelApplyShakeAnimation(UI.label.report_counter, tocolor(255, 65, 65, 255))
+                        return
+                end
+                local remainMs = (UI.reportCooldownUntil or 0) - getTickCount()
+                if remainMs > 0 then
+                        local s = math.ceil(remainMs / 1000)
+                        notify({ en = "You can open a new report in " .. math.floor(s / 60) .. ":" .. string.format("%02d", s % 60),
+                                 ar = "يمكنك فتح بلاغ جديد بعد " .. math.floor(s / 60) .. ":" .. string.format("%02d", s % 60) }, 3500, "warning")
                         return
                 end
                 local target = resolveReportTarget(tostring(eui:uiGetText(UI.edit.report_target) or ""))
                 triggerServerEvent("clientSendReport", localPlayer, target or localPlayer, text, typeIdx)
+                -- 5-minute cooldown with a live countdown on the panel itself
+                UI.reportCooldownUntil = getTickCount() + 300000
+                if UI.reportCdTimer and isTimer(UI.reportCdTimer) then killTimer(UI.reportCdTimer) end
+                UI.reportCdTimer = setTimer(function()
+                        if not (UI.label.report_cd and isElement(UI.label.report_cd)) then return end
+                        local ms = (UI.reportCooldownUntil or 0) - getTickCount()
+                        if ms > 0 then
+                                local s = math.ceil(ms / 1000)
+                                eui:uiSetText(UI.label.report_cd, "بلاغ جديد بعد " .. math.floor(s / 60) .. ":" .. string.format("%02d", s % 60))
+                        else
+                                eui:uiSetText(UI.label.report_cd, "")
+                        end
+                end, 1000, 305)
                 eui:uiSetText(UI.memo.report_text, "")
-                eui:uiSetText(UI.label.report_counter, "0 / 150")
+                eui:uiSetText(UI.label.report_counter, "0 / 15 كلمة")
                 notify({ en = "Report sent to the staff team", ar = "تم إرسال البلاغ إلى الإدارة" }, 4000, "success")
         end)
         end
 
         --[[ ------------------ rules ------------------ ]]
 
-        -- [Mod 2] dedicated rules design: the full server rules rendered in the
-        -- Vortex panel (same text the old login flow used, now always reachable)
-        local rulesText = ""
-        local rulesXml = xmlLoadFile("rules.xml")
-        if rulesXml then
-                rulesText = tostring(xmlNodeGetValue(rulesXml) or "")
-                xmlUnloadFile(rulesXml)
-        end
+        -- [Fix #15] the laws section rebuilt: categorized PAGES with the same
+        -- card design as the other sections (the raw white memo is gone).
+        -- Categories on the left rail act as pages; the last page lists the
+        -- server commands grouped by classification.
+
         eui:uiCreateLabel(30, 50, contentW - 60, 24,
                 { en = "Read the rules carefully - breaking them is punishable", ar = "اقرأ القوانين بعناية - مخالفتها عرضة للعقوبة" },
                 tocolor(255, 255, 255, 150), "center", "center", UI.container.rules)
-        UI.memo.rules = eui:uiCreateMemo(30, 82, contentW - 60, contentH - 100,
-                rulesText, tocolor(255, 255, 255, 255), UI.container.rules)
 
-        --[[ ------------------ help ------------------ ]]
-
-        -- [Mod 2] dedicated help center: what is roleplay + quick actions
-        local rpText = ""
-        local rpXml = xmlLoadFile("whatisroleplaying.xml")
-        if rpXml then
-                rpText = tostring(xmlNodeGetValue(rpXml) or "")
-                xmlUnloadFile(rpXml)
-        end
-        local helpCardW = (contentW - 40) * 0.55
-        eui:uiCreateLabel(30, 50, helpCardW, 24, { en = "What is roleplay?", ar = "ما هو الرول بلاي؟" },
-                tocolor(255, 255, 255, 160), "left", "center", UI.container.help)
-        UI.memo.help_rp = eui:uiCreateMemo(30, 82, helpCardW, contentH - 100,
-                rpText, tocolor(255, 255, 255, 255), UI.container.help)
-
-        local helpX = 30 + helpCardW + 10
-        local helpW = contentW - 30 - helpX
-        local helpCardH = (contentH - 100 - 20) / 3
-        local helpCards = {
-                { key = "report",  icon = "icons/reportpanel.png",     en = "Ask the staff for help",   ar = "اطلب المساعدة من الإدارة" },
-                { key = "staff",   icon = "icons/menu_shield.png",     en = "See the online staff",     ar = "الإدارة المتصلة الآن" },
-                { key = "discord", icon = "icons/discord.png",         en = "Join our Discord",         ar = "الديسكورد الرسمي" },
+        local RULES_CATEGORIES = {
+                { id = "golden", ar = "القاعدة الذهبية", rules = {
+                        { "الاحترام أولاً", "عامل الناس كما تحب أن تعامل. الإهانة أو التنمر أو الكلام العنصري يعرضك للعقوبة مهما كان سببك." },
+                        { "ساعد الجدد", "مساعدة اللاعبين الجدد في السيرفر من أجمل ما يميز المجتمع، وكن عضواً إيجابياً فيه." },
+                        { "الحس السليم", "استخدم الحس السليم أثناء اللعب وتذكر أن الجميع هنا ليتسلى ويرتاح." },
+                } },
+                { id = "account", ar = "قواعد الحساب", rules = {
+                        { "حساب واحد فقط", "ممنوع استخدام أكثر من حساب واحد على السيرفر. تثبيت أكثر من حساب يؤدي إلى حظر دائم مع حق النداء في الديسكورد." },
+                        { "نقل الأصول", "نقل الأموال أو المركبات أو العقارات بين الشخصيات ممنوع إلا للمشتركين المميزين، ومخالفته تعني إعادة ضبط كامل للشخصيات." },
+                        { "الدعاية", "إرسال روابط أو الحديث عن سيرفرات أو مجتمعات أو عصابات أخرى داخل اللعبة ممنوع منعاً باتاً." },
+                        { "انتحال الأسماء", "انتحال اسم لاعب آخر أو تمثيل دور أحد الإداريين ممنوع ويعرضك لعقوبات قاسية." },
+                } },
+                { id = "bugs", ar = "الأخطاء والعملات", rules = {
+                        { "استغلال البق", "استغلال أي خطأ برمجي (تكرار فلوس أو مركبات أو أغراض) ممنوع. إن وجدت خطأ أبلغ عنه فوراً عبر البلاغات، وإخفاؤه واستغلاله يعرضك للحظر وإعادة ضبط الحساب." },
+                        { "العملات", "عملات الشخصية (فلوس ومركبات وعقارات) منفصلة عن عملاتك الشخصية. تبادلها بين الواقع واللعبة ممنوع ويؤدي إلى إعادة ضبط الشخصيات." },
+                } },
+                { id = "game", ar = "قواعد اللعبة", rules = {
+                        { "القتل العشوائي DM", "قتل أي لاعب بدون سبق رول بلاي واضح ممنوع، والانتقام القتل (العودة لقتل من قتلك في مشهد جديد) يدخل تحت نفس القاعدة." },
+                        { "القفز الأرنب", "القفز المتواصل (Bunny Hop) للتسرع بالحركة غير واقعي وممنوع." },
+                        { "الغياب AFK", "الغياب في الأماكن العامة ممنوع. إن أردت الغياب فاذهب لمنزلك أو مكان هادئ، والغياب الطويل بمكان عام يعرضك للطرد أو الحظر." },
+                        { "كسر القانون", "إن شاهدت أحداً يكسر القوانين فأبلغ عنه عبر البلاغات ولا تكسر القانون بدوره، المخالفة تبقى مخالفة." },
+                } },
+                { id = "rp", ar = "الرول بلاي", rules = {
+                        { "الميتا جيمنج MG", "استخدام معلومات من خارج اللعبة (الديسكورد أو الشات b و t) داخل الرول بلاي ممنوع، شخصيتك تعرف فقط ما جرى أمامها." },
+                        { "الباور جيمنج PG", "الأفعال الخارقة عن الواقع أو التصرف بغير منطق الحياة الواقعية (كالرقص بلا سبب في الشارع) ممنوع." },
+                        { "حذف الشخصية CK", "CK هو حذف الشخصية نهائياً والبدء بشخصية جديدة، ومن أسبابه دخول الفاشن وأخذ أمواله والهروب أو القتل المتكرر للشخصيات." },
+                        { "الرسائل الخاصة", "الرسائل الخاصة بين اللاعبين مسموحة ما لم تزعج المتلقي، وما يخص المشاكل والبلاغات يفتح عبر نظام البلاغات فقط." },
+                } },
+                { id = "commands", ar = "الأوامر والمفاتيح", rules = {
+                        { "المفاتيح", "F1: القائمة الرئيسية والمعلومات الشخصية.  F2: البلاغات والقوانين." },
+                        { "أوامر البلاغات", "/report لفتح بلاغ للإدارة (15 كلمة على الأقل وبلاغ واحد كل 5 دقائق).  /er لإغلاق بلاغك." },
+                        { "أوامر عامة", "/menu لفتح القائمة الرئيسية.  /staffs لعرض الهيئة الإدارية المتصلة." },
+                        { "أوامر الإدارة", "/staffs لوحة إدارة الهيئة.  /staffdb فحص قاعدة بيانات الهيئة.  /cka و /ckd لقبول أو رفض طلبات CK." },
+                } },
         }
-        for i, card in ipairs(helpCards) do
-                local cardY = 82 + (i - 1) * (helpCardH + 10)
-                local rect = eui:uiCreateRectangle(helpX, cardY, helpW, helpCardH,
-                        tocolor(9, 12, 17, 200), true, true, true, true, UI.container.help)
-                eui:uiCreateImage(14, helpCardH / 2 - 17, 34, 34, card.icon, rect)
-                eui:uiCreateLabel(60, 0, helpW - 70, helpCardH, { en = card.en, ar = card.ar },
-                        tocolor(255, 255, 255, 255), "left", "center", rect)
-                UI.rectangle["help_" .. card.key] = rect
+
+        local railW, railY, railH, railGap = 185, 88, 36, 8
+        local rulesPageX = 30 + railW + 12
+        local rulesPageW = contentW - 30 - rulesPageX
+        local rulesPageH = contentH - railY - 12
+        UI.rectangle.rules_pages = {}
+        UI.button.rules_cat = {}
+        for ci, cat in ipairs(RULES_CATEGORIES) do
+                local by = railY + (ci - 1) * (railH + railGap)
+                local btn = eui:uiCreateButton(30, by, railW, railH, { en = cat.ar, ar = cat.ar },
+                        tocolor(9, 12, 17, 210), UI.container.rules)
+                eui:uiSetProperty(btn, "TextColor", tocolor(255, 255, 255, 210))
+                eui:uiSetProperty(btn, "HoverTextColor", tocolor(255, 255, 255, 255))
+                UI.button.rules_cat[cat.id] = btn
+
+                -- the page: one card per rule, sized to fit without scrolling
+                local page = eui:uiCreateContainer(0, 0, contentW, contentH, UI.container.rules)
+                eui:uiSetVisible(page, false)
+                UI.rectangle.rules_pages[cat.id] = page
+                local n = #cat.rules
+                local cardH = math.floor((rulesPageH - 6 - (n - 1) * 8) / n)
+                for ri, rule in ipairs(cat.rules) do
+                        local cy = 6 + (ri - 1) * (cardH + 8)
+                        local card = eui:uiCreateRectangle(rulesPageX, cy, rulesPageW, cardH,
+                                tocolor(9, 12, 17, 205), true, true, true, true, page)
+                        -- purple accent bar on the card's left edge
+                        eui:uiCreateRectangle(rulesPageX, cy, 3, cardH,
+                                eui:uiGetThemeColor("primary"), false, false, false, false, card)
+                        eui:uiCreateLabel(58, 8, rulesPageW - 70, 22,
+                                tostring(ri) .. ".  " .. rule[1],
+                                eui:uiGetThemeColor("primary"), "left", "top", card)
+                        local body = eui:uiCreateLabel(58, 32, rulesPageW - 70, cardH - 40, rule[2],
+                                tocolor(255, 255, 255, 205), "left", "top", card)
+                        eui:uiSetProperty(body, "word_break", true)
+                        eui:uiSetProperty(body, "clip", true)
+                end
         end
 
-        if not UI._mod2WiredHelp then
-        UI._mod2WiredHelp = true
+        -- page switching: accent the active category, show its page
+        function UI.showRulesPage(catId)
+                for cid, page in pairs(UI.rectangle.rules_pages or {}) do
+                        eui:uiSetVisible(page, cid == catId)
+                end
+                for cid, btn in pairs(UI.button.rules_cat or {}) do
+                        pcall(eui.uiSetProperty, eui, btn, "TextColor",
+                                cid == catId and tocolor(160, 150, 255, 255) or tocolor(255, 255, 255, 210))
+                end
+        end
+        UI.showRulesPage("golden")
+
+        if not UI._mod2WiredRules then
+        UI._mod2WiredRules = true
 addEventHandler("onClientUIClick", root, function()
-                if source == UI.rectangle.help_report then
-                        for i, section in ipairs(SECTIONS) do
-                                if section.id == "reports" then eui:uiMenuSetSelectedRow(menu, i) end
+                for cid, btn in pairs(UI.button.rules_cat or {}) do
+                        if source == btn and UI.showRulesPage then
+                                UI.showRulesPage(cid)
+                                return
                         end
-                elseif source == UI.rectangle.help_staff then
-                        for i, section in ipairs(SECTIONS) do
-                                if section.id == "onlinestaff" then eui:uiMenuSetSelectedRow(menu, i) end
-                        end
-                elseif source == UI.rectangle.help_discord then
-                        setClipboard(LINKS.discord)
-                        notify({ en = "Discord link copied", ar = "تم نسخ رابط الديسكورد" }, 3000, "success")
                 end
         end)
         end
 
         --[[ ------------------ character_info ------------------ ]]
 
-        UI.tabpanel[1] = eui:uiCreateTabPanel(10, 110, contentW - 20, 320, "",
+        -- [Fix #15] the tab bar was drawn with alpha 0 (INVISIBLE switcher -
+        -- nobody could tell vehicles/houses tabs existed) and the panel was
+        -- too short for its content. Visible tabs + real height now.
+        local infoPanelH = contentH - 130
+        UI.tabpanel[1] = eui:uiCreateTabPanel(10, 110, contentW - 20, infoPanelH, "",
                 tocolor(0, 0, 0, 0), UI.container.character_info)
-        eui:uiSetProperty(UI.tabpanel[1], "tabs_bar_color", tocolor(29, 32, 37, 0))
-        eui:uiSetProperty(UI.tabpanel[1], "tab_selected_color", tocolor(9, 12, 17, 220))
-        eui:uiSetProperty(UI.tabpanel[1], "tab_height", 60)
-        eui:uiSetProperty(UI.tabpanel[1], "tab_hovered_color", tocolor(9, 12, 17, 100))
+        eui:uiSetProperty(UI.tabpanel[1], "tabs_bar_color", tocolor(6, 9, 14, 170))
+        eui:uiSetProperty(UI.tabpanel[1], "tab_color", tocolor(19, 22, 27, 160))
+        eui:uiSetProperty(UI.tabpanel[1], "tab_selected_color", tocolor(9, 12, 17, 250))
+        eui:uiSetProperty(UI.tabpanel[1], "tab_hovered_color", tocolor(30, 34, 44, 190))
+        eui:uiSetProperty(UI.tabpanel[1], "tab_height", 46)
 
         UI.tab[1] = eui:uiCreateTab({ en = "Info", ar = "المعلومات" }, "", UI.tabpanel[1])
         local infoW = (contentW - 40) * 0.7
-        local infoH = winH - 10 - 210
+        local infoH = infoPanelH - 40
         local cardColor = tocolor(9, 12, 17, 180)
         local rectInfoLeft = eui:uiCreateRectangle(5, 25, infoW, infoH, cardColor,
                 true, true, true, true, UI.tab[1])
@@ -585,7 +674,7 @@ addEventHandler("onClientUIClick", root, function()
         UI.tab[2] = eui:uiCreateTab({ en = "Vehicles", ar = "المركبات" }, "", UI.tabpanel[1])
         UI.label.vehicles = eui:uiCreateLabel(10, 10, 340, 20, "",
                 tocolor(255, 255, 255, 255), "left", "top", UI.tab[2])
-        UI.gridlist.vehicles = eui:uiCreateGridList(0, 40, contentW - 20, winH - 10 - 220,
+        UI.gridlist.vehicles = eui:uiCreateGridList(0, 40, contentW - 20, infoPanelH - 48,
                 tocolor(10, 10, 10, 0), UI.tab[2])
         eui:uiGridListAddColumn(UI.gridlist.vehicles, "ID", 0.2)
         eui:uiGridListAddColumn(UI.gridlist.vehicles, "Name", 0.65)
@@ -597,7 +686,7 @@ addEventHandler("onClientUIClick", root, function()
         UI.tab[3] = eui:uiCreateTab({ en = "Interiors", ar = "البيوت والمحلات" }, "", UI.tabpanel[1])
         UI.label.interiors = eui:uiCreateLabel(10, 10, 340, 20, "",
                 tocolor(255, 255, 255, 255), "left", "top", UI.tab[3])
-        UI.gridlist.interiors = eui:uiCreateGridList(0, 40, contentW - 20, winH - 10 - 220,
+        UI.gridlist.interiors = eui:uiCreateGridList(0, 40, contentW - 20, infoPanelH - 48,
                 tocolor(10, 10, 10, 0), UI.tab[3])
         eui:uiGridListAddColumn(UI.gridlist.interiors, "ID", 0.2)
         eui:uiGridListAddColumn(UI.gridlist.interiors, "Name", 0.6)
@@ -715,12 +804,15 @@ addEventHandler("onClientUIClick", root, function()
 
         --[[ ------------------ leaderboard ------------------ ]]
 
-        UI.tabpanel.leaderboard = eui:uiCreateTabPanel(10, 110, contentW - 20, 320, "",
+        -- [Fix #15] visible tab bar + consistent height (same as character info)
+        local lbPanelH = contentH - 130
+        UI.tabpanel.leaderboard = eui:uiCreateTabPanel(10, 110, contentW - 20, lbPanelH, "",
                 tocolor(0, 0, 0, 0), UI.container.leaderboard)
-        eui:uiSetProperty(UI.tabpanel.leaderboard, "tabs_bar_color", tocolor(29, 32, 37, 0))
-        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_selected_color", tocolor(9, 12, 17, 220))
-        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_height", 50)
-        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_hovered_color", tocolor(9, 12, 17, 100))
+        eui:uiSetProperty(UI.tabpanel.leaderboard, "tabs_bar_color", tocolor(6, 9, 14, 170))
+        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_color", tocolor(19, 22, 27, 160))
+        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_selected_color", tocolor(9, 12, 17, 250))
+        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_hovered_color", tocolor(30, 34, 44, 190))
+        eui:uiSetProperty(UI.tabpanel.leaderboard, "tab_height", 46)
 
         UI.tab["leaderboard:levels"] = eui:uiCreateTab(
                 { en = "Levels", ar = "المستويات" }, "", UI.tabpanel.leaderboard)
@@ -728,7 +820,7 @@ addEventHandler("onClientUIClick", root, function()
                 { en = "Activities", ar = "الأنشطة" }, "", UI.tabpanel.leaderboard)
 
         UI.gridlist["leaderboard:levels"] = eui:uiCreateGridList(0, 30, contentW - 20,
-                contentH - 150, tocolor(10, 10, 10, 0), UI.tab["leaderboard:levels"])
+                lbPanelH - 48, tocolor(10, 10, 10, 0), UI.tab["leaderboard:levels"])
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:levels"], "", 0.2)
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:levels"], "Name", 0.5)
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:levels"], "Level", 0.3)
@@ -737,7 +829,7 @@ addEventHandler("onClientUIClick", root, function()
         eui:uiSetProperty(UI.gridlist["leaderboard:levels"], "row_height", 40)
 
         UI.gridlist["leaderboard:activities"] = eui:uiCreateGridList(0, 30, contentW - 20,
-                contentH - 150, tocolor(10, 10, 10, 0), UI.tab["leaderboard:activities"])
+                lbPanelH - 48, tocolor(10, 10, 10, 0), UI.tab["leaderboard:activities"])
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:activities"], "", 0.2)
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:activities"], "Name", 0.5)
         eui:uiGridListAddColumn(UI.gridlist["leaderboard:activities"], "Points", 0.3)
@@ -948,25 +1040,34 @@ addEventHandler("onClientUIClick", root, function()
                                         .. bullet .. "بصمة الأصابع »  #FFFFFF" .. fingerprint .. "\n"
                                         .. bullet .. "الوصف »  #FFFFFF" .. tostring(desc or "-"),
                         })
-                        -- [Mod 2 fix] money cards show the REAL cash + bank balance
-                        local money = getPlayerMoney() or 0
-                        local bank = tonumber(getElementData(localPlayer, "bankmoney")) or 0
-                        eui:uiSetText(UI.label.level, {
-                                en = "Cash ${color.primary}$" .. convertNumber(money),
-                                ar = "المال ${color.primary}$" .. convertNumber(money),
-                        })
-                        eui:uiSetText(UI.label.level_exp, {
-                                en = "Bank ${color.primary}$" .. convertNumber(bank),
-                                ar = "البنك ${color.primary}$" .. convertNumber(bank),
-                        })
-                        local share = 0
-                        if (money + bank) > 0 then share = math.floor(money / (money + bank) * 100) end
-                        eui:uiProgressBarSetProgress(UI.progressbar[1], share)
+                        -- [Fix #15] a REAL level again. The level-system mod is not
+                        -- restored yet, so the level is derived from total play
+                        -- time (1 level per 5 hours) with progress to the next one
+                        -- - the card is no longer an empty shell.
                         local hours = tonumber(getElementData(localPlayer, "hoursplayed")) or 0
                         local minutes = math.floor((tonumber(getElementData(localPlayer, "timeinserver")) or 0))
+                        local totalHours = hours + minutes / 60
+                        local levelNum = math.floor(totalHours / 5) + 1
+                        local nextIn = math.max(0, math.ceil(levelNum * 5 - totalHours))
+                        eui:uiSetText(UI.label.level, {
+                                en = "Level ${color.primary}" .. tostring(levelNum),
+                                ar = "المستوى ${color.primary}" .. tostring(levelNum),
+                        })
+                        eui:uiSetText(UI.label.level_exp, {
+                                en = "Next level in " .. tostring(nextIn) .. "h",
+                                ar = "المستوى التالي بعد " .. tostring(nextIn) .. " ساعة",
+                        })
+                        eui:uiProgressBarSetProgress(UI.progressbar[1], math.floor((totalHours % 5) / 5 * 100))
+                        -- cash + bank balance live in the play-time card
+                        local money = getPlayerMoney() or 0
+                        local bank = tonumber(getElementData(localPlayer, "bankmoney")) or 0
                         eui:uiSetText(UI.label.play_time, {
-                                en = "\nPlay Time\n\n" .. tostring(math.floor(hours)) .. "h " .. (minutes % 60) .. "m",
-                                ar = "وقت اللعب\n\n" .. tostring(math.floor(hours)) .. " ساعة " .. (minutes % 60) .. " دقيقة",
+                                en = "\nPlay Time\n\n" .. tostring(math.floor(hours)) .. "h " .. (minutes % 60) .. "m\n\n"
+                                        .. "Cash ${color.primary}$" .. convertNumber(money) .. "\n"
+                                        .. "Bank ${color.primary}$" .. convertNumber(bank),
+                                ar = "وقت اللعب\n\n" .. tostring(math.floor(hours)) .. " ساعة " .. (minutes % 60) .. " دقيقة\n\n"
+                                        .. "المال ${color.primary}$" .. convertNumber(money) .. "\n"
+                                        .. "البنك ${color.primary}$" .. convertNumber(bank),
                         })
 
                         -- [Mod 2 fix] licenses use the REAL keys (license.car/bike/boat/

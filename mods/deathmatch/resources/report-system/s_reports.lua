@@ -2,6 +2,8 @@ mysql = exports.mysql
 reports = { }
 local reportsToAward = 30
 local gcToAward = 1
+-- [Vortex Fix #15] per-player report cooldown (seconds, real time)
+local reportCooldowns = { }
 
 local getPlayerName_ = getPlayerName
 getPlayerName = function( ... )
@@ -702,6 +704,29 @@ function handleReport(reportedPlayer, reportedReason, reportType)
 		outputChatBox("The player you are reporting is not logged in.", source, 255, 0, 0)
 		return
 	end
+
+	-- [Vortex Fix #15] BACKEND validation: the F2 menu is only a frontend --
+	-- these rules live HERE so no client can bypass them.
+	-- 1) the report must be at least 15 words
+	local wordCount = 0
+	for _ in tostring(reportedReason or ""):gmatch("%S+") do
+		wordCount = wordCount + 1
+	end
+	if wordCount < 15 then
+		outputChatBox("تم رفض البلاغ: اكتب مشكلتك بـ 15 كلمة على الأقل. (كتبت " .. wordCount .. " كلمة فقط)", source, 255, 80, 80, true)
+		return
+	end
+
+	-- 2) one report every 5 minutes, no more
+	local nowStamp = getRealTime().timestamp
+	local lastStamp = reportCooldowns[source]
+	if lastStamp and (nowStamp - lastStamp) < 300 then
+		local remain = 300 - (nowStamp - lastStamp)
+		outputChatBox(string.format("يمكنك فتح بلاغ جديد بعد %d دقيقة و %d ثانية.", math.floor(remain / 60), remain % 60), source, 255, 195, 15, true)
+		return
+	end
+	reportCooldowns[source] = nowStamp
+
 	-- Find a free report slot
 	local slot = nil
 
@@ -1877,4 +1902,8 @@ function setSavedReports(thePlayer, cmd, reports)
 	exports.anticheat:changeProtectedElementDataEx(thePlayer, "adminreports_saved", reports , false)
 	outputChatBox(" You have set saved report count to "..reports..".", thePlayer, 255, 126, 0)
 end
-addCommandHandler("setsavedreports", setSavedReports)
+addCommandHandler("setsavedreports", setSavedReports)
+-- [Vortex Fix #15] clear report cooldowns on quit
+addEventHandler("onPlayerQuit", getRootElement(), function()
+	reportCooldowns[source] = nil
+end)

@@ -131,6 +131,30 @@ addEventHandler("onClientRender", root, UI.drawing)
 -- recomputed inside onClientRender); a click processed in that gap used
 -- the PREVIOUS cursor position and was dropped entirely. Recompute the
 -- topmost element under the cursor at the moment of the click itself.
+-- [Vortex fix #15] the tab BAR is drawn ABOVE the tabpanel rect
+-- (y - tab_height - 2), so a click landing on a tab never hit-tested the
+-- tabpanel after #12 made hover click-time -- switching tabs (F1 personal
+-- info / vehicles / interiors, leaderboard) became impossible. Two parts:
+--   1. refreshHover extends the hit rect of ui-tabpanel upwards into the bar
+--   2. hovered_tab is recomputed at click time (it is a DRAWN state, one
+--      frame stale otherwise)
+function UI.refreshTabpanelHoverTab(arg0, ax, ay)
+  local db = UI.DB[arg0]
+  if not db or not db.data then return end
+  db.data.hovered_tab = nil
+  local n = #db.data.visible_tabs
+  if n == 0 then return end
+  local slotW = (db.dimensions.width - 5 * (n + 1) * SCALE_Y) / n
+  local slotY = db.dimensions.y - db.properties.tab_height.value * SCALE_Y - 2 * SCALE_Y
+  local slotH = db.properties.tab_height.value * SCALE_Y
+  for i = 1, n do
+    local slotX = db.dimensions.x + 5 * SCALE_Y + (slotW + 5 * SCALE_Y) * (i - 1)
+    if ax >= slotX and ax <= slotX + slotW and ay >= slotY and ay <= slotY + slotH then
+      db.data.hovered_tab = db.data.visible_tabs[i]
+      return
+    end
+  end
+end
 function UI.refreshHover()
   local cx, cy = getCursorPosition()
   if not cx then
@@ -141,7 +165,13 @@ function UI.refreshHover()
     local el = UI.DrawElements[i]
     if isUIElement(el) and getElementType(el) ~= "ui-tab" and UI.DB[el] and UI.DB[el].visible and UI.isDraw[el] and UI.DB[el].dimensions then
       local d = UI.DB[el].dimensions
-      if ax >= d.x and ay >= d.y and ax <= d.x + d.width and ay <= d.y + d.height and not isUIDisabled(el) then
+      local hitTop = d.y
+      if getElementType(el) == "ui-tabpanel" then
+        hitTop = d.y - UI.DB[el].properties.tab_height.value * SCALE_Y - 2 * SCALE_Y
+          - (UI.DB[el].properties.title_shown.value and UI.DB[el].properties.title_height.value * SCALE_Y or 0)
+        UI.refreshTabpanelHoverTab(el, ax, ay)
+      end
+      if ax >= d.x and ay >= hitTop and ax <= d.x + d.width and ay <= d.y + d.height and not isUIDisabled(el) then
         return el
       end
     end

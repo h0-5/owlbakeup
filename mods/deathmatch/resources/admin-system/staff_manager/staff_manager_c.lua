@@ -62,6 +62,12 @@ local menu = false
 local uiBuilt = false
 
 local rank_to_delete = nil      -- role id pending delete-confirmation
+-- [Fix #15] backend-first permissions: the raw click layer + dispatcher use
+-- these so a hidden control is truly UNREACHABLE, not just invisible
+-- (a Trial clicking where the promote/kick buttons used to be executed the
+-- action because only uiSetVisible(false) was applied).
+local canEditMembers = false
+local canEditRanks = false
 
 -- [Fix #14] readability floor for every rank color the panel draws
 local function clampRankColorC(c)
@@ -359,7 +365,7 @@ function UIKitReady()
         -- containers): instant visual proof of which build the client is
         -- actually running — guards against MTA client-cache staleness
         -- (the "updated the server but the panel never changed" case)
-        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V7",
+        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V8",
                 themeColor("primary"), "right", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.version_badge, "default-large")
 
@@ -457,6 +463,9 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         showCursor(eui:uiGetVisible(UI.window.admin_panel))
         eui:uiSetVisible(UI.button.delete_admin, hasEditMembers and true or false)
         eui:uiSetVisible(UI.button.add_admin, hasEditMembers and true or false)
+        -- [Fix #15] remember the server-issued flags for the raw click layer
+        canEditMembers = hasEditMembers and true or false
+        canEditRanks = hasEditRanks and true or false
         reloadAdminPanelMenu(hasEditMembers, hasEditRanks)
         if eui:uiGetVisible(UI.window.admin_panel) and type(data) == "table" then
                 refreshPanel(data.levels, data.admins, data.changelogs, {},
@@ -490,11 +499,20 @@ end)
 addEventHandler("onClientUIDialogButtonClick", root, function(button)
         if source == UI.dialog.delete_staff then
                 if button == "left" then
+                        -- [Fix #15] client-side gate (the server rejects anyway)
+                        if not canEditMembers then
+                                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+                                return
+                        end
                         triggerServerEvent("rpadmin:removeAdmin", localPlayer,
                                 eui:uiGetText(UI.label.delete_staff_username))
                 end
         elseif source == UI.dialog.delete_rank then
                 if button == "left" and rank_to_delete then
+                        if not canEditRanks then
+                                outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                                return
+                        end
                         triggerServerEvent("rpadmin:removeAdminLevel", localPlayer, rank_to_delete)
                 end
                 rank_to_delete = nil
@@ -509,6 +527,18 @@ local function dispatchPanelAction(el)
         local nowTick = getTickCount()
         if panelDispatchTick[el] and nowTick - panelDispatchTick[el] < 300 then return end
         panelDispatchTick[el] = nowTick
+
+        -- [Fix #15] backend-first permission gates (the server re-checks every
+        -- mutation; this makes the CLIENT refuse too so nothing "appears")
+        if not canEditMembers and (el == UI.button.delete_admin or el == UI.button.add_admin) then
+                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+                return
+        end
+        if not canEditRanks and (el == UI.button.delete_rank or el == UI.button.add_rank
+                or el == UI.button.save_rank_changes or el == UI.checkbox.permissions_select_all) then
+                outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                return
+        end
 
         -- ranks grid: select a rank -> load its rights + color
         if el == UI.gridlist.ranks then
@@ -634,6 +664,11 @@ end)
 local function togglePermissionRow(sel)
         if not (UI.gridlist.permissions and isElement(UI.gridlist.permissions)) then return end
         if not sel or sel < 0 then return end
+        -- [Fix #15] ranks editing is a permission, not a UI state
+        if not canEditRanks then
+                outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                return
+        end
         -- [V7] shared by the UIKit double-click path AND the raw fallback;
         -- the latch keeps a double-click from toggling twice
         local nowTick = getTickCount()
@@ -764,7 +799,15 @@ local function panelHitTest(ax, ay)
                                 local ok2, sv = pcall(eui.uiGetVisible, eui, info.section)
                                 secOK = (ok2 and sv == true) or false
                         end
-                        if secOK and ax >= info.x and ax <= info.x + info.w
+                        -- [Fix #15] THE fix for "the button is hidden but clicking
+                        -- where it was still fires": the raw layer must respect the
+                        -- element's OWN visibility, not only its section's.
+                        local elOK = (info.kind == "menu")
+                        if not elOK then
+                                local ok3, ev = pcall(eui.uiGetVisible, eui, el)
+                                elOK = (ok3 and ev == true) or false
+                        end
+                        if elOK and secOK and ax >= info.x and ax <= info.x + info.w
                                 and ay >= info.y and ay <= info.y + info.h then
                                 if not bOrder or info.order > bOrder then
                                         bEl, bInfo, bOrder = el, info, info.order

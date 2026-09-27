@@ -685,7 +685,26 @@ end)
         edit and menu row working even if UIKit's own event pipeline is dead,
         stale, or eaten by another resource. ]]
 
+-- [Fix #17] SCROLL-AWARE row hit test. The old math divided the click Y by
+-- the row height from the TOP OF THE LIST, ignoring the scroll offset
+-- (data.row_i). After scrolling the ranks list down and clicking "Owner"
+-- the computed index landed on a row near the TOP (e.g. Junior Management),
+-- so the panel loaded the wrong rank's name/rights/color — the "I click
+-- Owner and it shows Junior Management" bug. UIKit already knows the exact
+-- visible window + per-row heights, so ask it directly instead of redoing
+-- the math (this mirrors UI.refreshGridlistHoverRow in c_process.lua).
 local function panelGridRowAt(info, gl, ay)
+        if not (gl and isElement(gl)) then return nil end
+        local okF, firstVisible, lastVisible = pcall(eui.uiGridListGetVisibleRows, eui, gl)
+        if not okF or not firstVisible then
+                -- UIKit predates the helper: fall back to the whole list
+                firstVisible, lastVisible = 1, 1
+                local okC, count = pcall(eui.uiGridListGetRowCount, eui, gl)
+                if okC and count then lastVisible = math.max(count, 1) end
+        end
+        local okH, hitRow = pcall(eui.uiGridListGetRowAtPoint, eui, gl, ay)
+        if okH and hitRow ~= nil and hitRow >= 0 then return hitRow end
+        -- legacy fallback (kept for a UIKit without the two exports above)
         local ok, colH = pcall(eui.uiGetProperty, eui, gl, "column_height")
         local col = (ok and tonumber(colH)) or 25
         local ok2, rowHraw = pcall(eui.uiGetProperty, eui, gl, "row_height")
@@ -694,7 +713,7 @@ local function panelGridRowAt(info, gl, ay)
         if relY < 0 then return nil end
         local ok3, count = pcall(eui.uiGridListGetRowCount, eui, gl)
         if not ok3 or not count or count <= 0 then return nil end
-        local idx = math.floor(relY / rowH)
+        local idx = math.floor(relY / rowH) + (firstVisible - 1)
         if idx >= 0 and idx < count then return idx end
         return nil
 end

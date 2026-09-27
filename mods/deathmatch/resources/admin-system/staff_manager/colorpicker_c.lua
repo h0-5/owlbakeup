@@ -137,3 +137,98 @@ addEventHandler("onClientUIClick", root, function()
                 eui:uiSetVisible(UI.window.picker, false)
         end
 end)
+
+--[[ [Fix #17] RAW-INPUT FALLBACK ============================================
+        The UIKit event pipeline (onClientClick -> UI.click -> onClientUIClick)
+        is not reliably alive on this server, so the picker's UIKit-only
+        handler above never fired: clicking a swatch or Confirm did nothing
+        ("can't change the rank color"). The staff panel already routes its
+        own clicks through a raw hit-test; the picker builds the SAME kind of
+        absolute-rect registry and answers MTA's raw onClientClick itself.
+        A per-element latch stops the two paths from double-firing.
+========================================================================== ]]
+
+local CP_HIT = {}          -- [element] = { x, y, w, h, kind, payload }
+local cpDispatchTick = {}  -- per-element latch (300ms)
+
+local function cpScreenRect(x, y, w, h)
+        local sx, sy = guiGetScreenSize()
+        local refX, refY = eui.uiGetReferenceScreenSize()
+        local scx, scy = sx / refX, sy / refY
+        -- center the 560x360 window the same way uiCreateWindow(false,false)
+        -- does, then scale the inner offsets by the Y scale (UIKit's own
+        -- geometry for child elements)
+        local winW, winH = 560 * scy, 360 * scy
+        local winX = (sx - winW) / 2 + (winW - 560 * scy) / 2
+        local winY = (sy - winH) / 2
+        return winX + x * scy, winY + y * scy, w * scy, h * scy
+end
+
+local function rebuildPickerHits()
+        CP_HIT = {}
+        if not (UI.window.picker and isElement(UI.window.picker)) then return end
+        CP_HIT[UI.window.picker] = { x = cpScreenRect(0, 0, 560, 360)[1], kind = "window" }
+        local px, py, pw, ph = cpScreenRect(10, 35, 540, 40)
+        CP_HIT[UI.rectangle.preview] = { x = px, y = py, w = pw, h = ph, kind = "preview" }
+        for i, rgb in ipairs(PALETTE) do
+                local col = (i - 1) % SW_COLS
+                local row = math.floor((i - 1) / SW_COLS)
+                local sxp, syp, swp, shp = cpScreenRect(
+                        10 + col * (SW_SIZE + SW_GAP),
+                        85 + row * (SW_SIZE + SW_GAP),
+                        SW_SIZE, SW_SIZE)
+                CP_HIT[UI.rectangle["swatch_" .. i]] = {
+                        x = sxp, y = syp, w = swp, h = shp, kind = "swatch", payload = rgb }
+        end
+        local okx, oky, okw, okh = cpScreenRect(10, 315, 265, 35)
+        CP_HIT[UI.button.ok] = { x = okx, y = oky, w = okw, h = okh, kind = "ok" }
+        local cx, cy, cw, ch = cpScreenRect(285, 315, 265, 35)
+        CP_HIT[UI.button.cancel] = { x = cx, y = cy, w = cw, h = ch, kind = "cancel" }
+end
+
+local function applyPick(kind, payload)
+        if kind == "swatch" and payload then
+                cpColor.r, cpColor.g, cpColor.b = payload[1], payload[2], payload[3]
+                eui:uiSetColor(UI.rectangle.preview, cpColor.r, cpColor.g, cpColor.b, 255)
+                eui:uiSetText(UI.label.preview,
+                        ("#%02X%02X%02X"):format(cpColor.r, cpColor.g, cpColor.b))
+        elseif kind == "ok" then
+                eui:uiSetVisible(UI.window.picker, false)
+                pcall(eui.uiFlashPress, eui, UI.button.ok)
+                triggerEvent("onClientColorPickerConfirm", localPlayer,
+                        cpColor.r, cpColor.g, cpColor.b, cpColor.a)
+        elseif kind == "cancel" then
+                eui:uiSetVisible(UI.window.picker, false)
+        end
+end
+
+addEventHandler("onClientClick", root, function(button, state, ax, ay)
+        if button ~= "left" or state ~= "up" then return end
+        if not (UI.window.picker and isElement(UI.window.picker)) then return end
+        local okV, vis = pcall(eui.uiGetVisible, eui, UI.window.picker)
+        if not (okV and vis) then return end
+        if not CP_HIT[UI.window.picker] then rebuildPickerHits() end
+        -- topmost hit wins: iterate swatches last so they outrank the window
+        local hitEl, hitInfo
+        for el, info in pairs(CP_HIT) do
+                if info.kind ~= "window" and ax >= info.x and ax <= info.x + (info.w or 0)
+                        and ay >= info.y and ay <= info.y + (info.h or 0) then
+                        hitEl, hitInfo = el, info
+                end
+        end
+        if not hitEl then return end
+        local nowTick = getTickCount()
+        if cpDispatchTick[hitEl] and nowTick - cpDispatchTick[hitEl] < 300 then return end
+        cpDispatchTick[hitEl] = nowTick
+        pcall(eui.uiFlashPress, eui, hitEl)
+        applyPick(hitInfo.kind, hitInfo.payload)
+end)
+
+-- rebuild the registry whenever the picker is opened (UIKit may have
+-- re-created the elements after a restart, invalidating the old rects)
+local raw_openSelect = colorPicker.openSelect
+function colorPicker.openSelect(r, g, b, a)
+        local res = raw_openSelect(r, g, b, a)
+        setTimer(rebuildPickerHits, 50, 1)
+        return res
+end

@@ -79,6 +79,8 @@
 	<export function="getStaffTitle" type="server"/>
 	<export function="getStaffTitle" type="client"/>
 
-	<export function="getStaffTitles" type="server"/>
-	<export function="getStaffTitles" type="client"/>
+	<export function="getStaffTitles" type="server"/>
+	<export function="getStaffTitles" type="client"/>
+	<export function="getPlayerRankTitle" type="server"/>
+	<export function="getPlayerRankTitle" type="client"/>
 </meta>	

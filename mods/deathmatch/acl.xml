@@ -25,14 +25,14 @@
         <acl name="RPC"></acl>
         <acl name="Website"></acl>
         <object name="resource.*"></object>
-        <object name="h05"></object>
+        <object name="user.h05"></object>
     </group>
     <group name="Console">
         <acl name="Moderator"></acl>
         <acl name="SuperModerator"></acl>
         <acl name="Admin"></acl>
         <object name="Console"></object>
-        <object name="h05"></object>
+        <object name="user.h05"></object>
     </group>
     <group name="Scripter">
         <acl name="Scripter"></acl>

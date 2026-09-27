@@ -12,21 +12,21 @@ local scoreboardDummy
 Handles the resource start event to create a dummy entity with information about the server.
 --]]
 addEventHandler ( "onResourceStart", getResourceRootElement(getThisResource()), function ()
-	scoreboardDummy = createElement ( "scoreboard" )
-	setElementData ( scoreboardDummy, "serverName", "Direct-Hosting" )
-	setElementData ( scoreboardDummy, "maxPlayers", getMaxPlayers () )
-	setElementData ( scoreboardDummy, "allow", true )
-	
-	--[[ Uncomment to test with dummies ]]--
-	--[[
-	for k=70,270 do
-		local dummy = createElement ( "playerDummy" )
-		setElementData ( dummy, "playerid", k )
-		setElementData ( dummy, "name", "dummy" .. tostring(k), false )
-		setElementData ( dummy, "ping", math.random ( 1, 300 ) )
-		setElementData ( dummy, "color", { math.random(0,255), math.random(0,255), math.random(0,255) } )
-	end
-	--]]
+        scoreboardDummy = createElement ( "scoreboard" )
+        setElementData ( scoreboardDummy, "serverName", "Direct-Hosting" )
+        setElementData ( scoreboardDummy, "maxPlayers", getMaxPlayers () )
+        setElementData ( scoreboardDummy, "allow", true )
+        
+        --[[ Uncomment to test with dummies ]]--
+        --[[
+        for k=70,270 do
+                local dummy = createElement ( "playerDummy" )
+                setElementData ( dummy, "playerid", k )
+                setElementData ( dummy, "name", "dummy" .. tostring(k), false )
+                setElementData ( dummy, "ping", math.random ( 1, 300 ) )
+                setElementData ( dummy, "color", { math.random(0,255), math.random(0,255), math.random(0,255) } )
+        end
+        --]]
 end, false )
 
 --[[
@@ -34,9 +34,9 @@ end, false )
 Delete the dummy created on resource start.
 --]]
 addEventHandler ( "onResourceStop", getResourceRootElement(getThisResource()), function ()
-	if scoreboardDummy then
-		destroyElement ( scoreboardDummy )
-	end
+        if scoreboardDummy then
+                destroyElement ( scoreboardDummy )
+        end
 end, false )
 
 -- highest player count sync: tracks the peak online count and pushes it to
@@ -46,14 +46,50 @@ local highestPlayerCount = 0
 
 setTimer ( function ()
 
-	local current = getPlayerCount ()
+        local current = getPlayerCount ()
 
-	if current > highestPlayerCount then
+        if current > highestPlayerCount then
 
-		highestPlayerCount = current
+                highestPlayerCount = current
 
-	end
+        end
 
-	triggerClientEvent ( root, "scoreboard:highestPlayerCount:sync", root, highestPlayerCount )
+        triggerClientEvent ( root, "scoreboard:highestPlayerCount:sync", root, highestPlayerCount )
 
 end, 30000, 0 )
+
+-- ============================================================================
+-- [Vortex] rank-data hardening
+--
+-- The client reads rank:name / rank:color elementData pushed by the staff
+-- bridge (admin-system). If that ever misses (login-panel hook skipped,
+-- resource restarted mid-session, stale migration) the board used to fall
+-- back to the legacy "Admin <level>" text. This poll re-applies the ladder
+-- through the exported bridge API for anyone whose data is missing, so the
+-- real rank title + color always land.
+-- ============================================================================
+
+local function reapplyMissingRanks ( )
+        local adminSys = getResourceFromName ( "admin-system" )
+        if not adminSys or getResourceState ( adminSys ) ~= "running" then
+                return
+        end
+
+        for _, player in ipairs ( getElementsByType ( "player" ) ) do
+                -- only accounts that are logged in AND look like staff somehow
+                if isElement ( player ) and tonumber ( getElementData ( player, "account:id" ) ) then
+                        local hasName = getElementData ( player, "rank:name" )
+                        local level   = tonumber ( getElementData ( player, "admin_level" ) ) or 0
+                        local hasIdx  = tonumber ( getElementData ( player, "rank:index" ) )
+                        if not hasName and ( level > 0 or hasIdx ) then
+                                pcall ( function ( )
+                                        exports [ "admin-system" ]:refreshPlayerRank ( player )
+                                end )
+                        end
+                end
+        end
+end
+
+setTimer ( reapplyMissingRanks, 60000, 0 )
+setTimer ( reapplyMissingRanks, 10000, 1 ) -- shortly after resource start
+

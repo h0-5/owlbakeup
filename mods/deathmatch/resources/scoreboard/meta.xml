@@ -1,28 +1,29 @@
 <meta>
 
-	<info author="Alberto 'ryden' Alonso" type="script" version="1.0" />
+        <info author="Alberto 'ryden' Alonso" type="script" version="1.0" />
 
-	<script src="c_tab.lua" type="client" cache="false" />
+        <script src="c_tab.lua" type="client" cache="false" />
 
-	<script src="s_tab.lua" type="server" />
+        <script src="s_tab.lua" type="server" />
 
-	<file src="icon.png"/>
-	<file src="group.png"/>
-	<file src="logo-circle.png"/>
-	<file src="logo-text.png"/>
-	<file src="search.png"/>
-	<file src="BlurShader.fx"/>
+        <file src="icon.png"/>
+        <file src="group.png"/>
+        <file src="logo.png"/>
+        <file src="logo-circle.png"/>
+        <file src="logo-text.png"/>
+        <file src="search.png"/>
+        <file src="BlurShader.fx"/>
 
-	<file src="fonts/PFDinDisplayPro-Bold.ttf"/>
-	<file src="fonts/PFDinDisplayPro-Regular.ttf"/>
+        <file src="fonts/PFDinDisplayPro-Bold.ttf"/>
+        <file src="fonts/PFDinDisplayPro-Regular.ttf"/>
 
-	<file src="icons/premium.png"/>
-	<file src="icons/booster.png"/>
-	<file src="icons/classic.png"/>
-	<file src="icons/gold_member.png"/>
-	<file src="icons/verified.png"/>
-	<file src="icons/youtuber.png"/>
+        <file src="icons/premium.png"/>
+        <file src="icons/booster.png"/>
+        <file src="icons/classic.png"/>
+        <file src="icons/gold_member.png"/>
+        <file src="icons/verified.png"/>
+        <file src="icons/youtuber.png"/>
 
-	<export function="isVisible" type="client" />
+        <export function="isVisible" type="client" />
 
 </meta>

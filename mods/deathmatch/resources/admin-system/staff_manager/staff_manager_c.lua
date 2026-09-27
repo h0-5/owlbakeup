@@ -898,6 +898,18 @@ end
 -- the decompiled loop called uiGridListAddRow inside EVERY SetItemText /
 -- SetItemColor call (a lost local row variable) which duplicated rows; a
 -- single row index is captured here instead, exactly like the original.
+-- [Fix #18] MTA's toJSON wraps associative tables: '[ { "a": true } ]'.
+-- fromJSON then yields { [1] = {a=true} }, so LevelRights[id]["admin.goto"]
+-- was always nil and every rank loaded with an EMPTY permission list in the
+-- panel ("all checkboxes off, saving changes nothing"). Unwrap on read.
+local function unwrapRightsC(t)
+        if type(t) ~= "table" then return {} end
+        if type(t[1]) == "table" and next(t, 1) == nil then
+                return t[1]
+        end
+        return t
+end
+
 function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffReport)
         panelData.changelogs = changelogs or {}
 
@@ -936,8 +948,8 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         getLevelByName = {}
         for _, level in ipairs(levels or {}) do
                 LevelNames[tostring(level.ID)] = tostring(level.LevelName)
-                local rights = fromJSON(level.Rights or "{}")
-                LevelRights[tostring(level.ID)] = type(rights) == "table" and rights or {}
+                local rights = unwrapRightsC(fromJSON(level.Rights or "{}"))
+                LevelRights[tostring(level.ID)] = rights
                 local color = fromJSON(level.Color or "[[255,255,255,255]]")
                 LevelColor[tostring(level.ID)] = type(color) == "table" and color or { 255, 255, 255, 255 }
                 getLevelByName[tostring(level.LevelName)] = tostring(level.ID)

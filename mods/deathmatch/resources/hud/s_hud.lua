@@ -11,6 +11,13 @@
 --     sleepy +0.15/min, warnings + health penalties at the limits.
 --   * consume actions (Fix #19): /drink /eat /shower /sleep refill the needs
 --     and heal, /piss empties the bladder — server counts every value
+--   * Fix #21: /piss is the FULL sequence — it plays the old PAULNMAC pee
+--     animation, the animation STOPS BY ITSELF when it finishes, and only
+--     then the bladder empties (client shows the urine ring FULL again and
+--     it depletes gradually while the bladder refills)
+--   * Fix #21: life:setAnimation server bridge (old life-system event the
+--     client triggers for the forced tired animation — nothing handled it
+--     before, so the tired animation never played and never stopped)
 --   * hud:items default strip pushed on login (walkingstyle/head_turning/
 --     togpm/reportpanel/ads)
 --------------------------------------------------------------------------------
@@ -100,13 +107,92 @@ local function clamp(v)
         return v
 end
 
--- [old client] /piss — empties the bladder (urine back to 0)
+--------------------------------------------------------------------------------
+-- [old client] /piss — Fix #21: the FULL pee sequence.
+--   1. plays the old PAULNMAC pee animation, BOUNDED (the old animation-system
+--      used -1 = looped forever and never stopped — fixed)
+--   2. when it finishes the animation STOPS BY ITSELF (global:removeAnimation
+--      also restores the controls that applyAnimation locked)
+--   3. only then the bladder empties -> client urine ring goes FULL and starts
+--      depleting gradually while the bladder refills (+0.2/min, old rate)
+--------------------------------------------------------------------------------
+local PISS_ANIM_MS = 7000       -- how long the pee animation lasts
+local peeing = {}               -- [player] = true while the sequence runs
+
+local function forceStopAnimation(player)
+        local g = getResourceFromName("global")
+        if g and getResourceState(g) == "running" then
+                pcall(function() exports.global:removeAnimation(player) end)
+        else
+                setPedAnimation(player, false)
+                toggleAllControls(player, true, true, false)
+        end
+end
+
 addCommandHandler("piss", function(player)
         local st = playerStatus[player]
-        if st then
-                st.urine = 0
-                sendStatus(player)
-                notify(player, "You feel relieved", "شعرت بارتياح", 3000)
+        if not st or isPedDead(player) or peeing[player] then return end
+        if isPedInVehicle(player) then
+                notify(player, "You can't pee inside a vehicle", "لا يمكنك قضاء الحاجة داخل السيارة", 3000)
+                return
+        end
+        peeing[player] = true
+        -- bounded animation: global's applyAnimation removes it automatically
+        -- after the duration and restores the controls (stop by itself)
+        local applied = nil
+        local g = getResourceFromName("global")
+        if g and getResourceState(g) == "running" then
+                local ok, res = pcall(function()
+                        return exports.global:applyAnimation(player, "PAULNMAC", "Piss_loop",
+                                PISS_ANIM_MS, true, false, false)
+                end)
+                if ok then applied = res end
+        end
+        if applied == false then                 -- frozen / tazed / injured
+                peeing[player] = nil
+                return
+        end
+        if applied == nil then                   -- global not running: raw fallback
+                setPedAnimation(player, "PAULNMAC", "Piss_loop", PISS_ANIM_MS, true, false, false)
+        end
+        -- finished: the animation stopped by itself -> bladder empty now
+        setTimer(function()
+                peeing[player] = nil
+                if not isElement(player) then return end
+                forceStopAnimation(player)
+                local st2 = playerStatus[player]
+                if st2 and not isPedDead(player) then
+                        st2.urine = 0
+                        sendStatus(player)
+                        notify(player, "You feel relieved", "شعرت بارتياح", 3000)
+                end
+        end, PISS_ANIM_MS + 200, 1)
+end)
+
+--------------------------------------------------------------------------------
+-- OLD LIFE-SYSTEM BRIDGE (Fix #21): the hud client triggers life:setAnimation
+-- for the forced tired animation (fatigue 95%) but nothing handled it, so the
+-- animation never played and never stopped. Old event shape kept exactly:
+--   life:setAnimation(block, name, animtime, loop, updatePosition, forced)
+--   life:setAnimation()                                  -> stop the animation
+--------------------------------------------------------------------------------
+addEvent("life:setAnimation", true)
+addEventHandler("life:setAnimation", root, function(block, name, animtime, loop, updatePosition, forced)
+        local player = client
+        if not player or client ~= source then return end
+        if not isElement(player) or isPedDead(player) then return end
+        if not block or not name then
+                forceStopAnimation(player)
+                return
+        end
+        local g = getResourceFromName("global")
+        if g and getResourceState(g) == "running" then
+                pcall(function()
+                        exports.global:applyAnimation(player, block, name,
+                                animtime or -1, loop ~= false, updatePosition ~= false, forced ~= false)
+                end)
+        else
+                setPedAnimation(player, block, name, animtime or -1, loop ~= false)
         end
 end)
 
@@ -294,6 +380,7 @@ addEventHandler("onPlayerQuit", root, function()
         saveStatus(source)
         playerStatus[source] = nil
         lastConsume[source] = nil
+        peeing[source] = nil
 end)
 
 -- exported for other resources (old life-system server API shape)

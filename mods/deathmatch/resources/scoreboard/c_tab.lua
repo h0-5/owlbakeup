@@ -1,4 +1,4 @@
-﻿--
+--
 -- scoreboard / c_tab.lua  (V8 - Vortex)
 -- Redesigned to match the reference shot: centered search pill, top accent
 -- strip, V logo, "N Players / أعلى تواجد" right block, charname (username)
@@ -228,8 +228,14 @@ end
 -- viewers may see it, and off-duty staff read as plain players (no account)
 local function getDisplayName(p, id)
         if isHidden(p) then return "Hidden" end
+        -- Fix #24 (user): before a character is picked the board shows the
+        -- ACCOUNT NAME (it is known at login), not a useless row number
         if tonumber(getElementData(p, "loggedin")) ~= 1 then
-                return "Selecting character ... (" .. tostring(id) .. ")"
+                local user = getElementData(p, "account:username")
+                if user and user ~= "" then
+                        return "Joining: " .. tostring(user)
+                end
+                return "Selecting character ..."
         end
         local name = getElementData(p, "fakename")
         if not name or name == "" or name == false then
@@ -359,12 +365,15 @@ local function getBadges(p)
         return icons
 end
 
--- playtime "Xh Ym": hoursplayed bumps once an hour on the wall-clock payday,
--- so the live minute hand is simply the current minute of the hour
+-- playtime "Xh Ym": hoursplayed bumps once per payday hour and
+-- timeinserver counts the minutes of the CURRENT pay hour (0..59).
+-- Fix #24: the old code used the WALL-CLOCK minute, which resets every
+-- hour and never matched real played time.
 local function getPlaytime(p)
         if tonumber(getElementData(p, "loggedin")) ~= 1 then return "0h 00m" end
         local hours = tonumber(getElementData(p, "hoursplayed")) or 0
-        local totalMin = hours * 60 + getRealTime().minute
+        local tis = tonumber(getElementData(p, "timeinserver")) or 0
+        local totalMin = hours * 60 + math.min(tis, 59)
         return string.format("%dh %02dm", math.floor(totalMin / 60), totalMin % 60)
 end
 
@@ -387,7 +396,11 @@ local function updatePlayers()
         local list = {}
         for _, p in ipairs(all) do
                 if isElement(p) then
-                        local pid = tonumber(getElementData(p, "playerid")) or 999999
+                        -- Fix #24: prefer the account's FIXED mod id (assigned
+                        -- at first creation, survives reconnects) over the
+                        -- session playerid
+                        local pid = tonumber(getElementData(p, "mod:id"))
+                                or tonumber(getElementData(p, "playerid")) or 999999
                         table.insert(list, { element = p, id = pid })
                 end
         end
@@ -445,41 +458,48 @@ addEventHandler("onClientClick", root, function(button, buttonState)
                         cursorOn = true
                         showCursor(true)
                 end
+                createSearchEdit()
         elseif searchOn then
                 searchOn = false
                 searchBuf = ""
+                destroySearchEdit()
         end
 end)
 
--- keyboard input for the search box is captured directly: printable
--- characters append to the buffer, backspace/delete remove from it.
--- UTF-8 aware so Arabic / multibyte names are handled a whole code point
--- at a time instead of slicing a byte off the middle of a character.
-local function utf8Backspace(str)
-        if str == nil or str == "" then return "" end
-        local pos = #str
-        -- walk back over continuation bytes (0x80..0xBF)
-        while pos > 1 do
-                local b = str:byte(pos)
-                if b == nil or b < 128 or b > 191 then break end
-                pos = pos - 1
+-- Fix #24: the search box is now a REAL hidden GUI edit element. The old
+-- hand-rolled onClientKey capture could not handle backspace (wrong key
+-- name "back"), Arabic IME input or paste, so typing felt broken. A GUI
+-- edit gives native text input (Arabic, backspace, delete, Ctrl+V) and we
+-- just mirror its text into the drawn buffer.
+local searchEdit
+
+function createSearchEdit()
+        if searchEdit and isElement(searchEdit) then
+                guiSetText(searchEdit, searchBuf)
+                guiFocus(searchEdit)
+                return
         end
-        return str:sub(1, pos - 1)
+        searchEdit = guiCreateEdit(searchBox.x, searchBox.y, searchBox.w, searchBox.h, searchBuf, false)
+        guiSetAlpha(searchEdit, 0)
+        guiEditSetCaretIndex(searchEdit, #searchBuf)
+        addEventHandler("onClientGUIChanged", searchEdit, function()
+                if source == searchEdit then
+                        searchBuf = guiGetText(searchEdit) or ""
+                        scroll = 0
+                end
+        end)
+        guiFocus(searchEdit)
 end
 
--- true only when s is exactly one UTF-8 code point (Arabic / accented letters
--- arrive from onClientKey as a single multibyte key name)
-local function utf8IsSingleChar(s)
-        if type(s) ~= "string" or #s < 2 then return false end
-        local b1 = s:byte(1)
-        if b1 < 194 or b1 > 244 then return false end
-        for i = 2, #s do
-                local b = s:byte(i)
-                if b < 128 or b > 191 then return false end
+function destroySearchEdit()
+        if searchEdit and isElement(searchEdit) then
+                destroyElement(searchEdit)
         end
-        return true
+        searchEdit = nil
 end
 
+-- wheel + escape still flow through onClientKey (the GUI edit owns the
+-- character keys now)
 addEventHandler("onClientKey", root, function(key, press)
         if not state or press ~= "down" then return end
         if key == "mouse_wheel_up" or key == "mouse_wheel_down" then
@@ -487,33 +507,10 @@ addEventHandler("onClientKey", root, function(key, press)
                 return
         end
         if not searchOn then return end
-        if key == "back" then
-                searchBuf = utf8Backspace(searchBuf)
-                scroll = 0
-                cancelEvent()
-        elseif key == "delete" then
-                searchBuf = ""
-                scroll = 0
-                cancelEvent()
-        elseif key == "escape" then
+        if key == "escape" then
                 searchOn = false
                 searchBuf = ""
-                cancelEvent()
-        elseif key == "space" then
-                -- MTA reports the spacebar as the key name "space"
-                searchBuf = searchBuf .. " "
-                scroll = 0
-                cancelEvent()
-        elseif type(key) == "string" and #key == 1 and key:match("[%w%s]") then
-                -- printable single key (letter / digit / space): MTA reports
-                -- the key name, which is the character itself
-                searchBuf = searchBuf .. key
-                scroll = 0
-                cancelEvent()
-        elseif utf8IsSingleChar(key) then
-                -- one whole multibyte code point (Arabic etc.)
-                searchBuf = searchBuf .. key
-                scroll = 0
+                destroySearchEdit()
                 cancelEvent()
         end
 end)
@@ -773,16 +770,21 @@ local function toggle(show)
         else
                 removeEventHandler("onClientRender", root, render)
                 unbindKey("mouse2", "down", toggleCursor)
+                destroySearchEdit()
                 if cursorOn then showCursor(false) end
                 cursorOn = false
                 searchOn = false
         end
 end
 
+-- Fix #24 (user): the board shows while TAB is HELD and disappears the
+-- moment the finger lifts. It stays open only when the search box is
+-- active (so searching still works); pressing TAB again or ESC closes it.
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then
+                if state and searchOn then return end
                 toggle(true)
-        elseif not cursorOn then
+        elseif state and not searchOn then
                 toggle(false)
         end
 end)

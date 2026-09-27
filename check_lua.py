@@ -66,34 +66,30 @@ def check(path):
             problems.append(f"{open_c}{close_c} unbalanced (depth {depth})")
 
     # block balance: function/if/do/while/for open, 'end' closes.
-    # 'elseif' and the 'else' of an 'if' open nothing; a 'for'/'while' with an
-    # inline 'do' would double count, so drop the 'do' that follows them.
+    # A `for`/`while` header opens ONE block; its header `do` belongs to that
+    # block (not counted twice). A STANDALONE `do` opens a block of its own.
     tokens = re.findall(r"\b[A-Za-z_]\w*\b", src)
     depth, opened = 0, []
-    prev = None
+    expect_do = False  # the next `do` is the header of a for/while
     for tok in tokens:
-        if tok in ("for", "while"):
-            # look ahead is not possible here; `do` immediately after is handled
-            pass
         if tok == "function":
             depth += 1
             opened.append("function")
-        elif tok in ("if",):
+            expect_do = False
+        elif tok == "if":
             depth += 1
             opened.append("if")
+            expect_do = False
+        elif tok in ("for", "while"):
+            depth += 1
+            opened.append(tok)
+            expect_do = True
         elif tok == "do":
-            # the `do` belonging to a for/while header must not count twice
-            if opened and opened[-1] in ("for", "while"):
-                pass
+            if expect_do:
+                expect_do = False  # header do of a for/while - not a new block
             else:
                 depth += 1
                 opened.append("do")
-        elif tok in ("for", "while"):
-            if opened and opened[-1] in ("for", "while"):
-                depth -= 1
-                opened.pop()
-            depth += 1
-            opened.append(tok)
         elif tok == "repeat":
             depth += 1
             opened.append("repeat")
@@ -107,8 +103,6 @@ def check(path):
                 depth -= 1
             else:
                 problems.append("extra 'end' with nothing open")
-        if tok != "elseif":
-            prev = tok
 
     if opened:
         problems.append(

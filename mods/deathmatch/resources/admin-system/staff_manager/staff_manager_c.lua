@@ -102,7 +102,7 @@ local panelData = { changelogs = {} }
 local SECTIONS = {
         { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "staff_manager/icons/menu_shield.png", permission = false },
         { id = "roles_members",      en = "Role Members",  ar = "أعضاء الرتب",      icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
-        { id = "changelogs",         en = "Logs",          ar = "logs",    icon = "staff_manager/icons/menu_chat.png",   permission = false },
+        { id = "changelogs",         en = "Logs",          ar = "السجلات",  icon = "staff_manager/icons/menu_chat.png",   permission = false },
         { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
         { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
 }
@@ -171,8 +171,8 @@ function UIKitReady()
         eui:uiSetVisible(UI.window.admin_panel, false)
         eui:uiBringToFront(UI.window.admin_panel)
 
-        UI.image.title_logo = eui:uiCreateImage(15, 12, 32, 32, "staff_manager/icons/menu_shield.png", UI.window.admin_panel)
-        UI.label.MainMenuTitle = eui:uiCreateLabel(55, 10, 200, 45, "Admin Panel",
+        -- [Fix #16] old-client header: text only, at (15, 10) - no logo image
+        UI.label.MainMenuTitle = eui:uiCreateLabel(15, 10, 200, 45, "Admin Panel",
                 tocolor(255, 255, 255), "left", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.MainMenuTitle, "default-large")
 
@@ -189,8 +189,9 @@ function UIKitReady()
                         tocolor(11, 14, 19, 230), true, true, true, true, UI.window.admin_panel)
                 UI.container[section.id] = eui:uiCreateContainer(0, 0, CONTENT_W, CONTENT_H, panel)
                 eui:uiSetVisible(UI.container[section.id], false)
+                -- [Fix #16] old client paints section titles RED
                 UI.label.title = eui:uiCreateLabel(15, 10, 200, 30,
-                        { en = section.en, ar = section.ar }, themeColor("primary"),
+                        { en = section.en, ar = section.ar }, tocolor(255, 0, 0, 255),
                         "left", "center", UI.container[section.id])
                 eui:uiSetFont(UI.label.title, "default-large")
         end
@@ -303,7 +304,7 @@ function UIKitReady()
 
         UI.checkbox.permissions_select_all = eui:uiCreateCheckBox(permsX,
                 PANEL_H - 10 - 60 - 20, 150, 25, "Select All", false,
-                themeColor("primary"), UI.container.ranks)
+                tocolor(255, 0, 0), UI.container.ranks)
         eui:uiSetFontSize(UI.checkbox.permissions_select_all, 0.8)
 
         for _, right in ipairs(AllRights) do
@@ -312,7 +313,7 @@ function UIKitReady()
         end
 
         UI.label.rank_id = eui:uiCreateLabel(permsX + 10, 65, 50, 24, "#0",
-                themeColor("primary"), "left", "center", UI.container.ranks)
+                tocolor(255, 0, 0, 255), "left", "center", UI.container.ranks)
         eui:uiSetFont(UI.label.rank_id, "default-large")
         UI.edit.rank_name = eui:uiCreateEdit(permsX + 55, 65, 300, 25, "", "Rank Name",
                 tocolor(255, 0, 0, 255), UI.container.ranks)
@@ -361,32 +362,21 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "column_font_scale", 0.8)
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "row_height", 30)
 
-        -- version badge (created LAST so it draws on top of the section
-        -- containers): instant visual proof of which build the client is
-        -- actually running — guards against MTA client-cache staleness
-        -- (the "updated the server but the panel never changed" case)
-        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V8",
-                themeColor("primary"), "right", "center", UI.window.admin_panel)
-        eui:uiSetFont(UI.label.version_badge, "default-large")
+        -- [Fix #16] version badge removed - the old client has none
 
         --[[ ----------------------- sidebar menu -----------------------
-             Vortex lab-style sidebar: compact top-aligned rows on a soft
-             card, Vortex-blue accent bar on the selected row (fixes the
-             solid black box look) ]]
-        local MENU_H = 300
-        menu = eui:uiCreateMenu(5, 65, MENU_W, MENU_H, tocolor(19, 22, 27, 120),
+             EXACT old client: 150x450 menu at (5, 65), row_height 35,
+             RED selection bar + red selection text accent, compact rows ]]
+        local MENU_H = 450
+        menu = eui:uiCreateMenu(5, 65, MENU_W, MENU_H, tocolor(19, 22, 27, 0),
                 UI.window.admin_panel)
-        eui:uiSetProperty(menu, "hovered_row_color", tocolor(9, 12, 17, 110))
-        eui:uiSetProperty(menu, "selected_row_color", tocolor(13, 16, 22, 235))
-        -- rows are stored pre-scaled by SCALE_Y and drawn with a SECOND
-        -- SCALE_Y factor + 4px gap, so divide the per-row budget by SCALE_Y^2
-        -- to actually fill MENU_H without overflowing it
-        local rowHeight = ((MENU_H - 10) / #SECTIONS - 4) / (SCALE_Y * SCALE_Y)
-        eui:uiSetProperty(menu, "row_height", rowHeight)
-        eui:uiSetProperty(menu, "row_font_scale", 1.2)
-        eui:uiSetProperty(menu, "icons_color", themeColor("primary"))
-        eui:uiSetProperty(menu, "selection_color", themeColor("primary"))
+        eui:uiSetProperty(menu, "hovered_row_color", tocolor(9, 12, 17, 100))
+        eui:uiSetProperty(menu, "selected_row_color", tocolor(3, 6, 11, 255))
+        eui:uiSetProperty(menu, "row_height", 35)
+        eui:uiSetProperty(menu, "icons_color", tocolor(255, 0, 0))
+        eui:uiSetProperty(menu, "selection_color", tocolor(255, 0, 0))
         setElementID(menu, "staff-panel-menu")
+        local rowHeight = 35
 
         -- [V7] hit registry: every interactive element with its absolute rect.
         -- Registration order = creation order = painter order (topmost wins).

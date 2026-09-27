@@ -1,73 +1,76 @@
 <meta>
-	<info author="Vortex" name="Main Menu" description="F1 main menu - personal info, online staff, leaderboard, discord link, about" type="script" version="2.1.0" />
+        <info author="Vortex" name="Main Menu" description="F1 main menu - personal info, online staff, leaderboard, discord link, about" type="script" version="2.1.0" />
 
-	<depend src="UIKit" />
+        <depend src="UIKit" />
 
-	<script src="c_main.lua" type="client" cache="false" />
-	<script src="s_main.lua" type="server" />
+        <script src="c_main.lua" type="client" cache="false" />
+        <script src="s_main.lua" type="server" />
 
-	<file src="logo-circle.png" />
+        <file src="logo-circle.png" />
+        <!-- [Fix #16] old-client strip branding: logo + rotated wordmark watermark -->
+        <file src="images/logo.png" />
+        <file src="images/logo_text.png" />
 
-	<!-- [Fix #15] rules content moved into c_main.lua -->
+        <!-- [Fix #15] rules content moved into c_main.lua -->
 
-	<file src="fonts/Font2.ttf" />
-	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
-	<file src="fonts/PFDinDisplayPro-Regular.ttf" />
+        <file src="fonts/Font2.ttf" />
+        <file src="fonts/PFDinDisplayPro-Bold.ttf" />
+        <file src="fonts/PFDinDisplayPro-Regular.ttf" />
 
-	<file src="icons/discord.png" />
-	<file src="icons/youtube.png" />
-	<file src="icons/link.png" />
-	<file src="icons/menu_person.png" />
-	<file src="icons/menu_shield.png" />
-	<file src="icons/menu_trophy.png" />
-	<file src="icons/menu_chat.png" />
-	<file src="icons/menu_globe.png" />
-	<file src="icons/admin3.png" />
-	<file src="icons/admin_badge.png" />
-	<file src="icons/AFK.png" />
-	<file src="icons/blindfold.png" />
-	<file src="icons/booster.png" />
-	<file src="icons/car_lights.png" />
-	<file src="icons/car_lock.png" />
-	<file src="icons/classic.png" />
-	<file src="icons/developer_badge.png" />
-	<file src="icons/developer_badge2.png" />
-	<file src="icons/diamond.png" />
-	<file src="icons/discord_tag.png" />
-	<file src="icons/engine.png" />
-	<file src="icons/facbadge.png" />
-	<file src="icons/gasmask.png" />
-	<file src="icons/gloves.png" />
-	<file src="icons/gold_member.png" />
-	<file src="icons/handbrake.png" />
-	<file src="icons/handcuffs.png" />
-	<file src="icons/head_turning.png" />
-	<file src="icons/heart.png" />
-	<file src="icons/mask.png" />
-	<file src="icons/medical_mask.png" />
-	<file src="icons/phone.png" />
-	<file src="icons/police.png" />
-	<file src="icons/premium.png" />
-	<file src="icons/pro.png" />
-	<file src="icons/reportpanel.png" />
-	<file src="icons/rope.png" />
-	<file src="icons/seatbelt.png" />
-	<file src="icons/silver_member.png" />
-	<file src="icons/support_badge.png" />
-	<file src="icons/support_badge_4.png" />
-	<file src="icons/tagmode.png" />
-	<file src="icons/togpm.png" />
-	<file src="icons/vehicle_engine.png" />
-	<file src="icons/vehicle_handbrake.png" />
-	<file src="icons/vehicle_lights.png" />
-	<file src="icons/vehicle_lock.png" />
-	<file src="icons/vehicle_seatbelt.png" />
-	<file src="icons/verified.png" />
-	<file src="icons/walkingstyle.png" />
-	<file src="icons/warrior.png" />
-	<file src="icons/youtuber.png" />
+        <file src="icons/discord.png" />
+        <file src="icons/youtube.png" />
+        <file src="icons/link.png" />
+        <file src="icons/menu_person.png" />
+        <file src="icons/menu_shield.png" />
+        <file src="icons/menu_trophy.png" />
+        <file src="icons/menu_chat.png" />
+        <file src="icons/menu_globe.png" />
+        <file src="icons/admin3.png" />
+        <file src="icons/admin_badge.png" />
+        <file src="icons/AFK.png" />
+        <file src="icons/blindfold.png" />
+        <file src="icons/booster.png" />
+        <file src="icons/car_lights.png" />
+        <file src="icons/car_lock.png" />
+        <file src="icons/classic.png" />
+        <file src="icons/developer_badge.png" />
+        <file src="icons/developer_badge2.png" />
+        <file src="icons/diamond.png" />
+        <file src="icons/discord_tag.png" />
+        <file src="icons/engine.png" />
+        <file src="icons/facbadge.png" />
+        <file src="icons/gasmask.png" />
+        <file src="icons/gloves.png" />
+        <file src="icons/gold_member.png" />
+        <file src="icons/handbrake.png" />
+        <file src="icons/handcuffs.png" />
+        <file src="icons/head_turning.png" />
+        <file src="icons/heart.png" />
+        <file src="icons/mask.png" />
+        <file src="icons/medical_mask.png" />
+        <file src="icons/phone.png" />
+        <file src="icons/police.png" />
+        <file src="icons/premium.png" />
+        <file src="icons/pro.png" />
+        <file src="icons/reportpanel.png" />
+        <file src="icons/rope.png" />
+        <file src="icons/seatbelt.png" />
+        <file src="icons/silver_member.png" />
+        <file src="icons/support_badge.png" />
+        <file src="icons/support_badge_4.png" />
+        <file src="icons/tagmode.png" />
+        <file src="icons/togpm.png" />
+        <file src="icons/vehicle_engine.png" />
+        <file src="icons/vehicle_handbrake.png" />
+        <file src="icons/vehicle_lights.png" />
+        <file src="icons/vehicle_lock.png" />
+        <file src="icons/vehicle_seatbelt.png" />
+        <file src="icons/verified.png" />
+        <file src="icons/walkingstyle.png" />
+        <file src="icons/warrior.png" />
+        <file src="icons/youtuber.png" />
 
-	<export function="isOpen" type="client" />
-	<export function="showSideBar" type="client" />
-	<export function="showEscapeView" type="client" />
+        <export function="isOpen" type="client" />
+        <export function="showSideBar" type="client" />
+        <export function="showEscapeView" type="client" />
 </meta>

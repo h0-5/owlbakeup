@@ -501,6 +501,7 @@ local function sendPanel(player)
                 editMembers, editRanks, editRanks,
                 { levels = levels, admins = admins, changelogs = changelogs,
                   role_members = roleMembers, staff_report = fetchStaffReport() })
+        outputDebugString("[STAFFS-DBG] showPanel sent to " .. tostring(getPlayerName(player)))
         return true
 end
 

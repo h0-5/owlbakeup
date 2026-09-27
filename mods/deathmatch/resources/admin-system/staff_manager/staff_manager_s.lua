@@ -246,6 +246,11 @@ end
 local function fetchLevels()
         local levels = {}
         local q = mysql:query("SELECT ID, LevelName, Rights, Color FROM staff_roles ORDER BY ID ASC")
+        if not q then
+                -- [V7] loud failure: a dead query used to silently empty the panel
+                outputDebugString("[Vortex Staff] DB query FAILED: staff_roles SELECT - run /staffdb", 1)
+                return levels
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
@@ -267,6 +272,11 @@ local function fetchStaffReport()
                 FROM staff_role_members m
                 JOIN accounts a ON a.id = m.AccountID
                 GROUP BY a.id ORDER BY a.username ASC]])
+        if not q then
+                -- [V7] loud failure
+                outputDebugString("[Vortex Staff] DB query FAILED: staff report JOIN - run /staffdb", 1)
+                return out
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
@@ -319,6 +329,16 @@ local function sendFullData(player)
                 JOIN accounts a ON a.id = m.AccountID
                 LEFT JOIN feedbacks f ON f.staff_id = a.id
                 GROUP BY a.id ORDER BY m.RoleID ASC, a.username ASC]])
+        if not q then
+                -- [V7] loud failure
+                outputDebugString("[Vortex Staff] DB query FAILED: admins JOIN - run /staffdb", 1)
+                if isElement(player) then
+                        outputChatBox("Staff system: database error loading staff list (/staffdb).", player, 255, 80, 80)
+                end
+                triggerClientEvent(player, "rpadmin:sendSQLInformations", player,
+                        levels, {}, {}, {}, {}, {})
+                return levels, admins
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
@@ -341,12 +361,16 @@ local function sendFullData(player)
                 SELECT DATE_FORMAT(Date, '%Y-%m-%d %H:%i:%s') AS Date,
                         cType, Username, FromR, ToR, By_
                 FROM staff_rank_changelogs ORDER BY ID DESC LIMIT 200]])
-        while true do
-                local row = mysql:fetch_assoc(cq)
+        if not cq then
+                -- [V7] loud failure (changelogs are non-fatal: still push the rest)
+                outputDebugString("[Vortex Staff] DB query FAILED: changelogs SELECT - run /staffdb", 1)
+        end
+        while cq do
+                local row = cq and mysql:fetch_assoc(cq) or nil
                 if not row then break end
                 changelogs[#changelogs + 1] = row
         end
-        mysql:free_result(cq)
+        if cq then mysql:free_result(cq) end
 
         triggerClientEvent(player, "rpadmin:sendSQLInformations", player,
                 levels, admins, changelogs, {}, roleMembers, fetchStaffReport())
@@ -369,12 +393,22 @@ local function sendPanel(player)
         local admins, roleMembers = {}, {}
         local q = mysql:query([[
                 SELECT a.id, a.username, a.adminreports, m.RoleID,
-                        COALESCE(ROUND(AVG(f.rating), 3), 0) AS FeedbackRating,
+                        COALESCE(ROUND(AVG(f.rating), 3), 0) as FeedbackRating,
                         COUNT(f.id) AS FeedbackCount
                 FROM staff_role_members m
                 JOIN accounts a ON a.id = m.AccountID
                 LEFT JOIN feedbacks f ON f.staff_id = a.id
                 GROUP BY a.id ORDER BY m.RoleID ASC, a.username ASC]])
+        if not q then
+                -- [V7] loud failure: panel still opens, but with a clear message
+                outputDebugString("[Vortex Staff] DB query FAILED: panel admins JOIN - run /staffdb", 1)
+                outputChatBox("Staff system: database error - run /staffdb to diagnose.", player, 255, 80, 80)
+                triggerClientEvent(player, "rpadmin:showPanel", player,
+                        editMembers, editRanks, editRanks,
+                        { levels = levels, admins = {}, changelogs = {},
+                          role_members = {}, staff_report = {} })
+                return false
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end

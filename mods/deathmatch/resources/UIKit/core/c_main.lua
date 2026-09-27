@@ -321,9 +321,16 @@ function uiGetVisible(arg0)
 end
 function uiGetText(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetText' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
-  if type(UI.DB[arg0].text) ~= "table" or not UI.DB[arg0].text.en then
+  -- [Vortex fix #13] the decompiler emptied the bilingual branch: every
+  -- label stores {en=,ar=} and the old body returned tostring(table) --
+  -- the delete-staff dialog then sent "table: 0x..." as the username!
+  local t = UI.DB[arg0].text
+  if type(t) == "table" then
+    local pick = language and t[language] or nil
+    if pick then return tostring(pick) end
+    return tostring(t.en or t.ar or "")
   end
-  return (tostring(UI.DB[arg0].text))
+  return tostring(t or "")
 end
 function uiSetText(arg0, arg1)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetText' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -565,5 +572,20 @@ end
 function uiCenterElement(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiCenterElement' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   uiSetPosition(arg0, (sx - uiGetSize(arg0)) / 2, (sy - uiGetSize(arg0)) / 2)
+  return true
+end
+
+-- [Vortex fix #13] cross-resource keyboard focus: lets a host panel place
+-- focus on a ui-edit even when UIKit's own click pipeline is not alive
+-- (the raw-input fallback in staff_manager calls this on edit clicks).
+function uiSetFocusedElement(arg0)
+  assert(isUIElement(arg0), "Bad argument @ 'uiSetFocusedElement' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  if UI.FocusElement and isElement(UI.FocusElement) and UI.FocusElement ~= arg0 then
+    UI.DB[UI.FocusElement].state = "normal"
+    triggerEvent("onClientUIBlur", UI.FocusElement)
+  end
+  UI.FocusElement = arg0
+  UI.DB[arg0].state = "normal"
+  triggerEvent("onClientUIFocus", arg0)
   return true
 end

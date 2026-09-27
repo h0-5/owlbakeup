@@ -72,13 +72,14 @@ local getLevelByName = {}       -- [name] = roleID
 
 local panelData = { changelogs = {} }
 
+
 --[[ sidebar sections — reconstructed menu table (the decompiler collapsed
      the original config into `var0`; ids are the ones the code builds
      content for, permissions from reloadAdminPanelMenu/showPanel logic) ]]
 local SECTIONS = {
         { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "staff_manager/icons/menu_shield.png", permission = false },
         { id = "roles_members",      en = "Role Members",  ar = "أعضاء الرتب",      icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
-        { id = "changelogs",         en = "Changelogs",    ar = "سجل التغييرات",    icon = "staff_manager/icons/menu_chat.png",   permission = false },
+        { id = "changelogs",         en = "Logs",          ar = "logs",    icon = "staff_manager/icons/menu_chat.png",   permission = false },
         { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
         { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
 }
@@ -89,6 +90,38 @@ local MENU_W = 150
 local CONTENT_X = MENU_W + 10             -- 160
 local CONTENT_W = PANEL_W - MENU_W - 15   -- 740
 local CONTENT_H = PANEL_H - 10            -- 565
+
+--[[ [V7] SELF-CONTAINED CLICK LAYER ========================================
+
+        The panel no longer DEPENDS on UIKit's event pipeline. UIKit's own
+        path (onClientClick -> UI.click -> onClientUIClick) stays active,
+        but a raw MTA onClientClick handler + this panel's own hit registry
+        (absolute rects captured at build time, mirroring UIKit's geometry)
+        drive the SAME dispatcher. A stale, broken or event-starved UIKit
+        build can therefore never make the panel decorative again: if its
+        events die, the raw path still lands. dispatchPanelAction latches
+        each element for 300ms so both paths can never double-fire. ]]
+local PANEL_HIT = {}          -- [element] = { x,y,w,h, kind, section, order }
+local HIT_MENU_ROWS = {}      -- [1-based menu row] = section id (rebuilt on menu reload)
+local panelDispatchTick = {}  -- per-element dispatch latch
+local permToggleTick = {}     -- per-row permission toggle latch (double-click)
+local regSeq = 0              -- registration order = painter order
+local winX, winY              -- absolute top-left of admin_panel (set in UIKitReady)
+
+local function regHit(el, kind, x, y, w, h, section, baseX, baseY)
+        if not el or not isElement(el) then return end
+        -- every section container sits at (CONTENT_X, 5) inside admin_panel;
+        -- coordinates given relative to a container are lifted to panel space
+        if baseX == nil and section ~= nil and section ~= false then
+                x, y = x + CONTENT_X, y + 5
+        end
+        regSeq = regSeq + 1
+        PANEL_HIT[el] = {
+                x = (baseX or winX) + x * SCALE_Y, y = (baseY or winY) + y * SCALE_Y,
+                w = w * SCALE_Y, h = h * SCALE_Y,
+                kind = kind, section = section, order = regSeq,
+        }
+end
 
 local function themeColor(name)
         local ok, c = pcall(eui.uiGetThemeColor, eui, name)
@@ -105,6 +138,11 @@ function UIKitReady()
         end
         eui = exports.UIKit
 
+
+        -- [V7] absolute root geometry (mirrors UIKit addUIElement root branch)
+        local refX, refY = (refSx - PANEL_W) / 2, (refSy - PANEL_H) / 2
+        winX = refX * SCALE_X + (PANEL_W * SCALE_X - PANEL_W * SCALE_Y) / 2
+        winY = refY * SCALE_Y
         UI.window.admin_panel = eui:uiCreateRectangle(false, false, PANEL_W, PANEL_H,
                 tocolor(6, 9, 14, 235), true, true, true, true)
         eui:uiSetVisible(UI.window.admin_panel, false)
@@ -304,7 +342,7 @@ function UIKitReady()
         -- containers): instant visual proof of which build the client is
         -- actually running — guards against MTA client-cache staleness
         -- (the "updated the server but the panel never changed" case)
-        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V6",
+        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V7",
                 themeColor("primary"), "right", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.version_badge, "default-large")
 
@@ -327,6 +365,46 @@ function UIKitReady()
         eui:uiSetProperty(menu, "selection_color", themeColor("primary"))
         setElementID(menu, "staff-panel-menu")
 
+        -- [V7] hit registry: every interactive element with its absolute rect.
+        -- Registration order = creation order = painter order (topmost wins).
+        PANEL_HIT, regSeq = {}, 0
+        PANEL_HIT[menu] = { x = winX + 5 * SCALE_Y, y = winY + 65 * SCALE_Y,
+                w = MENU_W * SCALE_Y, h = MENU_H * SCALE_Y, kind = "menu",
+                section = false, rowH = rowHeight, order = 0 }
+        regHit(UI.button.close_panel, "button", 5, PANEL_H - 45, 150, 40, false)
+        regHit(UI.gridlist.staffs, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.staffs)
+        regHit(UI.button.delete_admin, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.staffs)
+        regHit(UI.button.add_admin, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.staffs)
+        regHit(UI.gridlist.roles_members, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.roles_members)
+        regHit(UI.edit.changelogs_search, "edit", CONTENT_W - 310, 15, 300, 25, UI.container.changelogs)
+        regHit(UI.gridlist.changelogs, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 60 - 10, UI.container.changelogs)
+        regHit(UI.gridlist.ranks, "grid", 10, 60, ranksW, PANEL_H - 10 - 120, UI.container.ranks)
+        regHit(UI.gridlist.permissions, "grid", permsX, 100, permsW, PANEL_H - 10 - 60 - 100 - 30, UI.container.ranks)
+        regHit(UI.checkbox.permissions_select_all, "checkbox", permsX, PANEL_H - 10 - 60 - 20, 150, 25, UI.container.ranks)
+        regHit(UI.edit.rank_name, "edit", permsX + 55, 65, 300, 25, UI.container.ranks)
+        regHit(UI.rectangle.rank_color, "colorrect", PANEL_W - MENU_W - 15 - 60, 65, 50, 25, UI.container.ranks)
+        regHit(UI.button.delete_rank, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.button.add_rank, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.button.save_rank_changes, "button", PANEL_W - MENU_W - 15 - 160, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.gridlist.daily_staff_report, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.daily_staff_report)
+        -- floating add-staff window (root element -> own base origin)
+        local awX = ((refSx - 400) / 2) * SCALE_X + (400 * SCALE_X - 400 * SCALE_Y) / 2
+        local awY = ((refSy - 390) / 2) * SCALE_Y
+        PANEL_HIT[UI.window.add_staff] = { x = awX, y = awY, w = 400 * SCALE_Y,
+                h = 390 * SCALE_Y, kind = "window", section = false, order = 0 }
+        regHit(UI.edit.add_staff_account, "edit", 10, 50, 380, 25, UI.window.add_staff, awX, awY)
+        regHit(UI.gridlist.add_staff_ranks, "grid", 10, 90, 380, 250, UI.window.add_staff, awX, awY)
+        regHit(UI.button.cancel_add_staff, "button", 10, 345, 185, 35, UI.window.add_staff, awX, awY)
+        regHit(UI.button.add_staff, "button", 200, 345, 190, 35, UI.window.add_staff, awX, awY)
+        -- confirm dialogs float above everything; their buttons handle
+        -- themselves inside the dialog draw (independent click detection)
+        local dlgX = ((refSx - 300) / 2) * SCALE_X + (300 * SCALE_X - 300 * SCALE_Y) / 2
+        local dlgY = ((refSy - 160) / 2) * SCALE_Y
+        PANEL_HIT[UI.dialog.delete_staff] = { x = dlgX, y = dlgY, w = 300 * SCALE_Y,
+                h = 160 * SCALE_Y, kind = "window", section = false, order = 0 }
+        PANEL_HIT[UI.dialog.delete_rank] = { x = dlgX, y = dlgY, w = 300 * SCALE_Y,
+                h = 160 * SCALE_Y, kind = "window", section = false, order = 0 }
+
         uiBuilt = true
 end
 
@@ -337,11 +415,13 @@ addEventHandler("onClientUIKitReady", root, UIKitReady)
 
 function reloadAdminPanelMenu(hasEditMembers, hasEditRanks)
         eui:uiMenuClear(menu)
+        HIT_MENU_ROWS = {}
         for _, section in ipairs(SECTIONS) do
                 local allowed = not section.permission
                         or (section.permission == "editmembers" and hasEditMembers)
                         or (section.permission == "editranks" and hasEditRanks)
                 if allowed then
+                        HIT_MENU_ROWS[#HIT_MENU_ROWS + 1] = section.id
                         eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
                                 tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)
                 end
@@ -404,15 +484,21 @@ addEventHandler("onClientUIDialogButtonClick", root, function(button)
         end
 end)
 
-addEventHandler("onClientUIClick", root, function()
+local function dispatchPanelAction(el)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then return end
+        if not el or not isElement(el) then return end
+        -- [V7] per-element latch: the UIKit path and the raw-input fallback
+        -- can both land here for the same click; only the first counts
+        local nowTick = getTickCount()
+        if panelDispatchTick[el] and nowTick - panelDispatchTick[el] < 300 then return end
+        panelDispatchTick[el] = nowTick
 
         -- ranks grid: select a rank -> load its rights + color
-        if source == UI.gridlist.ranks then
-                local sel = eui:uiGridListGetSelectedItem(source)
+        if el == UI.gridlist.ranks then
+                local sel = eui:uiGridListGetSelectedItem(el)
                 if sel ~= -1 then
-                        local roleID = eui:uiGridListGetItemData(source, sel, 1)
-                        eui:uiSetText(UI.edit.rank_name, eui:uiGridListGetItemText(source, sel, 1))
+                        local roleID = eui:uiGridListGetItemData(el, sel, 1)
+                        eui:uiSetText(UI.edit.rank_name, eui:uiGridListGetItemText(el, sel, 1))
                         eui:uiSetText(UI.label.rank_id, "#" .. tostring(roleID))
                         for i, right in ipairs(AllRights) do
                                 local enabled = false
@@ -433,12 +519,12 @@ addEventHandler("onClientUIClick", root, function()
                         eui:uiSetColor(UI.rectangle.rank_color, unpack(color or { 255, 255, 255, 255 }))
                 end
 
-        elseif source == UI.rectangle.rank_color then
+        elseif el == UI.rectangle.rank_color then
                 currentColorLabel = UI.rectangle.rank_color
                 colorPicker.openSelect(unpack(RankColor))
 
-        elseif source == UI.checkbox.permissions_select_all then
-                local selected = eui:uiCheckBoxGetSelected(source)
+        elseif el == UI.checkbox.permissions_select_all then
+                local selected = eui:uiCheckBoxGetSelected(el)
                 for row = 0, eui:uiGridListGetRowCount(UI.gridlist.permissions) - 1 do
                         eui:uiGridListSetItemData(UI.gridlist.permissions, row, 1, selected and true or false)
                         if selected then
@@ -448,7 +534,7 @@ addEventHandler("onClientUIClick", root, function()
                         end
                 end
 
-        elseif source == UI.button.delete_rank then
+        elseif el == UI.button.delete_rank then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
                 if sel ~= -1 then
                         eui:uiSetVisible(UI.dialog.delete_rank, true)
@@ -457,14 +543,14 @@ addEventHandler("onClientUIClick", root, function()
                         rank_to_delete = eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1)
                 end
 
-        elseif source == UI.button.add_rank then
+        elseif el == UI.button.add_rank then
                 if eui:uiGetText(UI.edit.rank_name) ~= "" then
                         triggerServerEvent("rpadmin:addAdminLevel", localPlayer,
                                 eui:uiGetText(UI.edit.rank_name))
                         eui:uiSetText(UI.edit.rank_name, "")
                 end
 
-        elseif source == UI.button.save_rank_changes then
+        elseif el == UI.button.save_rank_changes then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
                 if sel ~= -1 then
                         -- accumulate the CHECKED rights only (the decompiler lost this
@@ -480,7 +566,7 @@ addEventHandler("onClientUIClick", root, function()
                                 { unpack(RankColor or { 255, 255, 255, 255 }) })
                 end
 
-        elseif source == UI.button.delete_admin then
+        elseif el == UI.button.delete_admin then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.staffs)
                 if sel ~= -1 then
                         eui:uiSetVisible(UI.dialog.delete_staff, true)
@@ -488,11 +574,11 @@ addEventHandler("onClientUIClick", root, function()
                                 eui:uiGridListGetItemText(UI.gridlist.staffs, sel, 2))
                 end
 
-        elseif source == UI.button.add_admin then
+        elseif el == UI.button.add_admin then
                 eui:uiSetVisible(UI.window.add_staff, true)
                 eui:uiBringToFront(UI.window.add_staff)
 
-        elseif source == UI.button.add_staff then
+        elseif el == UI.button.add_staff then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.add_staff_ranks)
                 if #eui:uiGetText(UI.edit.add_staff_account) ~= 0 and sel ~= -1 then
                         triggerServerEvent("rpadmin:addNewAdmin", localPlayer,
@@ -503,26 +589,176 @@ addEventHandler("onClientUIClick", root, function()
                         eui:uiSetText(UI.edit.add_staff_account, "")
                 end
 
-        elseif source == UI.button.cancel_add_staff then
+        elseif el == UI.button.cancel_add_staff then
                 eui:uiSetVisible(UI.window.add_staff, false)
 
-        elseif source == UI.button.close_panel then
+        elseif el == UI.button.close_panel then
                 eui:uiSetVisible(UI.window.admin_panel, false)
                 eui:uiSetVisible(UI.window.add_staff, false)
                 showCursor(false)
         end
+end
+
+addEventHandler("onClientUIClick", root, function()
+        dispatchPanelAction(source)
 end)
+
+local function togglePermissionRow(sel)
+        if not (UI.gridlist.permissions and isElement(UI.gridlist.permissions)) then return end
+        if not sel or sel < 0 then return end
+        -- [V7] shared by the UIKit double-click path AND the raw fallback;
+        -- the latch keeps a double-click from toggling twice
+        local nowTick = getTickCount()
+        if permToggleTick[sel] and nowTick - permToggleTick[sel] < 250 then return end
+        permToggleTick[sel] = nowTick
+        local state = not eui:uiGridListGetItemData(UI.gridlist.permissions, sel, 1)
+        eui:uiGridListSetItemData(UI.gridlist.permissions, sel, 1, state)
+        if state then
+                eui:uiGridListSetItemColor(UI.gridlist.permissions, sel, 1, tocolor(0, 255, 0))
+        else
+                eui:uiGridListSetItemColor(UI.gridlist.permissions, sel, 1, tocolor(255, 0, 0))
+        end
+end
 
 addEventHandler("onClientUIDoubleClick", root, function()
         if source == UI.gridlist.permissions
                 and eui:uiGridListGetSelectedItem(source) ~= -1 then
-                local sel = eui:uiGridListGetSelectedItem(source)
-                local state = not eui:uiGridListGetItemData(source, sel, 1)
-                eui:uiGridListSetItemData(source, sel, 1, state)
-                if state then
-                        eui:uiGridListSetItemColor(source, sel, 1, tocolor(0, 255, 0))
-                else
-                        eui:uiGridListSetItemColor(source, sel, 1, tocolor(255, 0, 0))
+                togglePermissionRow(eui:uiGridListGetSelectedItem(source))
+        end
+end)
+
+--[[ [V7] raw-input click path - the panel's own hit registry + MTA's raw
+        onClientClick/onClientDoubleClick. Keeps every button, row, checkbox,
+        edit and menu row working even if UIKit's own event pipeline is dead,
+        stale, or eaten by another resource. ]]
+
+local function panelGridRowAt(info, gl, ay)
+        local ok, colH = pcall(eui.uiGetProperty, eui, gl, "column_height")
+        local col = (ok and tonumber(colH)) or 25
+        local ok2, rowHraw = pcall(eui.uiGetProperty, eui, gl, "row_height")
+        local rowH = math.max((ok2 and tonumber(rowHraw) or 20) * SCALE_Y, 4)
+        local relY = ay - (info.y + 2 + col)
+        if relY < 0 then return nil end
+        local ok3, count = pcall(eui.uiGridListGetRowCount, eui, gl)
+        if not ok3 or not count or count <= 0 then return nil end
+        local idx = math.floor(relY / rowH)
+        if idx >= 0 and idx < count then return idx end
+        return nil
+end
+
+local function panelDispatch(hitEl, info, ax, ay)
+        if not hitEl or not info then return end
+        if info.kind == "button" or info.kind == "colorrect" then
+                dispatchPanelAction(hitEl)
+        elseif info.kind == "checkbox" then
+                local ok, cur = pcall(eui.uiCheckBoxGetSelected, eui, hitEl)
+                if pcall(eui.uiCheckBoxSetSelected, eui, hitEl, not (ok and cur)) then
+                        dispatchPanelAction(hitEl)
+                end
+        elseif info.kind == "grid" then
+                local idx = panelGridRowAt(info, hitEl, ay)
+                if idx and pcall(eui.uiGridListSetSelectedItem, eui, hitEl, idx) then
+                        if hitEl == UI.gridlist.permissions then
+                                togglePermissionRow(idx)
+                        else
+                                dispatchPanelAction(hitEl)
+                        end
+                end
+        elseif info.kind == "edit" then
+                -- focus (uiSetFocusedElement is a V7 UIKit export; if the
+                -- installed UIKit predates it the pcall simply no-ops)
+                pcall(eui.uiSetFocusedElement, eui, hitEl)
+                local okT, txt = pcall(eui.uiGetText, eui, hitEl)
+                local caret = 1
+                if okT and type(txt) == "string" and #txt > 0 then
+                        local n = (utf8 and utf8.len and utf8.len(txt)) or #txt
+                        caret = (tonumber(n) or #txt) + 1
+                end
+                pcall(eui.uiEditSetCaretIndex, eui, hitEl, caret)
+        elseif info.kind == "menu" then
+                local step = (info.rowH or 40) * SCALE_Y + 4
+                local idx = math.floor((ay - (info.y + 5 * SCALE_Y)) / step) + 1
+                if HIT_MENU_ROWS[idx] then
+                        pcall(eui.uiMenuSetSelectedRow, eui, menu, idx)
+                end
+        end
+        -- kind "window": swallowed on purpose (floating windows/dialogs
+        -- run their own click handling)
+end
+
+local function panelHitTest(ax, ay)
+        -- 1) confirm dialogs float above everything
+        for _, dlg in ipairs({ UI.dialog.delete_staff, UI.dialog.delete_rank }) do
+                if dlg and isElement(dlg) then
+                        local okV, dv = pcall(eui.uiGetVisible, eui, dlg)
+                        if okV and dv then
+                                local dr = PANEL_HIT[dlg]
+                                if dr and ax >= dr.x and ax <= dr.x + dr.w and ay >= dr.y and ay <= dr.y + dr.h then
+                                        return dlg, dr
+                                end
+                        end
+                end
+        end
+        -- 2) the floating add-staff window
+        local aw = UI.window.add_staff
+        if aw and isElement(aw) then
+                local okV, wv = pcall(eui.uiGetVisible, eui, aw)
+                if okV and wv then
+                        local wr = PANEL_HIT[aw]
+                        if wr and ax >= wr.x and ax <= wr.x + wr.w and ay >= wr.y and ay <= wr.y + wr.h then
+                                local bEl, bInfo, bOrder
+                                for el, info in pairs(PANEL_HIT) do
+                                        if info.section == aw and ax >= info.x and ax <= info.x + info.w
+                                                and ay >= info.y and ay <= info.y + info.h then
+                                                if not bOrder or info.order > bOrder then
+                                                        bEl, bInfo, bOrder = el, info, info.order
+                                                end
+                                        end
+                                end
+                                return bEl or aw, bInfo or wr
+                        end
+                end
+        end
+        -- 3) the main panel surface
+        local ap = UI.window.admin_panel
+        if not (ap and isElement(ap)) then return nil end
+        local okV, pv = pcall(eui.uiGetVisible, eui, ap)
+        if not (okV and pv) then return nil end
+        local bEl, bInfo, bOrder
+        for el, info in pairs(PANEL_HIT) do
+                if info.kind ~= "window" and info.section ~= aw then
+                        local secOK = (info.section == nil or info.section == false)
+                        if not secOK and isElement(info.section) then
+                                local ok2, sv = pcall(eui.uiGetVisible, eui, info.section)
+                                secOK = (ok2 and sv == true) or false
+                        end
+                        if secOK and ax >= info.x and ax <= info.x + info.w
+                                and ay >= info.y and ay <= info.y + info.h then
+                                if not bOrder or info.order > bOrder then
+                                        bEl, bInfo, bOrder = el, info, info.order
+                                end
+                        end
+                end
+        end
+        return bEl, bInfo
+end
+
+addEventHandler("onClientClick", root, function(button, state, ax, ay)
+        if button ~= "left" or state ~= "up" or not uiBuilt then return end
+        local hitEl, info = panelHitTest(ax, ay)
+        if hitEl and info then
+                panelDispatch(hitEl, info, ax, ay)
+        end
+end)
+
+addEventHandler("onClientDoubleClick", root, function(button, ax, ay)
+        if button ~= "left" or not uiBuilt then return end
+        local hitEl, info = panelHitTest(ax, ay)
+        if hitEl and info and info.kind == "grid" and hitEl == UI.gridlist.permissions then
+                local idx = panelGridRowAt(info, hitEl, ay)
+                if idx then
+                        pcall(eui.uiGridListSetSelectedItem, eui, hitEl, idx)
+                        togglePermissionRow(idx)
                 end
         end
 end)
@@ -628,8 +864,10 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         table.sort(admins or {}, function(a, b)
                 local ida, idb = tonumber(a.AdminID) or 0, tonumber(b.AdminID) or 0
                 if ida == idb then
-                        local ra = tonumber(a.FeedbackRating) / math.max(tonumber(a.FeedbackCount), 1)
-                        local rb = tonumber(b.FeedbackRating) / math.max(tonumber(b.FeedbackCount), 1)
+                        -- [V7] nil-proof: one bad row must never kill the sort
+                        -- (a thrown sort leaves the whole panel half-filled)
+                        local ra = (tonumber(a.FeedbackRating) or 0) / math.max(tonumber(a.FeedbackCount) or 0, 1)
+                        local rb = (tonumber(b.FeedbackRating) or 0) / math.max(tonumber(b.FeedbackCount) or 0, 1)
                         return ra > rb
                 end
                 return ida < idb
@@ -639,7 +877,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 local color = LevelColor[tostring(staff.AdminID)] or { 255, 255, 255 }
                 local rating = 0
                 if tonumber(staff.FeedbackCount) and tonumber(staff.FeedbackCount) > 0 then
-                        rating = tonumber(staff.FeedbackRating) / tonumber(staff.FeedbackCount)
+                        rating = (tonumber(staff.FeedbackRating) or 0) / tonumber(staff.FeedbackCount)
                 end
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 1,
                         tostring(LevelNames[tostring(staff.AdminID)] or "N/A"))

@@ -40,7 +40,7 @@ function uiCreateButton(arg0, arg1, arg2, arg3, arg4, arg5, arg6)
         valueType = "number"
       },
       HoverTextColor = {
-        value = theme.COLORS.black,
+        value = false,
         valueType = "number"
       },
       HoverColor = {

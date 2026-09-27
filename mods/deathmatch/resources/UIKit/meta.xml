@@ -226,4 +226,5 @@
 	<export function="uiWindowGetTitleBarHeight" type="client" />
 	<export function="uiWindowSetMovable" type="client" />
 	<export function="uiWindowSetTitleBarHeight" type="client" />
+	<export function="uiSetFocusedElement" type="client" />
 </meta>

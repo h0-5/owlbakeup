@@ -118,6 +118,9 @@
 	<export function="getAmmoPerClip" type="server"/>
 	
 	<script src="staff_manager/staff_manager_rights.lua" type="shared"/>
+	<!-- [V7] temporary DB bootstrap: creates missing tables/columns,
+	     repairs broken rank colors, /staffdb prints live DB state -->
+	<script src="staff_manager/staff_manager_setup_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_c.lua" type="client" cache="false"/>

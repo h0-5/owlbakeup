@@ -557,6 +557,13 @@ local function dispatchPanelAction(el)
                 end
 
         elseif el == UI.rectangle.rank_color then
+                -- [Fix #19] backend-first: a rank without editranks must not be
+                -- able to open the color picker at all (the server re-checks
+                # on save, but the picker should never even appear)
+                if not canEditRanks then
+                        outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                        return
+                end
                 currentColorLabel = UI.rectangle.rank_color
                 colorPicker.openSelect(unpack(RankColor))
 

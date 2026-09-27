@@ -212,8 +212,13 @@ end
 addEvent("admin:timerUnjailPlayer", false)
 addEventHandler("admin:timerUnjailPlayer", getRootElement(), timerUnjailPlayer)
 
-function unjailPlayer(thePlayer, commandName, who)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function unjailPlayer(thePlayer, commandName, who)
+ -- [Fix #19] backend-first right gate (admin.unjail)
+ if not exports.admin-system:hasCommandRight(thePlayer, "unjail") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		if not (who) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Player Partial Name/ID]", thePlayer, 255, 194, 14)
 		else

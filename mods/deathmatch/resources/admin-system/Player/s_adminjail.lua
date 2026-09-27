@@ -1,6 +1,11 @@
 ----------------------[JAIL]--------------------
-function jailPlayer(thePlayer, commandName, who, minutes, ...)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function jailPlayer(thePlayer, commandName, who, minutes, ...)
+ -- [Fix #19] backend-first right gate (admin.jail)
+ if not exports.admin-system:hasCommandRight(thePlayer, "jail") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		local minutes = tonumber(minutes) and math.ceil(tonumber(minutes))
 		if not (who) or not (minutes) or not (...) or (minutes<1) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Player Partial Name/ID] [Minutes(>=1) 999=Perm] [Reason]", thePlayer, 255, 194, 14)
@@ -90,8 +95,13 @@ addCommandHandler("jail", jailPlayer, false, false)
 addCommandHandler("sjail", jailPlayer, false, false)
 
 --OFFLINE JAIL BY MAXIME--------------------
-function offlineJailPlayer(thePlayer, commandName, who, minutes, ...)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function offlineJailPlayer(thePlayer, commandName, who, minutes, ...)
+ -- [Fix #19] backend-first right gate (admin.jail)
+ if not exports.admin-system:hasCommandRight(thePlayer, "ojail") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		local minutes = tonumber(minutes) and math.ceil(tonumber(minutes))
 		if not (who) or not (minutes) or not (...) or (minutes<1) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Exact Username] [Minutes(>=1) 999=Perm] [Reason]", thePlayer, 255, 194, 14)

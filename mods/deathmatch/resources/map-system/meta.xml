@@ -1,0 +1,5 @@
+<meta>
+    <info author="Vortex" type="gamemode" name="map-system" description="F11 tactical map (Fix #27)" />
+    <script src="s_map.lua" type="server" />
+    <script src="c_map.lua" type="client" cache="false" />
+</meta>

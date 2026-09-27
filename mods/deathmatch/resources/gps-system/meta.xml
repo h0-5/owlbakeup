@@ -16,4 +16,7 @@
 	
 	<script src="c_speedLimit.lua" type="client"/>
 	<script src="c_streetNames.lua" type="client"/>
+	<!-- Fix #29: map-system draws the old-client GPS - the A* engine
+	     is exported so the F11 map can route through the road nodes -->
+	<export function="calculatePathByCoords" type="client" />
 </meta>

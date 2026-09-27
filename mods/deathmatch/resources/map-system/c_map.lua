@@ -1,16 +1,19 @@
 --------------------------------------------------------------------------------
--- Vortex map-system — client (Fix #27)
+-- Vortex map-system — client (Fix #29 rewrite)
 --
--- F11 big map for the HUD family. The built-in player map is suppressed and
--- replaced by our own panel (no world texture available in this repo, so the
--- map is drawn as a clean tactical grid):
---   * SAFE / DANGER tint per the HUD zone rule: ALL of Los Santos is safe
---     (green), every other city / area is danger (red) - sampled with
---     getZoneName(x, y, z, true) on a coarse grid when the map opens
---   * local player arrow + streamed player dots (names for staff, pushed by
---     the server as map:seeNames)
---   * click = set a route waypoint (old client purple), /clearway clears it
---   * mouse wheel zooms, F11 closes
+-- Complete map mod rebuilt from the OLD CLIENT file (backupm/[rp]/radar +
+-- gps-system): the F11 map is now the REAL world map texture (map.jpg, the
+-- same one the old GPS GUI used, covering -3000..3000 on both axes) with
+-- the old-client GPS:
+--   * LEFT CLICK  = set GPS target -> route calculated through the vehicle
+--     road nodes via gps-system's A* engine (calculatePathByCoords, exported)
+--     and drawn as the old client's ORANGE route lines (251,139,0,180)
+--   * RIGHT CLICK = clear GPS target + route (old client behaviour)
+--   * /clearway   = same as right click
+--   * mouse wheel zooms (1..6), F11 closes
+--   * purple waypoint marker at the target (old client wayColor 174,0,255)
+--   * local player arrow + streamed player dots (names for staff only -
+--     map:seeNames pushed by s_map.lua) + world blips as colored dots
 --------------------------------------------------------------------------------
 
 local sx, sy = guiGetScreenSize()
@@ -18,13 +21,22 @@ local localPlayer = getLocalPlayer()
 
 local visible = false
 local zoom = 1
-local waypoint = nil          -- {x, y}
-local cityGrid = nil          -- sampled city grid
-local GRID_N = 44             -- 44x44 samples over the 6000x6000 world
-local WORLD = 6000
+local waypoint = nil         -- {x, y}   GPS target / purple marker
+local route = nil            -- {{x, y}, ...} A* node path (old client)
+local mapTex                 -- images/map.jpg
 
 local PANEL_W = math.floor(sx * 0.74)
 local PANEL_H = math.floor(sy * 0.76)
+local TEX_SIZE = 1152        -- map.jpg native size (6000 world units)
+local WORLD = 6000
+
+-- old client constants
+local WAY_COLOR_R, WAY_COLOR_G, WAY_COLOR_B = 174, 0, 255     -- wayColor
+local ROUTE_COLOR_R, ROUTE_COLOR_G, ROUTE_COLOR_B = 251, 139, 0 -- old GPS orange
+
+addEventHandler("onClientResourceStart", resourceRoot, function()
+        mapTex = dxCreateTexture("images/map.jpg", "argb", true, "clamp")
+end)
 
 local function outlineText(text, x, y, w, h, color, scale, font, alignX, alignY)
         local black = tocolor(0, 0, 0, 200)
@@ -41,26 +53,10 @@ local function worldToPanel(wx, wy, px, py, pw, ph, cx, cy)
         return px + pw / 2 + (wx - cx) * scale, py + ph / 2 - (wy - cy) * scale
 end
 
--- panel pixels -> world (for the waypoint click)
+-- panel pixels -> world (for the GPS click)
 local function panelToWorld(sxp, syp, px, py, pw, ph, cx, cy)
         local scale = (pw / WORLD) * zoom
         return cx + (sxp - px - pw / 2) / scale, cy - (syp - py - ph / 2) / scale
-end
-
--- sample the world into city cells when the map opens (one-shot)
-local function sampleCities()
-        local grid = {}
-        local step = WORLD / GRID_N
-        for gx = 0, GRID_N - 1 do
-                grid[gx] = {}
-                for gy = 0, GRID_N - 1 do
-                        local wx = -WORLD / 2 + step * (gx + 0.5)
-                        local wy = -WORLD / 2 + step * (gy + 0.5)
-                        local city = getZoneName(wx, wy, 3, true)
-                        grid[gx][gy] = city
-                end
-        end
-        cityGrid = grid
 end
 
 local function draw()
@@ -72,60 +68,58 @@ local function draw()
         local px, py = (sx - PANEL_W) / 2, (sy - PANEL_H) / 2
         local cx, cy = getElementPosition(localPlayer)
 
-        -- frame + background
+        -- frame + background (HUD family: dark panel, purple edges)
         dxDrawRectangle(px - 4, py - 4, PANEL_W + 8, PANEL_H + 8, tocolor(8, 10, 16, 235))
         dxDrawRectangle(px, py, PANEL_W, PANEL_H, tocolor(14, 18, 26, 250))
         dxDrawRectangle(px - 4, py - 4, PANEL_W + 8, 2, tocolor(149, 84, 255, 160))
         dxDrawRectangle(px - 4, py + PANEL_H + 2, PANEL_W + 8, 2, tocolor(149, 84, 255, 160))
 
-        local scale = (PANEL_W / WORLD) * zoom
-        local stepPx = 1000 * scale
-
-        -- safe/danger tint from the sampled grid (per the HUD zone rule)
-        if cityGrid then
-                -- Fix #28: cells are square in WORLD units, so the vertical
-                -- pixel size must follow the world scale (PANEL_W based) and
-                -- not PANEL_H - the old cellH rendered the tints as striped
-                -- rows with gaps. Cells fully outside the panel are skipped
-                -- (dxDrawRectangle does not clip).
-                local cellW = PANEL_W / GRID_N * zoom
-                local cellH = cellW
-                local half = GRID_N / 2 / zoom
-                local gx0 = math.floor((cx + WORLD / 2) / (WORLD / GRID_N) - half)
-                local gy0 = math.floor((cy + WORLD / 2) / (WORLD / GRID_N) - half)
-                for gx = gx0, gx0 + GRID_N - 1 do
-                        local col = cityGrid[gx]
-                        if col then
-                                for gy = gy0, gy0 + GRID_N - 1 do
-                                        local city = col[gy]
-                                        if city then
-                                                local wx = -WORLD / 2 + (WORLD / GRID_N) * (gx + 0.5)
-                                                local wy = -WORLD / 2 + (WORLD / GRID_N) * (gy + 0.5)
-                                                local sxp, syp = worldToPanel(wx, wy, px, py, PANEL_W, PANEL_H, cx, cy)
-                                                if sxp > px - cellW and sxp < px + PANEL_W + cellW
-                                                        and syp > py - cellH and syp < py + PANEL_H + cellH then
-                                                        local tint = (city == "Los Santos")
-                                                                and tocolor(153, 255, 0, 26) or tocolor(255, 40, 40, 26)
-                                                        dxDrawRectangle(sxp - cellW / 2, syp - cellH / 2,
-                                                                cellW + 1, cellH + 1, tint)
-                                                end
-                                        end
-                                end
-                        end
+        -- the REAL map: crop the visible world window out of map.jpg.
+        -- map.jpg covers world (-3000,-3000)..(3000,3000), pixel (0,0) = top
+        -- left = world (-3000, +3000) - the exact mapping the old GPS used
+        -- (x = rel*6000 - 3000, y = 3000 - rel*6000). The window is clamped
+        -- to the world bounds so we never sample outside the texture - the
+        -- area beyond stays the dark panel (old client behaviour).
+        if mapTex then
+                local scale = (PANEL_W / WORLD) * zoom
+                local halfW = (PANEL_W / 2) / scale
+                local halfH = (PANEL_H / 2) / scale
+                local wx0 = math.max(-WORLD / 2, cx - halfW)
+                local wx1 = math.min(WORLD / 2, cx + halfW)
+                local wy1 = math.min(WORLD / 2, cy + halfH)   -- top row = +Y
+                local wy0 = math.max(-WORLD / 2, cy - halfH)
+                if wx1 > wx0 and wy1 > wy0 then
+                        local x0s, y0s = worldToPanel(wx0, wy1, px, py, PANEL_W, PANEL_H, cx, cy)
+                        local texX = (wx0 + WORLD / 2) / WORLD * TEX_SIZE
+                        local texY = (WORLD / 2 - wy1) / WORLD * TEX_SIZE
+                        local texW = (wx1 - wx0) / WORLD * TEX_SIZE
+                        local texH = (wy1 - wy0) / WORLD * TEX_SIZE
+                        dxDrawImageSection(x0s, y0s, (wx1 - wx0) * scale, (wy1 - wy0) * scale,
+                                texX, texY, texW, texH, mapTex, 0, 0, 0, tocolor(255, 255, 255, 255))
                 end
         end
 
-        -- grid lines every 1000 world units
-        if stepPx > 14 then
-                local startW = math.ceil((cx - (PANEL_W / 2) / scale) / 1000) * 1000
-                for wx = startW, cx + (PANEL_W / 2) / scale, 1000 do
-                        local sxp = px + PANEL_W / 2 + (wx - cx) * scale
-                        dxDrawRectangle(sxp, py, 1, PANEL_H, tocolor(255, 255, 255, 12))
-                end
-                local startS = math.ceil((cy - (PANEL_H / 2) / scale) / 1000) * 1000
-                for wy = startS, cy + (PANEL_H / 2) / scale, 1000 do
-                        local syp = py + PANEL_H / 2 - (wy - cy) * scale
-                        dxDrawRectangle(px, syp, PANEL_W, 1, tocolor(255, 255, 255, 12))
+        -- world blips (colored squares - the old client used icon pngs that
+        -- are not in the backup, the data comes from the same blip elements;
+        -- blips attached to players are skipped, players draw their own dots)
+        for _, blip in ipairs(getElementsByType("blip")) do
+                if isElement(blip) then
+                        local attachedTo = getElementAttachedTo(blip)
+                        local isPlayerBlip = attachedTo and isElement(attachedTo)
+                                and getElementType(attachedTo) == "player"
+                        if not isPlayerBlip then
+                                local be = (attachedTo and isElement(attachedTo)) and attachedTo or blip
+                                local ok, bx, by = pcall(getElementPosition, be)
+                                if ok and getDistanceBetweenPoints2D(cx, cy, bx, by) <= (getBlipVisibleDistance(blip) or 500) + 2500 / zoom then
+                                        local sxp, syp = worldToPanel(bx, by, px, py, PANEL_W, PANEL_H, cx, cy)
+                                        if sxp >= px and sxp <= px + PANEL_W and syp >= py and syp <= py + PANEL_H then
+                                                local br, bg, bb = getBlipColor(blip)
+                                                local bsize = math.max(4, math.min((getBlipSize(blip) or 2) * 2.6 * zoom, 16))
+                                                dxDrawRectangle(sxp - bsize / 2, syp - bsize / 2, bsize, bsize,
+                                                        tocolor(br, bg, bb, 230))
+                                        end
+                                end
+                        end
                 end
         end
 
@@ -151,12 +145,28 @@ local function draw()
                 end
         end
 
-        -- waypoint (old client purple)
+        -- GPS route: the old client's orange polyline through the road nodes
+        if route and #route > 0 then
+                local prev = nil
+                for _, node in ipairs(route) do
+                        if node and node.x and node.y then
+                                local sxp, syp = worldToPanel(node.x, node.y, px, py, PANEL_W, PANEL_H, cx, cy)
+                                if prev then
+                                        dxDrawLine(prev[1], prev[2], sxp, syp,
+                                                tocolor(ROUTE_COLOR_R, ROUTE_COLOR_G, ROUTE_COLOR_B, 180), 5, true)
+                                end
+                                prev = { sxp, syp }
+                        end
+                end
+        end
+
+        -- waypoint / GPS target (old client purple) + live distance
         if waypoint then
                 local sxp, syp = worldToPanel(waypoint.x, waypoint.y, px, py, PANEL_W, PANEL_H, cx, cy)
                 if sxp >= px and sxp <= px + PANEL_W and syp >= py and syp <= py + PANEL_H then
-                        dxDrawRectangle(sxp - 5, syp - 5, 10, 10, tocolor(174, 0, 255, 240), 45)
-                        outlineText("نقطة المسار", sxp - 60, syp + 8, 120, 14,
+                        dxDrawRectangle(sxp - 5, syp - 5, 10, 10, tocolor(WAY_COLOR_R, WAY_COLOR_G, WAY_COLOR_B, 240))
+                        local dist = math.floor(getDistanceBetweenPoints2D(cx, cy, waypoint.x, waypoint.y))
+                        outlineText("نقطة المسار (" .. dist .. " م)", sxp - 80, syp + 8, 160, 14,
                                 tocolor(200, 130, 255, 240), 1, "default-small", "center", "top")
                 end
         end
@@ -170,21 +180,45 @@ local function draw()
         local p3x, p3y = mx + math.sin(r - 2.5) * 7, my - math.cos(r - 2.5) * 7
         dxDrawTriangle(p1x, p1y, p2x, p2y, p3x, p3y, tocolor(0, 255, 132, 255))
 
-        -- header + legend
-        outlineText("F11 — الخريطة | F11 للإغلاق | عجلة الماوس = تقريب | كلك يسار = نقطة مسار",
+        -- header + legend (old client: "Left click to set GPS Target -
+        -- Right click to disable GPS")
+        outlineText("F11 — الخريطة | كلك يسار: تحديد هدف GPS | كلك يمين: حذف | عجلة الماوس = تقريب",
                 px, py - 26, PANEL_W, 22, tocolor(235, 238, 245, 240), 1, "default-bold", "center", "top")
         local ly = py + PANEL_H + 10
-        dxDrawRectangle(px, ly + 3, 12, 12, tocolor(153, 255, 0, 200))
-        outlineText("Los Santos = SAFE ZONE", px + 18, ly, 220, 18,
-                tocolor(200, 235, 180, 235), 1, "default", "left", "top")
-        dxDrawRectangle(px + 250, ly + 3, 12, 12, tocolor(255, 40, 40, 200))
-        outlineText("باقي المدن والمناطق = DANGER ZONE", px + 268, ly, 320, 18,
-                tocolor(235, 180, 180, 235), 1, "default", "left", "top")
-        if waypoint then
-                dxDrawRectangle(px + 600, ly + 3, 12, 12, tocolor(174, 0, 255, 220))
-                outlineText("نقطة مسار (/clearway للحذف)", px + 618, ly, 260, 18,
-                        tocolor(210, 170, 255, 235), 1, "default", "left", "top")
+        dxDrawRectangle(px, ly + 3, 12, 12, tocolor(ROUTE_COLOR_R, ROUTE_COLOR_G, ROUTE_COLOR_B, 200))
+        outlineText("مسار GPS", px + 18, ly, 130, 18,
+                tocolor(255, 210, 160, 235), 1, "default", "left", "top")
+        dxDrawRectangle(px + 160, ly + 3, 12, 12, tocolor(WAY_COLOR_R, WAY_COLOR_G, WAY_COLOR_B, 220))
+        outlineText("نقطة المسار", px + 178, ly, 140, 18,
+                tocolor(210, 170, 255, 235), 1, "default", "left", "top")
+        dxDrawRectangle(px + 330, ly + 3, 12, 12, tocolor(0, 255, 132, 220))
+        outlineText("موقعك", px + 348, ly, 90, 18,
+                tocolor(180, 255, 210, 235), 1, "default", "left", "top")
+        if seeNames then
+                dxDrawRectangle(px + 450, ly + 3, 12, 12, tocolor(255, 255, 255, 220))
+                outlineText("اللاعبين (ستاف)", px + 468, ly, 170, 18,
+                        tocolor(220, 225, 235, 235), 1, "default", "left", "top")
         end
+end
+
+-- GPS: left click sets the target and routes through the road nodes with
+-- the old client's A* engine (gps-system export)
+local function setGPSClicked(wx, wy)
+        waypoint = { x = wx, y = wy }
+        route = nil
+        local ok, err = pcall(function()
+                local ex = exports["gps-system"]
+                if ex and getResourceFromName("gps-system")
+                        and getResourceState(getResourceFromName("gps-system")) == "running" then
+                        local px2, py2, pz2 = getElementPosition(localPlayer)
+                        local gz = getGroundPosition(wx, wy, 1500)
+                        route = ex:calculatePathByCoords(wx, wy, gz or 0, px2, py2, pz2 or 0)
+                end
+        end)
+        if not ok or not route or type(route) ~= "table" or #route == 0 then
+                route = nil -- target marker still works without the A* engine
+        end
+        outputChatBox("#a855f7[MAP]#ffffff تم تعيين نقطة المسار على الخريطة.", 255, 255, 255, true)
 end
 
 local function setVisible(state)
@@ -192,7 +226,6 @@ local function setVisible(state)
         visible = state
         if visible then
                 forcePlayerMap(false)
-                sampleCities()
                 addEventHandler("onClientRender", root, draw, false, "low-20")
         else
                 removeEventHandler("onClientRender", root, draw)
@@ -207,20 +240,26 @@ end)
 
 addCommandHandler("clearway", function()
         waypoint = nil
+        route = nil
         outputChatBox("#a855f7[MAP]#ffffff تم حذف نقطة المسار.", 255, 255, 255, true)
 end)
 
 addEventHandler("onClientClick", root, function(button, press)
-        if not visible or not press or button ~= "left" then return end
-        local cx, cy = getCursorPosition()
-        if not cx then return end
-        cx, cy = cx * sx, cy * sy
+        if not visible or not press then return end
+        local cxp, cyp = getCursorPosition()
+        if not cxp then return end
+        cxp, cyp = cxp * sx, cyp * sy
         local px, py = (sx - PANEL_W) / 2, (sy - PANEL_H) / 2
-        if cx < px or cx > px + PANEL_W or cy < py or cy > py + PANEL_H then return end
+        if cxp < px or cxp > px + PANEL_W or cyp < py or cyp > py + PANEL_H then return end
         local lx, ly2 = getElementPosition(localPlayer)
-        local wx, wy = panelToWorld(cx, cy, px, py, PANEL_W, PANEL_H, lx, ly2)
-        waypoint = { x = wx, y = wy }
-        outputChatBox("#a855f7[MAP]#ffffff تم تعيين نقطة المسار على الخريطة.", 255, 255, 255, true)
+        local wx, wy = panelToWorld(cxp, cyp, px, py, PANEL_W, PANEL_H, lx, ly2)
+        if button == "left" then
+                setGPSClicked(wx, wy)
+        elseif button == "right" then
+                waypoint = nil
+                route = nil
+                outputChatBox("#a855f7[MAP]#ffffff تم حذف نقطة المسار.", 255, 255, 255, true)
+        end
 end)
 
 addEventHandler("onClientKey", root, function(key, press)

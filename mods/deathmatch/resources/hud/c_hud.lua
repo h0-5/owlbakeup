@@ -639,6 +639,10 @@ local function statusHudDrawImpl()
                 -- depletes gradually as the bladder refills (empty = need to pee)
                 local value = ring and ring.value or 0
                 local shown = def.id == "urine" and (100 - value) or value
+                -- Fix #29 (user): the ring circle reads as a SOLID body now -
+                -- a dark disc fills the inside (not just borders) and the
+                -- progress arc sweeps over it
+                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
                 -- progress arc: starts 12 o'clock, sweeps clockwise (old client)
                 if shown > 0.25 then
                         drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
@@ -677,6 +681,7 @@ local function statusHudDrawImpl()
                 local x = firstX + (S + G) * 6
                 local y = ringY + 150 * SCALE
                 local cx, cy = x + S / 2, y + S / 2
+                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
                 if getRingValue("shield") > 0.25 then
                         drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
                                 255, 255, 255, 255, getRingValue("shield") / 100, postGUI)

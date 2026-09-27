@@ -247,8 +247,11 @@ local function getDisplayName(p, id)
 end
 
 local function getRank(p)
+        -- [Vortex] hidden admins read as regular players: no rank at all
         if isHidden(p) then return "-" end
-        -- [Vortex] the 21-rank ladder is THE source: rank:name is pushed by the
+        -- [Vortex] off-duty staff keep their title, only the color drops to
+        -- plain white (handled in getRankColor)
+        -- the 21-rank ladder is THE source: rank:name is pushed by the
         -- staff bridge at login and re-applied by the scoreboard server poll.
         local rn = getElementData(p, "rank:name")
         if type(rn) == "string" and rn ~= "" then return rn end
@@ -330,7 +333,8 @@ end
 
 local function getBadges(p)
         local icons = {}
-        if isHidden(p) then return icons end
+        -- [Vortex] hidden / off-duty staff show no badges - they read as plain
+        if isHidden(p) or isStaffOffDuty(p) then return icons end
         local level = tonumber(getElementData(p, "admin_level")) or 0
         if level >= 21 then
                 table.insert(icons, "premium")

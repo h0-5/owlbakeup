@@ -754,7 +754,7 @@ local function toggle(show)
                 cursorOn = false
                 searchOn = false
         end
-end)
+end
 
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then

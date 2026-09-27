@@ -225,6 +225,56 @@ local function runSetup()
         ddl("DELETE m FROM staff_role_members m LEFT JOIN accounts a ON a.id = m.AccountID WHERE a.id IS NULL",
                 "DELETE orphaned staff_role_members")
 
+        -- 5b) [Fix #18] repair the legacy "[ { ... } ]" rights rows. MTA's
+        -- toJSON wraps associative tables in an array, so every stored Rights
+        -- looked like '[ { "a": true } ]' and fromJSON returned
+        -- { [1] = {a=true} } -> rights[right] was always nil -> every gate
+        -- silently failed ("permissions broken"). Rewrite each row as a plain
+        -- JSON object. Idempotent: already-correct rows parse to the same set.
+        pcall(function()
+                local q = mysql:query("SELECT ID, Rights FROM staff_roles")
+                if not q then return end
+                local fixed, scanned = 0, 0
+                while true do
+                        local row = mysql:fetch_assoc(q)
+                        if not row then break end
+                        scanned = scanned + 1
+                        local raw = tostring(row.Rights or "")
+                        if raw ~= "" then
+                                local parsed = fromJSON(raw)
+                                if type(parsed) == "table" then
+                                        -- unwrap the MTA array wrapper
+                                        if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+                                                parsed = parsed[1]
+                                        end
+                                        local keys = {}
+                                        for k, v in pairs(parsed) do
+                                                if v then keys[#keys + 1] = tostring(k) end
+                                        end
+                                        if #keys > 0 or raw:find("{") then
+                                                table.sort(keys)
+                                                local parts = {}
+                                                for _, k in ipairs(keys) do
+                                                        parts[#parts + 1] = '"' .. mysql:escape_string(k):gsub('\\', '\\\\'):gsub('"', '\\"') .. '":true'
+                                                end
+                                                local out = "{" .. table.concat(parts, ",") .. "}"
+                                                -- only touch rows that actually differ
+                                                if out ~= raw then
+                                                        mysql:query_free("UPDATE staff_roles SET Rights='"
+                                                                .. out .. "' WHERE ID=" .. tonumber(row.ID))
+                                                        fixed = fixed + 1
+                                                end
+                                        end
+                                end
+                        end
+                end
+                mysql:free_result(q)
+                if fixed > 0 then
+                        dbg("repaired " .. fixed .. "/" .. scanned .. " rank rights rows (MTA toJSON wrapper)")
+                        table.insert(SETUP_REPORT.lines, "rank rights repaired: " .. fixed .. "/" .. scanned)
+                end
+        end)
+
         return true
 end
 

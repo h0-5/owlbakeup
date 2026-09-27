@@ -158,6 +158,22 @@ local RANK_SEED = {
 -- Chief Management and above get the full rights list
 local FULL_RIGHTS_FROM = "Chief Management"
 
+-- [Fix #18] MTA's toJSON({["a"]=true}) emits '[ { "a": true } ]' (array
+-- wrapper), so fromJSON gives { [1] = {a=true} } and every rights lookup
+-- silently fails. Emit a plain JSON object instead.
+local function rightsToJSON(rightsMap)
+        local keys = {}
+        for k, v in pairs(rightsMap) do
+                if v then keys[#keys + 1] = tostring(k) end
+        end
+        table.sort(keys)
+        local out = {}
+        for _, k in ipairs(keys) do
+                out[#out + 1] = '"' .. mysql:escape_string(k):gsub('\\', '\\\\'):gsub('"', '\\"') .. '":true'
+        end
+        return "{" .. table.concat(out, ",") .. "}"
+end
+
 -- ============================================================================
 -- tables + seed
 -- ============================================================================
@@ -216,7 +232,7 @@ local function seedRanks()
                 end
                 mysql:query_free("INSERT INTO staff_roles (LevelName, Rights, Color) VALUES ('"
                         .. mysql:escape_string(rank.name) .. "', '"
-                        .. mysql:escape_string(toJSON(rightsMap)) .. "', '"
+                        .. rightsToJSON(rightsMap) .. "', '"
                         .. mysql:escape_string(toJSON(rank.color)) .. "')")
         end
         outputDebugString("[Vortex Staff] seeded " .. #RANK_SEED .. " ranks.")
@@ -727,7 +743,7 @@ local function updateRoleImpl(sender, levelID, rights, color)
         end
 
         mysql:query_free("UPDATE staff_roles SET Rights='"
-                .. mysql:escape_string(toJSON(rights)) .. "', Color='"
+                .. rightsToJSON(rights) .. "', Color='"
                 .. mysql:escape_string(toJSON(color)) .. "' WHERE ID=" .. levelID)
         addChangelog("Rank Edited", row.LevelName, "-",
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))

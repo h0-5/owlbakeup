@@ -167,6 +167,8 @@
 	<export function="uiGridListGetItemText" type="client" />
 	<export function="uiGridListGetRowCount" type="client" />
 	<export function="uiGridListGetSelectedItem" type="client" />
+	<export function="uiGridListGetVisibleRows" type="client" />
+	<export function="uiGridListGetRowAtPoint" type="client" />
 	<export function="uiGridListRemoveColumn" type="client" />
 	<export function="uiGridListRemoveRow" type="client" />
 	<export function="uiGridListSetColumnColor" type="client" />

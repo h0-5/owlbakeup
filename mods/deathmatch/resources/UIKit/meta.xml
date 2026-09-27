@@ -61,6 +61,7 @@
 
 	<!-- exported client API (165 functions) -->
 	<export function="uiBringToFront" type="client" />
+	<export function="uiFlashPress" type="client" />
 	<export function="uiCenterElement" type="client" />
 	<export function="uiCheckBoxGetSelected" type="client" />
 	<export function="uiCheckBoxSetSelected" type="client" />

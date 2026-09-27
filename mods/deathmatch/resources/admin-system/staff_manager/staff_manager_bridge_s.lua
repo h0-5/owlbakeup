@@ -209,7 +209,8 @@ function applyPlayerRank(player, record)
 
         setIfChanged(player, "rank:index", record.index)
         setIfChanged(player, "rank:name", record.name)
-        setIfChanged(player, "rank:color", record.color)
+        -- [Fix #14] the live color is ALWAYS readable (luminance floor)
+        setIfChanged(player, "rank:color", clampRankColor(record.color))
         setIfChanged(player, "rank:rights", safeToJSON(record.rights))
 
         local compat = RANK_COMPAT[record.index]
@@ -312,6 +313,36 @@ local LEGACY_MIGRATION = {
         { column = "supporter", min = 2, rank = "Support"             },
         { column = "supporter", min = 1, rank = "Trial Support"       },
 }
+
+-- [Fix #14] ladder position of a rank TITLE (nil when unknown/custom)
+function getRankTitleIndex(name)
+        if not name then return nil end
+        for idx, rname in pairs(RANK_LADDER) do
+                if rname == tostring(name) then
+                        return idx
+                end
+        end
+        return nil
+end
+
+-- [Fix #14] luminance floor for rank colors: dark seeds (navy 16,72,130,
+-- maroon 128,0,32 ...) were unreadable on dark panels - players called it
+-- "the name disappears". Blends toward white until luminance >= 0.45.
+function clampRankColor(c)
+        if type(c) ~= "table" then return c end
+        local r = tonumber(c[1]) or 255
+        local g = tonumber(c[2]) or 255
+        local b = tonumber(c[3]) or 255
+        local a = tonumber(c[4]) or 255
+        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        if lum < 0.45 then
+                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
+                r = math.floor(r + (255 - r) * t + 0.5)
+                g = math.floor(g + (255 - g) * t + 0.5)
+                b = math.floor(b + (255 - b) * t + 0.5)
+        end
+        return { r, g, b, a }
+end
 
 local function rankIDByName(name)
         local row = mysql:query_fetch_assoc("SELECT ID FROM staff_roles WHERE LevelName='"

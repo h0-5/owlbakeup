@@ -252,16 +252,36 @@ local function getRank(p)
         return "-" -- regular players show a dash, like the reference
 end
 
+-- [Fix #14] readability floor: dark rank colors (navy/maroon) vanished on
+-- the dark board - the user read this as "the name disappears"
+local function clampSB(c)
+        local r = tonumber(c[1]) or 255
+        local g = tonumber(c[2]) or 255
+        local b = tonumber(c[3]) or 255
+        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        if lum < 0.45 then
+                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
+                r = math.floor(r + (255 - r) * t + 0.5)
+                g = math.floor(g + (255 - g) * t + 0.5)
+                b = math.floor(b + (255 - b) * t + 0.5)
+        end
+        return r, g, b
+end
+
 local function getRankColor(p, rankName)
         if isHidden(p) then return tocolor(220, 226, 234, 255) end
         -- the rank's own panel color wins over everything
         local rc = getElementData(p, "rank:color")
         if type(rc) == "table" and rc[1] then
-                return tocolor(rc[1], rc[2], rc[3], 255)
+                local r, g, b = clampSB(rc)
+                return tocolor(r, g, b, 255)
         end
         -- fall back to the seeded ladder palette for the resolved title
         local lc = LADDER_COLOR[rankName]
-        if lc then return tocolor(lc[1], lc[2], lc[3], 255) end
+        if lc then
+                local r, g, b = clampSB(lc)
+                return tocolor(r, g, b, 255)
+        end
         local level = tonumber(getElementData(p, "admin_level")) or 0
         if level >= 21 then return tocolor(255, 0, 0, 255) end
         if level >= 19 then return tocolor(220, 0, 0, 255) end

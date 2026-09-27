@@ -71,7 +71,7 @@ function UI.drawing()
             hoverCandidate = isMouseInPosition(UI.DB[el].dimensions.x, UI.DB[el].dimensions.y, UI.DB[el].dimensions.width, UI.DB[el].dimensions.height) and el or hoverCandidate
           end
           local cx, cy = getCursorPosition()
-          if isCursorShowing() and ((cx or -1) >= 1 or (cy or -1) >= 1 or (cx or -1) <= 0 or (cy or -1) <= 0) and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
+          if getElementType(el) ~= "ui-button" and isCursorShowing() and ((cx or -1) >= 1 or (cy or -1) >= 1 or (cx or -1) <= 0 or (cy or -1) <= 0) and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
             UI.DB[el].state = "normal"
             if isEventHandlerAdded("onClientCursorMove", root, moveElement) then
               removeEventHandler("onClientCursorMove", root, moveElement)
@@ -391,14 +391,22 @@ function UI.click(arg0, arg1, arg2, arg3)
           end
         end
       end
-      -- [Vortex fix #12] audible acknowledgement when a button is pressed
+      -- [Vortex fix #12+#14] audible + visual acknowledgement: the flash is
+      -- driven by press_tick stamped here and drawn by the button
       if arg1 == "down" and getElementType(UI.HoveredElement) == "ui-button" then
         playSound(":UIKit/sounds/click.wav")
+        UI.DB[UI.HoveredElement].press_tick = getTickCount()
       end
       if arg1 == "down" and UI.DB[UI.HoveredElement].properties.DisableFocus.value ~= "False" then
         uiBringToFront(UI.HoveredElement)
       end
       UI.DB[UI.HoveredElement].state = arg1 == "down" and "clicked" or UI.DB[UI.HoveredElement].state
+      -- [Vortex fix #14] release the pressed look on mouse-up (it used to stay
+      -- "clicked" forever until the next click - and the decompiled edge-case
+      -- reset in the draw loop killed the feedback after a single frame)
+      if arg1 == "up" and getElementType(UI.HoveredElement) == "ui-button" then
+        UI.DB[UI.HoveredElement].state = "normal"
+      end
       triggerEvent(arg1 == "up" and "onClientUIClick" or "onClientUIStartClick", UI.HoveredElement, arg2, arg3)
     else
       if UI.FocusElement then
@@ -416,6 +424,21 @@ function UI.click(arg0, arg1, arg2, arg3)
   end
 end
 addEventHandler("onClientClick", root, UI.click)
+
+-- [Fix #14] cross-resource press feedback: resources that dispatch clicks
+-- themselves (the raw hit-registry layer) call this to flash a button
+function uiFlashPress(el)
+        if not (el and isElement(el) and UI.DB[el]) then return false end
+        if getElementType(el) ~= "ui-button" then return false end
+        UI.DB[el].state = "clicked"
+        UI.DB[el].press_tick = getTickCount()
+        setTimer(function(e)
+                if isElement(e) and UI.DB[e] then
+                        UI.DB[e].state = "normal"
+                end
+        end, 130, 1, el)
+        return true
+end
 function UI.doubleclick(arg0, arg1, arg2)
   -- [Vortex fix #12] fresh hover here too
   UI.HoveredElement = UI.refreshHover() or false

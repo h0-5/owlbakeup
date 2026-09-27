@@ -870,9 +870,22 @@ addEventHandler("onClientUIClick", root, function()
                         local hidden = entry[4] == true
                         local pid = tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
+                        -- [Fix #14] rank title in its (readability-clamped) color
+                        local rankTag = ""
+                        if entry[5] and entry[5] ~= "" then
+                                local c = entry[6]
+                                local hex = "FFFFFF"
+                                if type(c) == "table" and c[1] then
+                                        hex = string.format("%02x%02x%02x",
+                                                math.min(255, math.max(0, math.floor(tonumber(c[1]) or 255))),
+                                                math.min(255, math.max(0, math.floor(tonumber(c[2]) or 255))),
+                                                math.min(255, math.max(0, math.floor(tonumber(c[3]) or 255))))
+                                end
+                                rankTag = "  —  #" .. hex .. tostring(entry[5])
+                        end
                         local grid = isSupport and UI.gridlist.staff2 or UI.gridlist.staff
                         local row = eui:uiGridListAddRow(grid)
-                        eui:uiGridListSetItemText(grid, row, 1, "•    [" .. pid .. "]  " .. name .. "  (#ff375f" .. pid .. "#FFFFFF)")
+                        eui:uiGridListSetItemText(grid, row, 1, "•    [" .. pid .. "]  " .. name .. "  (#ff375f" .. pid .. "#FFFFFF)" .. rankTag)
                         eui:uiGridListSetItemText(grid, row, 2, "ID: #ff375f" .. pid)
                         eui:uiGridListSetItemText(grid, row, 3, hidden and "Hidden Admin" or "")
                         eui:uiGridListSetItemText(grid, row, 4, hidden and "#00FF00On-Duty" or "#FF0000Off-Duty")

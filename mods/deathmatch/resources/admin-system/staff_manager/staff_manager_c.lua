@@ -62,6 +62,23 @@ local menu = false
 local uiBuilt = false
 
 local rank_to_delete = nil      -- role id pending delete-confirmation
+
+-- [Fix #14] readability floor for every rank color the panel draws
+local function clampRankColorC(c)
+        if type(c) ~= "table" then return c end
+        local r = tonumber(c[1]) or 255
+        local g = tonumber(c[2]) or 255
+        local b = tonumber(c[3]) or 255
+        local a = tonumber(c[4]) or 255
+        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
+        if lum < 0.45 then
+                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
+                r = math.floor(r + (255 - r) * t + 0.5)
+                g = math.floor(g + (255 - g) * t + 0.5)
+                b = math.floor(b + (255 - b) * t + 0.5)
+        end
+        return { r, g, b, a }
+end
 local currentColorLabel = nil   -- which element the color picker writes to
 local RankColor = { 255, 255, 255, 255 }
 
@@ -580,6 +597,17 @@ local function dispatchPanelAction(el)
 
         elseif el == UI.button.add_staff then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.add_staff_ranks)
+                -- [Fix #14] LOUD validation: a silent return read exactly like
+                -- "the promotion system is broken"
+                if #eui:uiGetText(UI.edit.add_staff_account) == 0 then
+                        outputChatBox("Promotion failed: type the ACCOUNT name first.", 255, 80, 80)
+                        eui:uiLabelApplyShakeAnimation(UI.label.delete_staff_username, tocolor(255, 0, 0, 255))
+                        return
+                end
+                if sel == -1 then
+                        outputChatBox("Promotion failed: select a RANK from the list first.", 255, 80, 80)
+                        return
+                end
                 if #eui:uiGetText(UI.edit.add_staff_account) ~= 0 and sel ~= -1 then
                         triggerServerEvent("rpadmin:addNewAdmin", localPlayer,
                                 eui:uiGetText(UI.edit.add_staff_account),
@@ -649,6 +677,10 @@ end
 local function panelDispatch(hitEl, info, ax, ay)
         if not hitEl or not info then return end
         if info.kind == "button" or info.kind == "colorrect" then
+                -- [Fix #14] the UIKit pipeline is dead on this server, so its
+                -- pressed state never fired: flash through the new export
+                pcall(eui.uiFlashPress, eui, hitEl)
+                pcall(function() playSound(":UIKit/sounds/click.wav") end)
                 dispatchPanelAction(hitEl)
         elseif info.kind == "checkbox" then
                 local ok, cur = pcall(eui.uiCheckBoxGetSelected, eui, hitEl)
@@ -879,6 +911,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 -- staff keep the DB rank. Panel now always agrees with the tab.
                 local color = (staff.Online and type(staff.LiveColor) == "table") and staff.LiveColor
                         or LevelColor[tostring(staff.AdminID)] or { 255, 255, 255 }
+                color = clampRankColorC(color)
                 local rankName = (staff.Online and staff.LiveRank and staff.LiveRank ~= "")
                         and tostring(staff.LiveRank)
                         or tostring(LevelNames[tostring(staff.AdminID)] or "N/A")

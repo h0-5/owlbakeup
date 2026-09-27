@@ -231,11 +231,21 @@ end)
 -- permission gates
 -- ============================================================================
 
+-- [Fix #14] gates rebuilt: the rank's own stored Rights decide FIRST (the
+-- panel writes them per rank), the numeric ladder stays the fallback. This
+-- fixes owners with custom ranks whose row-order index lands below the old
+-- threshold and silently blocked every member/rank edit.
 local function hasEditMembers(player)
+        if type(playerHasRight) == "function" and playerHasRight(player, "admin.manager.editmembers") then
+                return true
+        end
         return exports.integration:isPlayerSeniorAdmin(player) and true or false
 end
 
 local function hasEditRanks(player)
+        if type(playerHasRight) == "function" and playerHasRight(player, "admin.manager.editranks") then
+                return true
+        end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
 end
 
@@ -515,10 +525,14 @@ end
 -- add a staff member to a rank
 addEvent("rpadmin:addNewAdmin", true)
 addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelName)
-        if not hasEditMembers(client) then return end
+        if not hasEditMembers(client) then
+                outputChatBox("You don't have permission to edit staff members.", client, 255, 80, 80)
+                return
+        end
         if not account or not tonumber(levelID) then return end
-        local user = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE username='"
-                .. mysql:escape_string(tostring(account)) .. "'")
+        -- [Fix #14] case-insensitive: typing "hade" finds "Hade"
+        local user = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE LOWER(username)=LOWER('"
+                .. mysql:escape_string(tostring(account)) .. "') LIMIT 1")
         if not user then
                 outputChatBox("Account not found: " .. tostring(account), client, 255, 0, 0)
                 return
@@ -541,8 +555,19 @@ addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelNam
                 mysql:query_free("INSERT INTO staff_role_members (RoleID, AccountID) VALUES ("
                         .. levelID .. ", " .. tonumber(user.id) .. ")")
         end
-        addChangelog("Promotion", user.username, oldName, tostring(levelName or "-"))
-        outputChatBox("Staff added: " .. user.username .. " -> " .. tostring(levelName), client, 0, 255, 0)
+        -- [Fix #14] the log tells the truth: compare the old vs new ladder
+        -- position, so a downgrade is recorded (and colored) as a Demotion
+        local changeType = "Promotion"
+        if old and type(getRankTitleIndex) == "function" then
+                local oldIdx = getRankTitleIndex(oldName)
+                local newIdx = getRankTitleIndex(tostring(levelName or "-"))
+                if oldIdx and newIdx and newIdx < oldIdx then
+                        changeType = "Demotion"
+                end
+        end
+        addChangelog(changeType, user.username, oldName, tostring(levelName or "-"))
+        outputChatBox("Staff updated: " .. user.username .. " -> " .. tostring(levelName)
+                .. " (" .. changeType .. ")", client, 0, 255, 0)
         refresh(client)
         -- Vortex bridge: push the new rank onto the target immediately if online
         if type(refreshPlayerRank) == "function" then
@@ -558,10 +583,13 @@ end)
 -- remove a staff member (by username)
 addEvent("rpadmin:removeAdmin", true)
 addEventHandler("rpadmin:removeAdmin", root, function(account)
-        if not hasEditMembers(client) then return end
+        if not hasEditMembers(client) then
+                outputChatBox("You don't have permission to edit staff members.", client, 255, 80, 80)
+                return
+        end
         if not account then return end
-        local user = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE username='"
-                .. mysql:escape_string(tostring(account)) .. "'")
+        local user = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE LOWER(username)=LOWER('"
+                .. mysql:escape_string(tostring(account)) .. "') LIMIT 1")
         if not user then
                 outputChatBox("Account not found: " .. tostring(account), client, 255, 0, 0)
                 return
@@ -596,7 +624,10 @@ end)
 -- create a rank
 addEvent("rpadmin:addAdminLevel", true)
 addEventHandler("rpadmin:addAdminLevel", root, function(rankName)
-        if not hasEditRanks(client) then return end
+        if not hasEditRanks(client) then
+                outputChatBox("You don't have permission to edit ranks.", client, 255, 80, 80)
+                return
+        end
         if not rankName or rankName == "" then return end
         local exists = mysql:query_fetch_assoc("SELECT ID FROM staff_roles WHERE LevelName='"
                 .. mysql:escape_string(tostring(rankName)) .. "'")
@@ -614,7 +645,10 @@ end)
 -- delete a rank
 addEvent("rpadmin:removeAdminLevel", true)
 addEventHandler("rpadmin:removeAdminLevel", root, function(levelID)
-        if not hasEditRanks(client) then return end
+        if not hasEditRanks(client) then
+                outputChatBox("You don't have permission to edit ranks.", client, 255, 80, 80)
+                return
+        end
         if not tonumber(levelID) then return end
         levelID = tonumber(levelID)
         local row = mysql:query_fetch_assoc("SELECT LevelName FROM staff_roles WHERE ID=" .. levelID)

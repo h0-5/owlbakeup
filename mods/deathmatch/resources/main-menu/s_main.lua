@@ -171,11 +171,16 @@ addEventHandler("admin:showStaff", root, function()
                         end
                 end
                 if admin > 0 or support > 0 then
+                        -- [Fix #14] unified rank title + color ship with the row
+                        local rname = tostring(getElementData(player, "rank:name") or "")
+                        local rcolor = getElementData(player, "rank:color")
                         list[#list + 1] = {
                                 admin == 0 and support > 0,                -- [1] isSupport
                                 getPlayerIDStrSafe(player),                -- [2] id
                                 getPlayerName(player):gsub("_", " "),      -- [3] name
                                 (getElementData(player, "hiddenadmin") or 0) == 1, -- [4] hidden
+                                rname ~= "" and rname or nil,              -- [5] rank title
+                                type(rcolor) == "table" and rcolor or nil, -- [6] rank color
                         }
                 end
         end

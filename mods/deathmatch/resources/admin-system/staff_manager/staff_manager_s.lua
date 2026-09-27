@@ -252,15 +252,25 @@ end)
 -- fixes owners with custom ranks whose row-order index lands below the old
 -- threshold and silently blocked every member/rank edit.
 local function hasEditMembers(player)
-        if type(playerHasRight) == "function" and playerHasRight(player, "admin.manager.editmembers") then
-                return true
+        -- Fix #25: same backend-first rule as hasEditRanks
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, "admin.manager.editmembers") and true or false
+                end
+                return false
         end
         return exports.integration:isPlayerSeniorAdmin(player) and true or false
 end
 
 local function hasEditRanks(player)
-        if type(playerHasRight) == "function" and playerHasRight(player, "admin.manager.editranks") then
-                return true
+        -- Fix #25 (user): the rank's stored rights are the ONLY truth for
+        -- ranked staff — the old ladder fallback let high ranks edit ranks
+        -- even with the right unticked (sections were cosmetic)
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, "admin.manager.editranks") and true or false
+                end
+                return false
         end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
 end
@@ -550,13 +560,25 @@ local function actorName()
 end
 
 local function broadcastRankChange(action, target, toRank, isNegative)
-        local line = "[STAFF]: " .. actorName() .. " " .. action .. " '" .. tostring(target) .. "'"
-                .. (toRank and (" to " .. tostring(toRank)) or "") .. "."
-        if isNegative then
-                outputChatBox(line, root, 255, 90, 90)
-        else
-                outputChatBox(line, root, 70, 200, 30)
+        -- Fix #25 (user, image 3): colored staff log — purple [STAFF] tag,
+        -- colored actor, rank name in its panel color when known
+        local rankColor = ""
+        if toRank and mysql then
+                local q = mysql:query("SELECT ColorCode FROM staff_roles WHERE LevelName = '"
+                        .. mysql:escape_string(tostring(toRank)) .. "' LIMIT 1")
+                if q then
+                        local row = mysql:fetch_assoc(q)
+                        if row and row.ColorCode and tostring(row.ColorCode) ~= "" then
+                                rankColor = "#" .. tostring(row.ColorCode):gsub("^#", "")
+                        end
+                        mysql:free_result(q)
+                end
         end
+        local line = "#a855f7[STAFF]#ffffff " .. actorName() .. " "
+                .. (isNegative and "#ff5a5a" or "#46c85a") .. action .. "#ffffff '"
+                .. tostring(target) .. "'"
+                .. (toRank and (" to " .. rankColor .. tostring(toRank)) or "") .. "."
+        outputChatBox(line, root, 255, 255, 255, true)
 end
 
 -- add a staff member to a rank

@@ -188,3 +188,26 @@ end
 function getCommandRight(commandName)
         return COMMAND_RIGHTS[tostring(commandName):lower()] or false
 end
+
+-- ===========================================================================
+-- Fix #25 (user): "تعديل صلاحيات من قسم الرتب لازم يكون حقيقي مو مجرد منظر"
+-- GLOBAL enforcement gate. This file is loaded FIRST in meta.xml, so we can
+-- wrap addCommandHandler once and every admin-system command (jail, ban,
+-- teleport, items, economy, vehicles, character...) now consults the rank's
+-- stored Rights through hasCommandRight. Unmapped commands pass untouched;
+-- the server console (player == nil) always passes.
+-- ===========================================================================
+local rawAddCommandHandler = addCommandHandler
+
+_G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, restricted, ...)
+        local gated = function(player, cmdName, ...)
+                if player and isElement(player)
+                        and not hasCommandRight(player, cmdName or commandName) then
+                        outputChatBox("You don't have permission to use this command.",
+                                player, 255, 0, 0)
+                        return
+                end
+                return handlerFunction(player, cmdName, ...)
+        end
+        return rawAddCommandHandler(commandName, gated, caseSensitive, restricted, ...)
+end

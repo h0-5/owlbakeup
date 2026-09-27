@@ -128,6 +128,8 @@ local PANEL_HIT = {}          -- [element] = { x,y,w,h, kind, section, order }
 local HIT_MENU_ROWS = {}      -- [1-based menu row] = section id (rebuilt on menu reload)
 local panelDispatchTick = {}  -- per-element dispatch latch
 local permToggleTick = {}     -- per-row permission toggle latch (double-click)
+local rawRankRoleID = nil     -- Fix #25: roleID of the EXACT row the raw click landed on
+local rawRankRowText = nil    -- Fix #25: that row's name text (selection may race)
 local regSeq = 0              -- registration order = painter order
 local winX, winY              -- absolute top-left of admin_panel (set in UIKitReady)
 
@@ -214,7 +216,8 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_admin, "TextColor", tocolor(255, 0, 0))
         UI.button.add_admin = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(6, 9, 14, 255), UI.container.staffs)
-        eui:uiSetProperty(UI.button.add_admin, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_admin, "TextColor", tocolor(255, 255, 255, 255))
+
         eui:uiSetProperty(UI.button.add_admin, "HoverGlow", true)
 
         --[[ ----------------------- add staff window ----------------------- ]]
@@ -237,7 +240,8 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.cancel_add_staff, "TextColor", tocolor(255, 255, 255, 255))
         UI.button.add_staff = eui:uiCreateButton(200, 345, 190, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(3, 6, 11), UI.window.add_staff)
-        eui:uiSetProperty(UI.button.add_staff, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_staff, "TextColor", tocolor(255, 255, 255, 255))
+
         eui:uiSetProperty(UI.button.add_staff, "HoverGlow", true)
 
         --[[ ----------------------- delete staff dialog ----------------------- ]]
@@ -341,7 +345,8 @@ function UIKitReady()
         UI.button.save_rank_changes = eui:uiCreateButton(PANEL_W - MENU_W - 15 - 160,
                 PANEL_H - 10 - 45, 150, 35, { en = "Save Changes", ar = "حفظ التغييرات" },
                 tocolor(6, 9, 14, 255), UI.container.ranks)
-        eui:uiSetProperty(UI.button.save_rank_changes, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.save_rank_changes, "TextColor", tocolor(255, 255, 255, 255))
+
         eui:uiSetProperty(UI.button.save_rank_changes, "HoverGlow", true)
 
         UI.dialog.delete_rank = eui:uiCreateDialog(false, false, 300, 160, "Confirm")
@@ -544,9 +549,20 @@ local function dispatchPanelAction(el)
         -- ranks grid: select a rank -> load its rights + color
         if el == UI.gridlist.ranks then
                 local sel = eui:uiGridListGetSelectedItem(el)
-                if sel ~= -1 then
-                        local roleID = eui:uiGridListGetItemData(el, sel, 1)
-                        eui:uiSetText(UI.edit.rank_name, eui:uiGridListGetItemText(el, sel, 1))
+                if rawRankRoleID or sel ~= -1 then
+                        -- Fix #25: the raw click path already resolved the exact
+                        -- clicked row's roleID — trust it over the (racy) selection
+                        local roleID = rawRankRoleID
+                        rawRankRoleID = nil
+                        if not roleID and sel ~= -1 then
+                                roleID = eui:uiGridListGetItemData(el, sel, 1)
+                        end
+                        local rowText = rawRankRowText
+                        rawRankRowText = nil
+                        if not rowText and sel ~= -1 then
+                                rowText = eui:uiGridListGetItemText(el, sel, 1)
+                        end
+                        eui:uiSetText(UI.edit.rank_name, rowText or "")
                         eui:uiSetText(UI.label.rank_id, "#" .. tostring(roleID))
                         for i, right in ipairs(AllRights) do
                                 local enabled = false
@@ -768,11 +784,24 @@ local function panelDispatch(hitEl, info, ax, ay)
                 end
         elseif info.kind == "grid" then
                 local idx = panelGridRowAt(info, hitEl, ay)
-                if idx and pcall(eui.uiGridListSetSelectedItem, eui, hitEl, idx) then
-                        if hitEl == UI.gridlist.permissions then
-                                togglePermissionRow(idx)
-                        else
-                                dispatchPanelAction(hitEl)
+                if idx then
+                        -- Fix #25 (user): "click Owner -> shows Junior Management".
+                        -- UIKit's own click path recomputes selected_row from its
+                        -- hover math and can land on a different row; latch the
+                        -- roleID of the EXACT row under the cursor BEFORE touching
+                        -- the selection and let the dispatcher prefer it.
+                        if hitEl == UI.gridlist.ranks then
+                                local okD, roleID = pcall(eui.uiGridListGetItemData, eui, hitEl, idx, 1)
+                                rawRankRoleID = (okD and roleID) or nil
+                                local okT, rowText = pcall(eui.uiGridListGetItemText, eui, hitEl, idx, 1)
+                                rawRankRowText = (okT and rowText) or nil
+                        end
+                        if pcall(eui.uiGridListSetSelectedItem, eui, hitEl, idx) then
+                                if hitEl == UI.gridlist.permissions then
+                                        togglePermissionRow(idx)
+                                else
+                                        dispatchPanelAction(hitEl)
+                                end
                         end
                 end
         elseif info.kind == "edit" then

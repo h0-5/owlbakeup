@@ -316,6 +316,12 @@ function playerHasRight(player, right)
                 local level = tonumber(getElementData(player, "admin_level")) or 0
                 return level >= 4
         end
+        -- Fix #25: a right the rank JSON simply does not KNOW about (rank row
+        -- created before the right existed) defaults to ALLOWED for management
+        -- and above, instead of silently locking management out of the panel
+        if record.rights[right] == nil and (tonumber(record.index) or 0) >= 11 then
+                return true
+        end
         return record.rights[right] == true
 end
 

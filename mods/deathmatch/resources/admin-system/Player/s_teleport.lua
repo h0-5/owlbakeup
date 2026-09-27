@@ -112,8 +112,13 @@ function gotoPlayer(thePlayer, commandName, target)
 end
 addCommandHandler("goto", gotoPlayer, false, false)
 
-function getPlayer(thePlayer, commandName, from, to)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVCTMember(thePlayer) then
+function getPlayer(thePlayer, commandName, from, to)
+ -- [Fix #19] backend-first right gate (admin.sendto)
+ if not exports.admin-system:hasCommandRight(thePlayer, "sendto") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVCTMember(thePlayer) then
 		if(not from or not to) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Sending Player] [To Player]", thePlayer, 255, 194, 14)
 		else
@@ -172,8 +177,13 @@ end
 addCommandHandler("sendto", getPlayer, false, false)
 
 ----------------------------[GET PLAYER HERE]---------------------------------------
-function getPlayer(thePlayer, commandName, target)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) then
+function getPlayer(thePlayer, commandName, target)
+ -- [Fix #19] backend-first right gate (admin.gethere)
+ if not exports.admin-system:hasCommandRight(thePlayer, "gethere") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) then
 		if not target then
 			outputChatBox("SYNTAX: /" .. commandName .. " /gethere [Partial Player Nick]", thePlayer, 255, 194, 14)
 		else

@@ -20,9 +20,9 @@
 
     <script src="s_overlay_show_admins.lua" type="server" />
 
-	
+        
 
-	<script src="c_overlay_functions.lua" type="client" />
+        <script src="c_overlay_functions.lua" type="client" />
 
     <script src="s_overlay_functions.lua" type="server" />
     <script src="s_hud.lua" type="server" />
@@ -56,11 +56,22 @@
     <export function="addHudItem" type="client" />
     <export function="removeHudItem" type="client" />
     <export function="isHudItemExists" type="client" />
+    <export function="isHudItemOfCategoryExists" type="client" />
+    <export function="getHudItemsByCategory" type="client" />
+    <export function="isPlayerHudItemExists" type="client" />
+    <export function="isPlayerHudItemOfCategoryExists" type="client" />
+    <export function="getPlayerHudItemsByCategory" type="client" />
+    <export function="getPlayerHudSetting" type="client" />
     <export function="getHudItemData" type="client" />
+    <export function="getPlayerHudItemData" type="client" />
     <export function="updateHudItemsList" type="client" />
     <export function="getBGTexture" type="client" />
     <export function="showStatusHud" type="client" />
     <export function="setProgress" type="client" />
+    <export function="fpscheck" type="client" />
+    <!-- server: old life-system status API shape -->
+    <export function="getCharacterStatus" type="server" />
+    <export function="setCharacterStatusValue" type="server" />
 
     
 
@@ -134,7 +145,7 @@
 
     <file src="images/hud/box.png" />
 
-	<file src="images/hud/box2.png" />
+        <file src="images/hud/box2.png" />
 
     <file src="images/hud/dglock.png" />
 
@@ -144,7 +155,7 @@
 
     <file src="images/hud/semiauto.png" />
 
-	<file src="images/hud/bottombox.png" />
+        <file src="images/hud/bottombox.png" />
 
     <file src="images/hud/auto.png" />
 
@@ -152,9 +163,9 @@
 
     <file src="images/hud/box3.png" />
 
-	<file src="images/hud/box4.png" />
+        <file src="images/hud/box4.png" />
 
-	<file src="images/hud/box5.png" />
+        <file src="images/hud/box5.png" />
 
     <file src="images/hud/gm.png" />
 
@@ -162,9 +173,9 @@
 
     <file src="images/hud/admin.png" />
 
-	<file src="images/hud/scripter.png" />
+        <file src="images/hud/scripter.png" />
 
-	<file src="images/hud/management.png" />
+        <file src="images/hud/management.png" />
 
     <file src="images/hud/donor.png" />
 
@@ -222,19 +233,19 @@
 
     <file src="images/hud/mdc.png" />
 
-	<file src="images/hud/sm.png" />
+        <file src="images/hud/sm.png" />
 
-	<file src="images/hud/swat.png" />
+        <file src="images/hud/swat.png" />
 
     
 
     <!--
 
-	<file src="images/hud/reportpanel_off.png"/>
+        <file src="images/hud/reportpanel_off.png"/>
 
-	<file src="images/hud/adm_off.png"/>
+        <file src="images/hud/adm_off.png"/>
 
-	-->
+        -->
 
     <file src="images/achievement/achievement.png" />
 
@@ -243,6 +254,56 @@
     <file src="old_school_united_stencil.ttf" />
     <file src="hud_bg.png" />
     <file src="afk.png" />
+
+    <!-- old-client icon set (designed, Fix #18) -->
+    <file src="icons/seatbelt.png" />
+    <file src="icons/police.png" />
+    <file src="icons/walkingstyle.png" />
+    <file src="icons/handcuffs.png" />
+    <file src="icons/admin_badge.png" />
+    <file src="icons/head_turning.png" />
+    <file src="icons/mask.png" />
+    <file src="icons/tagmode.png" />
+    <file src="icons/facbadge.png" />
+    <file src="icons/togpm.png" />
+    <file src="icons/reportpanel.png" />
+    <file src="icons/engine.png" />
+    <file src="icons/handbrake.png" />
+    <file src="icons/car_lights.png" />
+    <file src="icons/car_lock.png" />
+    <file src="icons/blindfold.png" />
+    <file src="icons/gasmask.png" />
+    <file src="icons/heart.png" />
+    <file src="icons/gloves.png" />
+    <file src="icons/phone.png" />
+    <file src="icons/diamond.png" />
+    <file src="icons/medical_mask.png" />
+    <file src="icons/support_badge.png" />
+    <file src="icons/support_badge_2.png" />
+    <file src="icons/developer_badge.png" />
+    <file src="icons/developer_badge2.png" />
+    <file src="icons/booster.png" />
+    <file src="icons/pro.png" />
+    <file src="icons/AFK.png" />
+    <file src="icons/admin2.png" />
+    <file src="icons/verified.png" />
+    <file src="icons/rope.png" />
+    <file src="icons/classic.png" />
+    <file src="icons/youtuber.png" />
+    <file src="icons/ads.png" />
+    <file src="icons/vehicle_engine.png" />
+    <file src="icons/vehicle_handbrake.png" />
+    <file src="icons/vehicle_lights.png" />
+    <file src="icons/vehicle_lock.png" />
+    <file src="icons/vehicle_seatbelt.png" />
+    <file src="status_icons/fatigue.png" />
+    <file src="status_icons/health.png" />
+    <file src="status_icons/hungry.png" />
+    <file src="status_icons/sleep.png" />
+    <file src="status_icons/thirsty.png" />
+    <file src="status_icons/toilet.png" />
+    <file src="status_icons/shower.png" />
+    <file src="status_icons/shield.png" />
 
     
 

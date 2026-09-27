@@ -232,6 +232,31 @@ function uiGridListGetSelectedItem(arg0)
   end
   return UI.DB[arg0].data.selected_row
 end
+-- [Fix #17] scroll-aware helpers used by the staff panel's raw click layer.
+-- The panel recomputed the clicked row from the cursor Y alone, which ignored
+-- the scroll offset (data.row_i) and picked the wrong rank after scrolling.
+-- These mirror the draw loop's own geometry so a click lands on the row that
+-- is actually painted under the cursor.
+function uiGridListGetVisibleRows(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetVisibleRows' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  return UI.DB[arg0].data.row_i or 1, UI.DB[arg0].data.row_f or 1
+end
+function uiGridListGetRowAtPoint(arg0, ay)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetRowAtPoint' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  local db = UI.DB[arg0]
+  local rows = db.data.rows or {}
+  if #rows == 0 then return -1 end
+  local ch = db.properties.column_height.value
+  for i = db.data.row_i or 1, db.data.row_f or #rows do
+    local cell = rows[i] and rows[i][1]
+    if not cell then break end
+    local ry = db.dimensions.y + 2 + ch + cell.height * (i - db.data.row_i)
+    if ay >= ry and ay <= ry + cell.height then
+      return i - 1
+    end
+  end
+  return -1
+end
 function uiGridListSetColumnText(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetColumnText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListSetColumnText' [There's no such column index]")

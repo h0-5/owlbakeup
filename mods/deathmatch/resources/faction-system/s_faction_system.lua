@@ -806,9 +806,9 @@ function getFactionFinance(factionID)
 				end
 				
 				local from, to = "-", "-"
-				if row["characterfrom"] ~= nil then
-					from = row["characterfrom"]:gsub("_", " ")
-				elseif tonumber(row["from"]) then
+				if type(row["characterfrom"]) == "string" then
+					from = row["characterfrom"]:gsub("_", " ")
+				elseif tonumber(row["from"]) then
 					num = tonumber(row["from"]) 
 					if num < 0 then
 						from = getTeamName(exports.pool:getElement("team", -num)) or "-"

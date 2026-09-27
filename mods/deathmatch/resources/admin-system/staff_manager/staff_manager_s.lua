@@ -426,9 +426,11 @@ end
 
 local function sendPanel(player)
         if not canPlayerAccessStaffManager(player) then
+                outputDebugString("[STAFFS-DBG] DENIED for " .. tostring(getPlayerName(player)))
                 outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
                 return false
         end
+        outputDebugString("[STAFFS-DBG] allowed, building panel data")
         local editMembers = hasEditMembers(player)
         local editRanks = hasEditRanks(player)
         local levels = fetchLevels()
@@ -504,6 +506,7 @@ end
 
 addEvent("rpadmin:requestPanel", true)
 addEventHandler("rpadmin:requestPanel", root, function()
+        outputDebugString("[STAFFS-DBG] requestPanel from " .. tostring(getPlayerName(source)) .. " rank:index=" .. tostring(getElementData(source, "rank:index")))
         sendPanel(source)
 end)
 

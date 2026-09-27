@@ -17,6 +17,9 @@ local NAMETAG_DISTANCE = 8
 local playersHud = {}   -- [player] = { name, color, icons, hidden }
 local typing = {}       -- [player] = true while chatting
 local localTyping = false
+-- Fix #23 perf: throttled line-of-sight cache (declared early: cleanup
+-- handlers below reference it)
+local losCache = {}     -- [player] = { blocked = bool, t = tick }
 
 -- badge textures (old client icons/ set)
 local badgeTex = {}
@@ -145,12 +148,14 @@ addEventHandler("onClientElementStreamIn", root, function()
         end
 end)
 addEventHandler("onClientElementStreamOut", root, function()
-        if typing[source] then typing[source] = nil end
-        if playersHud[source] then playersHud[source] = nil end
+        typing[source] = nil
+        playersHud[source] = nil
+        losCache[source] = nil
 end)
 addEventHandler("onClientPlayerQuit", root, function()
         typing[source] = nil
         playersHud[source] = nil
+        losCache[source] = nil
 end)
 
 --------------------------------------------------------------------------------
@@ -183,10 +188,12 @@ addEventHandler("onClientRender", root, function()
         if not isHudShowing or not isHudShowing() then return end
         if not getHudSetting or getHudSetting("tagmode") == false then return end
         if getElementData(localPlayer, "loggedin") ~= 1
-                and not getElementData(localPlayer, "character:id") then return end
+                and not getElementData(localPlayer, "account:character:id") then return end
 
         local camX, camY, camZ = getCameraMatrix()
         local lX, lY, lZ = getElementPosition(localPlayer)
+        local recon = getElementData(localPlayer, "reconx")  -- hoisted out of the loop
+        local now = getTickCount()
 
         for player, entry in pairs(playersHud) do
                 if player ~= localPlayer and isElement(player) and entry and not entry.hidden then
@@ -198,10 +205,16 @@ addEventHandler("onClientRender", root, function()
                                         local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.42)
                                         if sX then
                                                 -- line of sight (skip when blocked), recon ignores it
-                                                local blocked = processLineOfSight(camX, camY, camZ, hx, hy, hz + 0.4,
-                                                        true, true, false, true, false, false, false, false)
-                                                local recon = getElementData(localPlayer, "reconx")
-                                                if not blocked or recon then
+                                                -- Fix #23: throttled to once per 250ms per player
+                                                local c = losCache[player]
+                                                if not c or now - c.t > 250 then
+                                                        c = { blocked = processLineOfSight(camX, camY, camZ,
+                                                                        hx, hy, hz + 0.4,
+                                                                        true, true, false, true, false, false, false, false),
+                                                              t = now }
+                                                        losCache[player] = c
+                                                end
+                                                if not c.blocked or recon then
                                                         local baseY = sY
 
                                                         -- ((TYPING...)) animated dots (above the title)
@@ -251,4 +264,8 @@ end, false, "high-2")
 addEventHandler("onClientResourceStart", resourceRoot, function()
         loadBadges()
         updatePlayersHud()
+        -- Fix #23: safety rebuild every 2s — entries built from data-change
+        -- events alone could go stale (names/badges never showing after a
+        -- restart or a missed stream event). Cheap: only streamed players.
+        setTimer(updatePlayersHud, 2000, 0)
 end)

@@ -573,7 +573,10 @@ end
 local moneyFlex = nil   -- smoothed text width driving the icon position
 
 local function drawMoneyBlock(rightX, y, postGUI)
-        local money = getPlayerMoney(localPlayer) or 0
+        -- Fix #23: this server keeps money in elementData "money" (custom economy),
+        -- the MTA builtin stays 0 — read the real value, fall back to the builtin.
+        local money = tonumber(getElementData(localPlayer, "money"))
+                or getPlayerMoney(localPlayer) or 0
         local coins = tonumber(getElementData(localPlayer, "bios:coins"))
         local rowH = 28
 
@@ -692,14 +695,15 @@ local function statusHudDrawImpl()
         if not CONFIG.hideClock then
                 -- Fix #20: breathing room restored (frame -> clock -> money)
                 -- Fix #21: clock + date big enough to read
+                -- Fix #23: clock + date BIG like the old client reference
                 local textY = panelY + PANEL_H + 14
-                outlineText(getCurrentTime(), sx - 250, textY, 238, 36,
-                        tocolor(255, 255, 255, 255), 0.55, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 250, textY + 28, 238, 26,
-                        tocolor(255, 255, 255, 210), 0.42, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentTime(), sx - 300, textY, 288, 48,
+                        tocolor(255, 255, 255, 255), 0.8, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentDate(), sx - 300, textY + 50, 288, 34,
+                        tocolor(255, 255, 255, 210), 0.6, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 10, textY + 64, postGUI)
-                moneyBlockBottom = textY + 64 + mh
+                local mh = drawMoneyBlock(sx - 10, textY + 88, postGUI)
+                moneyBlockBottom = textY + 88 + mh
         else
                 local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 14, postGUI)
                 moneyBlockBottom = panelY + PANEL_H + 14 + mh

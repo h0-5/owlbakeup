@@ -411,6 +411,8 @@ local DEFAULT_ITEMS = {
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
         { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
         { "ads",          "on", "ads",          "Advertisements", "" },
+        -- Fix #23 (user): visible systems the strip was missing
+        { "lockvehicle",  "on", "car_lock",     "Lock/Unlock Vehicle", "" },
 }
 
 local function pushDefaultItems(player)
@@ -419,6 +421,15 @@ local function pushDefaultItems(player)
         local list = {}
         for _, item in ipairs(DEFAULT_ITEMS) do
                 table.insert(list, { item[1], item[2], item[3], item[4], item[5], nil })
+        end
+        -- Fix #23 (user): staff-only admin badge toggle (on/off duty = badge
+        -- shows above the head while on duty, disappears when off duty).
+        -- Routed through the REAL /adminduty command so all its checks apply.
+        if (tonumber(getElementData(player, "admin_level")) or 0) > 0
+                or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0 then
+                local duty = tonumber(getElementData(player, "duty_admin")) == 1
+                        or tonumber(getElementData(player, "duty_supporter")) == 1
+                table.insert(list, { "adminduty", duty and "on" or "off", "admin_badge", "Admin Duty (Badge)", "" })
         end
         setProtected(player, "hud:items", list)
 end
@@ -455,6 +466,13 @@ addEventHandler("hud:onHudItemClick", root, function(item)
                 setProtected(player, "head_turning", next_)
         elseif item == "reportpanel" then
                 -- handled client-side (opens report-system UI)
+        elseif item == "lockvehicle" then
+                -- Fix #23: strip lock/unlock -> the same real vehicle lock event
+                triggerEvent("togLockVehicle", player, player)
+        elseif item == "adminduty" then
+                -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
+                -- announcements, element data) instead of a client-side fake
+                executeCommandHandler("adminduty", player)
         end
 end)
 

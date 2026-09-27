@@ -126,29 +126,15 @@ local LADDER = {
 
 -- mirrors the colors seeded into staff_roles by staff_manager_s.lua, used
 -- only when the live rank:color elementData has not arrived yet
-local LADDER_COLOR = {
-        ["Tester"]                  = { 255, 140,   0 },
-        ["Trial Support"]           = { 255, 140,   0 },
-        ["Support"]                 = { 255, 140,   0 },
-        ["Trial Moderator"]         = { 204,  85,   0 },
-        ["Moderator"]               = { 204,  85,   0 },
-        ["Senior Moderator"]        = { 204,  85,   0 },
-        ["Trial Administrator"]     = { 102, 178, 255 },
-        ["Administrator"]           = {  52, 152, 219 },
-        ["Senior Administrator"]    = {  32, 112, 178 },
-        ["Super Administrator"]     = {  16,  72, 130 },
-        ["Lead Administrator"]      = { 144,  50, 250 },
-        ["Administrative Director"] = { 255, 215,   0 },
-        ["Junior Management"]       = { 160, 101,  54 },
-        ["Senior Management"]       = { 255, 105, 180 },
-        ["Server Management"]       = { 199,  84, 124 },
-        ["Head Management"]         = { 128,   0,  32 },
-        ["Chief Management"]        = { 120,   0,  10 },
-        ["Vice Founder"]            = { 170,   0,   0 },
-        ["Founder"]                 = { 220,   0,   0 },
-        ["Diverloper"]              = {   0, 120, 255 },
-        ["Owner"]                   = { 255,   0,   0 },
-}
+-- [Fix #31 - user] the tab NO LONGER carries its own rank colors: every
+-- color now comes from the STAFF SYSTEM (rank:color element data pushed by
+-- staff_manager + the full staff_roles table pushed by s_tab.lua)
+local rankColors = {}   -- [rankName] = {r,g,b} straight from staff_roles
+
+addEvent("scoreboard:rankColors", true)
+addEventHandler("scoreboard:rankColors", root, function(tbl)
+        if type(tbl) == "table" then rankColors = tbl end
+end)
 
 local RANK_TITLES = { -- legacy numeric ladder (old column, 1..6)
         [1] = "Trial Admin", [2] = "Admin", [3] = "Senior Admin",
@@ -165,7 +151,7 @@ local countText = "0 Players"
 local maxOnline = 0
 
 -- search
-local searchOn = false
+local searchActive = false       -- a live UIKit search edit exists
 local searchBuf = ""
 local searchBox = { x = 0, y = 0, w = 0, h = 0 }
 -- Fix #29: collapse chevron state (reference header button)
@@ -213,8 +199,13 @@ local function isStaff(p)
 end
 
 local function isOnDuty(p)
-        return tonumber(getElementData(p, "duty_admin")) == 1
-           or tonumber(getElementData(p, "duty_supporter")) == 1
+        -- [Fix #31 - user] the BADGE (شارة) state must survive every way the
+        -- server stores it: number 1, DB string "1" or boolean true
+        for _, key in ipairs({ "duty_admin", "duty_supporter" }) do
+                local v = getElementData(p, key)
+                if v == true or v == "1" or tonumber(v) == 1 then return true end
+        end
+        return false
 end
 
 -- a staff member currently off duty (regular players are never "off duty",
@@ -337,24 +328,20 @@ end
 -- is off duty / plain (reference: the dimmed row still shows its orange
 -- rank text). No donor/VIP override here.
 function getRankColorRaw(p, rankName)
+        -- [Fix #31 - user] color source = the STAFF SYSTEM only:
+        --   1) the live per-member rank:color pushed by staff_manager
+        --   2) the full staff_roles color table pushed by s_tab.lua
+        -- The tab itself carries NO colors anymore.
         local rc = getElementData(p, "rank:color")
         if type(rc) == "table" and rc[1] then
                 local r, g, b = clampSB(rc)
                 return tocolor(r, g, b, 255)
         end
-        local lc = LADDER_COLOR[rankName]
-        if lc then
-                local r, g, b = clampSB(lc)
+        local sc = rankColors[rankName]
+        if type(sc) == "table" and sc[1] then
+                local r, g, b = clampSB(sc)
                 return tocolor(r, g, b, 255)
         end
-        local level = tonumber(getElementData(p, "admin_level")) or 0
-        if level >= 21 then return tocolor(255, 0, 0, 255) end
-        if level >= 19 then return tocolor(220, 0, 0, 255) end
-        if level >= 17 then return tocolor(120, 0, 10, 255) end
-        if level >= 11 then return tocolor(144, 50, 250, 255) end
-        if level >= 7 then return tocolor(102, 178, 255, 255) end
-        if level >= 4 then return tocolor(204, 85, 0, 255) end
-        if level >= 2 then return tocolor(255, 140, 0, 255) end
         return tocolor(235, 240, 246, 255)
 end
 
@@ -455,10 +442,26 @@ setTimer(function()
         end
 end, 2000, 0)
 
+-- [Fix #31 - user] badge on/off and rank/color edits apply INSTANTLY:
+-- refresh the row cache the moment any watched value flips, so enabling
+-- the badge colors the whole row on the same frame (not 2s later)
+local WATCHED_KEYS = {
+        ["duty_admin"] = true, ["duty_supporter"] = true,
+        ["rank:color"] = true, ["rank:name"] = true, ["rank:index"] = true,
+        ["loggedin"] = true, ["hiddenadmin"] = true,
+        ["donation:nametag"] = true, ["account:username"] = true,
+        ["fakename"] = true, ["afk"] = true, ["mod:id"] = true,
+}
+addEventHandler("onClientElementDataChange", root, function(key)
+        if WATCHED_KEYS[key] and cache[source] then
+                refreshPlayer(source)
+        end
+end)
+
 --[[ ==================== search ==================== ]]
 
 local function filteredList()
-        if not searchOn or searchBuf == "" then
+        if searchBuf == "" then
                 return players
         end
         local out = {}
@@ -482,63 +485,80 @@ addEventHandler("onClientClick", root, function(button, buttonState)
                 return
         end
         if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
-                searchOn = true
+                if not searchActive then createSearchEdit() end
                 if not cursorOn then
                         cursorOn = true
                         showCursor(true)
                 end
-                createSearchEdit()
-        elseif searchOn then
-                searchOn = false
-                searchBuf = ""
-                destroySearchEdit()
         end
 end)
 
--- Fix #24: the search box is now a REAL hidden GUI edit element. The old
--- hand-rolled onClientKey capture could not handle backspace (wrong key
--- name "back"), Arabic IME input or paste, so typing felt broken. A GUI
--- edit gives native text input (Arabic, backspace, delete, Ctrl+V) and we
--- just mirror its text into the drawn buffer.
-local searchEdit
+--[[ [Fix #31 - user] THE SEARCH = the old client's search, 1:1.
 
-function createSearchEdit()
-        if searchEdit and isElement(searchEdit) then
-                guiSetText(searchEdit, searchBuf)
-                guiFocus(searchEdit)
-                return
-        end
-        searchEdit = guiCreateEdit(searchBox.x, searchBox.y, searchBox.w, searchBox.h, searchBuf, false)
-        guiSetAlpha(searchEdit, 0)
-        guiEditSetCaretIndex(searchEdit, #searchBuf)
-        addEventHandler("onClientGUIChanged", searchEdit, function()
-                if source == searchEdit then
-                        searchBuf = guiGetText(searchEdit) or ""
-                        scroll = 0
-                end
-        end)
-        guiFocus(searchEdit)
+backupm score-board used a UIKit edit:
+    search_edit = eui:uiCreateEdit(..., "", {en="Search...", ar="بحث..."}, ...)
+    onClientUIChanged -> filterPlayersList(uiGetText(source))
+
+Our previous build mirrored a hidden GUI-edit into dxDrawText: Arabic came
+out mangled and backspace felt dead (user: "كاتبة البحث مليان اخطاء لا تقدر
+تحذف"). The UIKit edit gives native typing, backspace, delete, caret and
+the proper {en/ar} placeholder - same widget, same events as the old client.
+]]
+local eui            -- UIKit exports bridge
+local searchUI       -- the ui-edit element (alive while the board is open)
+
+local function ensureUIKit()
+        if eui then return true end
+        local u = getResourceFromName("UIKit")
+        if not u or getResourceState(u) ~= "running" then return false end
+        eui = exports.UIKit
+        return true
 end
 
 function destroySearchEdit()
-        if searchEdit and isElement(searchEdit) then
-                destroyElement(searchEdit)
+        if searchUI and isElement(searchUI) then
+                destroyElement(searchUI)
         end
-        searchEdit = nil
+        searchUI = nil
+        searchActive = false
+        searchBuf = ""
 end
 
--- wheel + escape still flow through onClientKey (the GUI edit owns the
--- character keys now)
+function createSearchEdit()
+        if not ensureUIKit() then return end
+        destroySearchEdit()
+        -- UIKit expects coordinates in its 1728x972 reference space
+        local rx, ry = 1728 / sx, 972 / sy
+        searchUI = eui:uiCreateEdit(
+                (searchBox.x + 30 * s) * rx,
+                (searchBox.y + 3 * s) * ry,
+                (searchBox.w - 44 * s) * rx,
+                (searchBox.h - 6 * s) * ry,
+                "", { en = "Search...", ar = "بحث..." },
+                tocolor(104, 102, 255), nil)
+        eui:uiSetProperty(searchUI, "UnderLineVisible", "False")
+        eui:uiSetFocusedElement(searchUI)
+        searchActive = true
+end
+
+-- live filter (old client: onClientUIChanged -> filterPlayersList)
+addEventHandler("onClientUIChanged", root, function()
+        if searchUI and source == searchUI and eui then
+                searchBuf = tostring(eui:uiGetText(searchUI) or "")
+                scroll = 0
+        end
+end)
+
+-- wheel + escape. [Fix #31] `press` is a BOOLEAN here - the old check
+-- `press ~= "down"` was ALWAYS true, so wheel scrolling and the escape
+-- cancel never ran at all (part of the reported "مشاكل")
 addEventHandler("onClientKey", root, function(key, press)
-        if not state or press ~= "down" then return end
+        if not state or not press then return end
         if key == "mouse_wheel_up" or key == "mouse_wheel_down" then
                 onWheel(key)
                 return
         end
-        if not searchOn then return end
-        if key == "escape" then
-                searchOn = false
-                searchBuf = ""
+        if key == "escape" and searchActive then
                 destroySearchEdit()
                 cancelEvent()
         end
@@ -607,18 +627,10 @@ local function drawHeader()
         drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(30, 23, 43, 255), true, searchBox.h / 2)
         if searchTex then
                 dxDrawImage(searchBox.x + 12 * s, searchBox.y + (searchBox.h - 14 * s) / 2, 14 * s, 14 * s,
-                        searchTex, 0, 0, 0, tocolor(255, 255, 255, searchOn and 255 or 150), true)
+                        searchTex, 0, 0, 0, tocolor(255, 255, 255, searchActive and 255 or 150), true)
         end
-        local sLabel = searchBuf ~= "" and searchBuf or "بحث..."
-        local sColor = searchBuf ~= "" and tocolor(255, 255, 255, 255) or tocolor(140, 148, 168, 255)
-        dxDrawText(sLabel, searchBox.x + 32 * s, searchBox.y,
-                searchBox.x + searchBox.w - 14 * s, searchBox.y + searchBox.h,
-                sColor, 1, fontAR, "left", "center", true, false, true)
-        if searchOn and math.floor(getRealTime().timestamp / 0.5) % 2 == 0 then
-                local tw = dxGetTextWidth(searchBuf, 1, fontAR)
-                dxDrawRectangle(searchBox.x + 32 * s + tw + 2, searchBox.y + 8 * s, 1, searchBox.h - 16 * s,
-                        tocolor(255, 255, 255, 255), true)
-        end
+        -- [Fix #31] the text inside the pill is drawn by the UIKit edit
+        -- itself (proper Arabic, native caret) - nothing to draw here
 
         -- right block: "N Players" + icon, then the peak line "أعلى تواجد: N"
         local rightEdge = BOARD.x + BOARD.w - PAD_X
@@ -819,21 +831,24 @@ local function toggle(show)
                 scroll = 0
                 cursorOn = true
                 showCursor(true)
-                searchOn = false
+                searchActive = false
                 searchBuf = ""
                 hoverRow = -1
                 hoverAnim = 0
                 lastTick = getTickCount()
                 drawErrorShown = false
-                addEventHandler("onClientRender", root, render)
+                -- [Fix #31] the board renders in onClientPreRender (exactly
+                -- like the old client) so the UIKit search edit - drawn in
+                -- UIKit's onClientRender pass - lands ON TOP of the board
+                addEventHandler("onClientPreRender", root, render)
                 bindKey("mouse2", "down", toggleCursor)
         else
-                removeEventHandler("onClientRender", root, render)
+                removeEventHandler("onClientPreRender", root, render)
                 unbindKey("mouse2", "down", toggleCursor)
                 destroySearchEdit()
                 if cursorOn then showCursor(false) end
                 cursorOn = false
-                searchOn = false
+                searchActive = false
         end
 end
 
@@ -842,9 +857,9 @@ end
 -- active (so searching still works); pressing TAB again or ESC closes it.
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then
-                if state and searchOn then return end
+                if state and searchActive then return end
                 toggle(true)
-        elseif state and not searchOn then
+        elseif state and not searchActive then
                 toggle(false)
         end
 end)
@@ -874,7 +889,6 @@ function getScoreboardTestTable()
                 canSeeAccounts = canSeeAccounts,
                 getRankColorRaw = getRankColorRaw,
                 LADDER = LADDER,
-                LADDER_COLOR = LADDER_COLOR,
         }
 end
 

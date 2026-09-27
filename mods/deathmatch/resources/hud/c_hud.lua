@@ -520,7 +520,7 @@ local function drawStatusFrame(x, y, w, h, postGUI)
         dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 10, postGUI)
 end
 
-local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 25, current = -80 } }
+local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 2, current = -80 } }
 local statusHudDraw -- forward declaration
 local moneyBlockBottom = false   -- bottom Y of the money block (used by vehicle row)
 local zoneText, zoneLabel = "", ""
@@ -613,7 +613,10 @@ function showStatusHud(state)
         if state then
                 statusHud.anims.count = getTickCount()
                 statusHud.anims.from = statusHud.anims.current
-                statusHud.anims.to = 25
+                -- [Fix #31 - user] "ارفع الهود" - the panel now rests FLUSH
+                -- against the top edge (old strip rest position y=2) instead
+                -- of the old 25px gap
+                statusHud.anims.to = 2
                 addEventHandler("onClientRender", root, statusHudDraw, false, "high-5")
                 -- seed from life-system if the real one is running (old client)
                 local life = getResourceFromName("life-system")
@@ -800,17 +803,19 @@ local function statusHudDrawImpl()
         if not CONFIG.hideClock then
                 -- Fix #30 (user): the clock and date were STILL too small -
                 -- now genuinely big: 1.35 scale clock, 0.9 date
-                local textY = panelY + PANEL_H + 14
+                -- Fix #31 (user): the whole stack raised with the panel and
+                -- pulled tighter under it
+                local textY = panelY + PANEL_H + 8
                 outlineText(getCurrentTime(), sx - 380, textY, 368, 66,
                         tocolor(255, 255, 255, 255), 1.35, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 380, textY + 72, 368, 44,
+                outlineText(getCurrentDate(), sx - 380, textY + 62, 368, 44,
                         tocolor(255, 255, 255, 210), 0.9, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 10, textY + 124, postGUI)
-                moneyBlockBottom = textY + 124 + mh
+                local mh = drawMoneyBlock(sx - 10, textY + 114, postGUI)
+                moneyBlockBottom = textY + 114 + mh
         else
-                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 14, postGUI)
-                moneyBlockBottom = panelY + PANEL_H + 14 + mh
+                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 8, postGUI)
+                moneyBlockBottom = panelY + PANEL_H + 8 + mh
         end
 
         -- zone label, bottom-left above the radar (old client)

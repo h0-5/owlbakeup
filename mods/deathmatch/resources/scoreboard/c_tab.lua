@@ -441,27 +441,58 @@ addEventHandler("onClientClick", root, function(button, buttonState)
         if not state or button ~= "left" or buttonState ~= "down" then return end
         if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
                 searchOn = true
-                if searchEdit then
-                        guiSetVisible(searchEdit, true)
-                        guiBringToFront(searchEdit)
-                        guiSetFocused(searchEdit, true)
-                end
                 if not cursorOn then
                         cursorOn = true
                         showCursor(true)
                 end
         elseif searchOn then
                 searchOn = false
-                if searchEdit then guiSetVisible(searchEdit, false) end
+                searchBuf = ""
         end
 end)
 
--- real input handling lives inside the invisible CEGUI edit;
--- we just mirror its text so our custom drawing stays in sync
-addEventHandler("onClientGUIChanged", root, function()
-        if not searchOn or source ~= searchEdit then return end
-        searchBuf = guiGetText(searchEdit) or ""
+-- keyboard input for the search box is captured directly: printable
+-- characters append to the buffer, backspace/delete remove from it.
+-- UTF-8 aware so Arabic / multibyte names are handled a whole code point
+-- at a time instead of slicing a byte off the middle of a character.
+local function utf8Backspace(str)
+        if str == nil or str == "" then return "" end
+        local pos = #str
+        -- walk back over continuation bytes (0x80..0xBF)
+        while pos > 1 do
+                local b = str:byte(pos)
+                if b == nil or b < 128 or b > 191 then break end
+                pos = pos - 1
+        end
+        return str:sub(1, pos - 1)
+end
+
+addEventHandler("onClientCharacter", root, function(character)
+        if not state or not searchOn then return end
+        searchBuf = searchBuf .. character
         scroll = 0
+end)
+
+addEventHandler("onClientKey", root, function(key, press)
+        if not state or press ~= "down" then return end
+        if key == "mouse_wheel_up" or key == "mouse_wheel_down" then
+                onWheel(key)
+                return
+        end
+        if not searchOn then return end
+        if key == "back" then
+                searchBuf = utf8Backspace(searchBuf)
+                scroll = 0
+                cancelEvent()
+        elseif key == "delete" then
+                searchBuf = ""
+                scroll = 0
+                cancelEvent()
+        elseif key == "escape" then
+                searchOn = false
+                searchBuf = ""
+                cancelEvent()
+        end
 end)
 
 --[[ ==================== cell data ==================== ]]
@@ -519,10 +550,6 @@ local function drawHeader()
         searchBox.h = 32 * s
         searchBox.x = BOARD.x + (BOARD.w - searchBox.w) / 2
         searchBox.y = BOARD.y + (HEADER_H - searchBox.h) / 2 + 2 * s
-        if searchEdit then
-                guiSetPosition(searchEdit, searchBox.x + 30 * s, searchBox.y, false)
-                guiSetSize(searchEdit, searchBox.w - 40 * s, searchBox.h, false)
-        end
         drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(21, 25, 36, 255), true, searchBox.h / 2)
         if searchTex then
                 dxDrawImage(searchBox.x + 12 * s, searchBox.y + (searchBox.h - 14 * s) / 2, 14 * s, 14 * s,

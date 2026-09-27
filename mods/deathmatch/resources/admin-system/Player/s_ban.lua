@@ -1,6 +1,11 @@
 -- BAN
-function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
-	if exports["integration"]:isPlayerTrialAdmin(thePlayer) then
+function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
+ -- [Fix #19] backend-first right gate (admin.ban)
+ if not exports.admin-system:hasCommandRight(thePlayer, "pban") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if exports["integration"]:isPlayerTrialAdmin(thePlayer) then
 		if not (targetPlayer) or not (hours) or not tonumber(hours) or tonumber(hours)<0 or not (...) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Player Partial Nick / ID] [Time in Hours, 0 = Infinite] [Reason]", thePlayer, 255, 194, 14)
 		else

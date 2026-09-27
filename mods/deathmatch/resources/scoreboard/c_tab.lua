@@ -499,6 +499,11 @@ addEventHandler("onClientKey", root, function(key, press)
                 searchOn = false
                 searchBuf = ""
                 cancelEvent()
+        elseif key == "space" then
+                -- MTA reports the spacebar as the key name "space"
+                searchBuf = searchBuf .. " "
+                scroll = 0
+                cancelEvent()
         elseif type(key) == "string" and #key == 1 and key:match("[%w%s]") then
                 -- printable single key (letter / digit / space): MTA reports
                 -- the key name, which is the character itself

@@ -240,8 +240,13 @@ addCommandHandler("soban", offlineBanAPlayer, false, false)
 
 
 -- /UNBAN
-function unbanPlayer(thePlayer, commandName, ...)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function unbanPlayer(thePlayer, commandName, ...)
+ -- [Fix #19] backend-first right gate (admin.unban)
+ if not exports.admin-system:hasCommandRight(thePlayer, "unban") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		if not (...) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Player username/IP/Serial]", thePlayer, 255, 194, 14)
 		else
@@ -355,8 +360,13 @@ end
 addCommandHandler("unban", unbanPlayer, false, false)
 
 -- /UNBANIP
-function unbanPlayerIP(thePlayer, commandName, ip)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function unbanPlayerIP(thePlayer, commandName, ip)
+ -- [Fix #19] backend-first right gate (admin.unban)
+ if not exports.admin-system:hasCommandRight(thePlayer, "unbanip") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		if not (ip) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [IP]", thePlayer, 255, 194, 14)
 		else
@@ -396,8 +406,13 @@ end
 addCommandHandler("unbanip", unbanPlayerIP, false, false)
 
 -- /UNBANIP
-function unbanPlayerSerial(thePlayer, commandName, ip)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+function unbanPlayerSerial(thePlayer, commandName, ip)
+ -- [Fix #19] backend-first right gate (admin.unban)
+ if not exports.admin-system:hasCommandRight(thePlayer, "unbanserial") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
 		if not (ip) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Serial]", thePlayer, 255, 194, 14)
 		else

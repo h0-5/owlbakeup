@@ -83,8 +83,13 @@ local function draw()
 
         -- safe/danger tint from the sampled grid (per the HUD zone rule)
         if cityGrid then
+                -- Fix #28: cells are square in WORLD units, so the vertical
+                -- pixel size must follow the world scale (PANEL_W based) and
+                -- not PANEL_H - the old cellH rendered the tints as striped
+                -- rows with gaps. Cells fully outside the panel are skipped
+                -- (dxDrawRectangle does not clip).
                 local cellW = PANEL_W / GRID_N * zoom
-                local cellH = PANEL_H / GRID_N * zoom
+                local cellH = cellW
                 local half = GRID_N / 2 / zoom
                 local gx0 = math.floor((cx + WORLD / 2) / (WORLD / GRID_N) - half)
                 local gy0 = math.floor((cy + WORLD / 2) / (WORLD / GRID_N) - half)
@@ -97,10 +102,13 @@ local function draw()
                                                 local wx = -WORLD / 2 + (WORLD / GRID_N) * (gx + 0.5)
                                                 local wy = -WORLD / 2 + (WORLD / GRID_N) * (gy + 0.5)
                                                 local sxp, syp = worldToPanel(wx, wy, px, py, PANEL_W, PANEL_H, cx, cy)
-                                                local tint = (city == "Los Santos")
-                                                        and tocolor(153, 255, 0, 26) or tocolor(255, 40, 40, 26)
-                                                dxDrawRectangle(sxp - cellW / 2, syp - cellH / 2,
-                                                        cellW + 1, cellH + 1, tint)
+                                                if sxp > px - cellW and sxp < px + PANEL_W + cellW
+                                                        and syp > py - cellH and syp < py + PANEL_H + cellH then
+                                                        local tint = (city == "Los Santos")
+                                                                and tocolor(153, 255, 0, 26) or tocolor(255, 40, 40, 26)
+                                                        dxDrawRectangle(sxp - cellW / 2, syp - cellH / 2,
+                                                                cellW + 1, cellH + 1, tint)
+                                                end
                                         end
                                 end
                         end

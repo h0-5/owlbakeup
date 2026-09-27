@@ -564,24 +564,23 @@ function UIKitReady()
 
         UI.gridlist.staff = eui:uiCreateGridList(10, 50, contentW - 20, (contentH - 50) / 2,
                 tocolor(0, 0, 0, 0), UI.container.onlinestaff)
-        -- Fix #26 (user): Acc ID / Rank / Character / Account / Duty
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.34)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Rank", 0.17)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Acc ID", 0.11)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Account", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Duty", 0.18)
+        -- Fix #30 (user): EXACT old-client staff list - one line per admin:
+        -- " -  [Rank] Name (account)    ID: x    On/Off-Duty" (3 columns)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.56)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "ID", 0.2)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Duty", 0.24)
         eui:uiSetAlign(UI.gridlist.staff, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.staff, "row_height", 30)
 
         UI.gridlist.staff2 = eui:uiCreateGridList(10, 50 + (contentH - 50) / 2 + 10,
                 contentW - 20, (contentH - 100) / 2, tocolor(0, 0, 0, 0), UI.container.onlinestaff)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.34)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Rank", 0.17)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Acc ID", 0.11)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Account", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Duty", 0.18)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.56)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "ID", 0.2)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Duty", 0.24)
         eui:uiSetAlign(UI.gridlist.staff2, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff2, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.staff2, "row_height", 30)
 
         --[[ ------------------ radio channels (Fix #26) ------------------ ]]
         UI.gridlist.radio = eui:uiCreateGridList(10, 50, contentW - 20, contentH - 215,
@@ -1105,39 +1104,52 @@ function UIKitReady()
                         triggerServerEvent("main-menu:radio:list", localPlayer)
                 end
         end)
+        -- Fix #30: hex helper for the color-coded staff rows
+        local function staffHex(c, fallback)
+                if type(c) == "table" and c[1] then
+                        return string.format("#%02x%02x%02x",
+                                math.min(255, math.max(0, math.floor(tonumber(c[1]) or 255))),
+                                math.min(255, math.max(0, math.floor(tonumber(c[2]) or 255))),
+                                math.min(255, math.max(0, math.floor(tonumber(c[3]) or 255))))
+                end
+                return fallback or "#ffffff"
+        end
+
         addEvent("admin:showStaff", true)
         addEventHandler("admin:showStaff", root, function(list)
                 eui:uiGridListClear(UI.gridlist.staff)
                 eui:uiGridListClear(UI.gridlist.staff2)
                 if type(list) ~= "table" then return end
                 local adminCount, supportCount = 0, 0
+                local nameHex = "#ffffff"
+                local pc = eui:uiGetThemeColor and eui:uiGetThemeColor("primary") or nil
+                local idHex = staffHex(pc, "#8f7bff")
                 for _, entry in ipairs(list) do
                         local isSupport = entry[1] == true
                         local hidden = entry[4] == true
                         local pid = tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
-                        -- rank title in its (readability-clamped) color
-                        local rankTag = ""
-                        if entry[5] and entry[5] ~= "" then
-                                local c = entry[6]
-                                local hex = "FFFFFF"
-                                if type(c) == "table" and c[1] then
-                                        hex = string.format("%02x%02x%02x",
-                                                math.min(255, math.max(0, math.floor(tonumber(c[1]) or 255))),
-                                                math.min(255, math.max(0, math.floor(tonumber(c[2]) or 255))),
-                                                math.min(255, math.max(0, math.floor(tonumber(c[3]) or 255))))
+                        local rank = tostring(entry[5] or "")
+                        local line = " -  "
+                        if rank ~= "" then
+                                line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
+                        end
+                        -- hidden admins read as "Anonymous" (old client), no account shown
+                        if hidden then
+                                line = line .. staffHex(entry[6], nameHex) .. "Anonymous"
+                        else
+                                line = line .. nameHex .. name
+                                local acc = tostring(entry[7] or "")
+                                if acc ~= "" and acc ~= "-" then
+                                        line = line .. " " .. idHex .. "(" .. acc .. ")"
                                 end
-                                rankTag = "  —  #" .. hex .. tostring(entry[5])
                         end
                         local grid = isSupport and UI.gridlist.staff2 or UI.gridlist.staff
                         local row = eui:uiGridListAddRow(grid)
-                        -- Fix #26 (user): Acc ID / Rank / Character / Account / Duty
-                        eui:uiGridListSetItemText(grid, row, 1, "•    [" .. pid .. "]  " .. name)
-                        eui:uiGridListSetItemText(grid, row, 2, rankTag ~= "" and rankTag or "-")
-                        eui:uiGridListSetItemText(grid, row, 3, tostring(entry[8] or "-"))
-                        eui:uiGridListSetItemText(grid, row, 4, tostring(entry[7] or "-"))
-                        eui:uiGridListSetItemText(grid, row, 5, hidden and "Hidden Admin"
-                                or (entry[9] and "#00FF00On-Duty" or "#FF0000Off-Duty"))
+                        eui:uiGridListSetItemText(grid, row, 1, line)
+                        eui:uiGridListSetItemText(grid, row, 2, idHex .. "ID: " .. pid)
+                        eui:uiGridListSetItemText(grid, row, 3, hidden and "#c8c8c8Hidden"
+                                or (entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty"))
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")

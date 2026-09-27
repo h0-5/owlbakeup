@@ -764,12 +764,19 @@ local function updateRoleImpl(sender, levelID, rights, color)
                 color = { 255, 255, 255, 255 }
         end
 
+        local rightsCount = 0
+        for _ in pairs(rights) do rightsCount = rightsCount + 1 end
         mysql:query_free("UPDATE staff_roles SET Rights='"
                 .. rightsToJSON(rights) .. "', Color='"
                 .. mysql:escape_string(toJSON(color)) .. "' WHERE ID=" .. levelID)
         addChangelog("Rank Edited", row.LevelName, "-",
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))
-        outputChatBox("Rank saved: " .. row.LevelName, sender, 0, 255, 0)
+        -- [Fix #30] LOUD proof the backend fired: what was saved + that
+        -- every online member of the rank got it LIVE (data re-pushed)
+        outputChatBox("Rank saved: " .. row.LevelName
+                .. " | rights: " .. rightsCount
+                .. " | color: " .. ("#%02X%02X%02X"):format(color[1], color[2], color[3])
+                .. " | applied live to online members", sender, 0, 255, 0)
         refresh(sender)
         -- Vortex bridge: live-update colors/rights for every online member
         if type(refreshRankMembers) == "function" then

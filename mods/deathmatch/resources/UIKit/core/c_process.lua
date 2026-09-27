@@ -8,20 +8,25 @@ moveTemp = {}
 local repeatTimer, repeatCount = false, 0
 local clickTimer1, clickTimer2 = false, false
 local cancelKeys = {
-	backspace = true, delete = true, enter = true, num_enter = true,
-	arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
+        backspace = true, delete = true, enter = true, num_enter = true,
+        arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
 }
 local function isTypableCharacter(ch)
-	return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
+        return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
 end
 function updateLabelScroll(label)
-	if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
-		uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
-	end
-	return true
+        if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
+                uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
+        end
+        return true
 end
 function UI.updateDrawingList()
   UI.DrawElements = {}
+  -- [Fix #30 - FPS] resolve each element's draw function + type ONCE here
+  -- (this runs on visibility changes) instead of calling getElementType
+  -- several times per element per frame inside UI.drawing
+  UI.DrawFn = {}
+  UI.EType = {}
   for i = 1, #UI.Elements do
     local el = UI.Elements[i]
     if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] and UI.isHierarchyVisible(el) then
@@ -45,10 +50,14 @@ function UI.updateDrawingList()
         if owningTabpanel and isElement(owningTabpanel) and UI.DB[owningTabpanel]
                 and UI.DB[owningTabpanel].data and UI.DB[owningTabpanel].data.selected_tab == owningTab then
           UI.DrawElements[#UI.DrawElements + 1] = el
+          UI.DrawFn[el] = UI.getDrawFunction[getElementType(el)]
+          UI.EType[el] = getElementType(el)
           UI.isDraw[el] = true
         end
       else
         UI.DrawElements[#UI.DrawElements + 1] = el
+        UI.DrawFn[el] = UI.getDrawFunction[getElementType(el)]
+        UI.EType[el] = getElementType(el)
         -- [Vortex fix] ui-tab elements themselves are armed per-frame by
         -- their tabpanel draw (selected tab only)
         if getElementType(el) ~= "ui-tab" then
@@ -62,24 +71,34 @@ function UI.drawing()
   UI.HoveredElement = false
   local hoverCandidate = false
   local anyDrawn = false
+  -- [Fix #30 - FPS] ONE cursor read per frame (was: two natives per element
+  -- per frame - isCursorShowing + getCursorPosition inside the loop)
+  local cursorShowing = isCursorShowing()
+  local ccx, ccy = getCursorPosition()
   for forvar3 = 1, #UI.DrawElements do
     local el = UI.DrawElements[forvar3]
     if isUIElement(el) then
       if UI.DB[el].visible then
         if UI.isDraw[el] then
-          if getElementType(el) ~= "ui-tab" then
+          local elType = UI.EType[el] or getElementType(el)
+          UI.EType[el] = elType
+          if elType ~= "ui-tab" then
             hoverCandidate = isMouseInPosition(UI.DB[el].dimensions.x, UI.DB[el].dimensions.y, UI.DB[el].dimensions.width, UI.DB[el].dimensions.height) and el or hoverCandidate
           end
-          local cx, cy = getCursorPosition()
-          if getElementType(el) ~= "ui-button" and isCursorShowing() and ((cx or -1) >= 1 or (cy or -1) >= 1 or (cx or -1) <= 0 or (cy or -1) <= 0) and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
+          if elType ~= "ui-button" and cursorShowing and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
             UI.DB[el].state = "normal"
             if isEventHandlerAdded("onClientCursorMove", root, moveElement) then
               removeEventHandler("onClientCursorMove", root, moveElement)
               moveTemp = {}
             end
           end
-          if type(UI.getDrawFunction[getElementType(el)]) == "function" then
-            UI.getDrawFunction[getElementType(el)](el)
+          local drawFn = (UI.DrawFn and UI.DrawFn[el]) or UI.getDrawFunction[elType]
+          if not drawFn then
+            drawFn = UI.getDrawFunction[elType]
+            if UI.DrawFn then UI.DrawFn[el] = drawFn end
+          end
+          if type(drawFn) == "function" then
+            drawFn(el)
             UI.isDraw[el] = true
             anyDrawn = true
           end

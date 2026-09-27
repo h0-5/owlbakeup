@@ -532,6 +532,7 @@
 
 
 	<export function="refreshPlayerRank" type="server"/>
+	<export function="getPlayerRankRecordByAccountID" type="server"/>
 
 
 

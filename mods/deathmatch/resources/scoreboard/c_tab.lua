@@ -164,7 +164,6 @@ local maxOnline = 0
 local searchOn = false
 local searchBuf = ""
 local searchBox = { x = 0, y = 0, w = 0, h = 0 }
-local searchEdit -- real CEGUI edit, invisible, used only to capture input
 
 -- per-player cached data (color, badges, rank, name, dim)
 local cache = {}

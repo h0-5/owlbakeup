@@ -119,6 +119,19 @@ end
 -- rank resolution
 -- ============================================================================
 
+-- [Fix #18] MTA's toJSON wraps an associative table inside an array:
+-- toJSON({["a"]=true}) == '[ { "a": true } ]', so fromJSON gives back
+-- { [1] = { a = true } } and rights[right] is ALWAYS nil. That made every
+-- hasRight() check silently false -- "permissions are broken / the toggles
+-- do nothing". This unwraps both shapes on read.
+local function unwrapRights(t)
+        if type(t) ~= "table" then return {} end
+        if type(t[1]) == "table" and next(t, 1) == nil then
+                return t[1]
+        end
+        return t
+end
+
 local function fetchRankByID(roleID)
         if not tonumber(roleID) then return nil end
         return mysql:query_fetch_assoc("SELECT ID, LevelName, Rights, Color FROM staff_roles WHERE ID="

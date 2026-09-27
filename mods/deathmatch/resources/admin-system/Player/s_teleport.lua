@@ -302,8 +302,13 @@ function showValidTeleportLocations(thePlayer, commandName)
 end
 addCommandHandler("places", showValidTeleportLocations, false, false)
 
-function teleportToPresetPoint(thePlayer, commandName, target, optionalPlayer)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVehicleConsultant(thePlayer)) then
+function teleportToPresetPoint(thePlayer, commandName, target, optionalPlayer)
+ -- [Fix #19] backend-first right gate (admin.gotoplace)
+ if not exports.admin-system:hasCommandRight(thePlayer, "gotoplace") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if (exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVehicleConsultant(thePlayer)) then
 		if not (target) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [place] [Player to teleport (optional)]", thePlayer, 255, 194, 14)
 			showValidTeleportLocations(thePlayer, "places")

@@ -69,7 +69,8 @@ local SECTIONS = {
         { id = "character_info", en = "Personal Info",  ar = "المعلومات الشخصية",  icon = "icons/menu_person.png" },
         { id = "onlinestaff",    en = "Online Staff",   ar = "الإدارة المتصلة",    icon = "icons/menu_shield.png" },
         { id = "leaderboard",    en = "Leaderboard",    ar = "المتصدرين",          icon = "icons/menu_trophy.png" },
-        { id = "rules",          en = "Server Rules",   ar = "القوانين",           icon = "icons/verified.png" },
+        { id = "rules",          en = "Rules & Terms",  ar = "قوانين ومصطلحات",    icon = "icons/verified.png" },
+        { id = "radio",          en = "Radio Channels", ar = "قنوات الراديو",      icon = "icons/radio.png" },
         { id = "commands",       en = "Commands",       ar = "الأوامر",            icon = "icons/menu_chat.png" },
         { id = "report",         en = "Report",         ar = "البلاغات",           icon = "icons/reportpanel.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/discord.png" },
@@ -111,6 +112,17 @@ local RULES_TEXT = table.concat({
         "• الباور جيمنج PG: الأفعال الخارقة عن الواقع أو التصرف بغير منطق الحياة الواقعية ممنوع.\n",
         "• حذف الشخصية CK: حذف الشخصية نهائياً والبدء بشخصية جديدة، ومن أسبابه دخول الفاشن وأخذ أمواله والهروب.\n",
         "• الرسائل الخاصة: مسموحة ما لم تزعج المتلقي، وما يخص المشاكل والبلاغات يفتح عبر نظام البلاغات فقط.\n",
+        "\n——— المصطلحات ———\n",
+        "• الرول بلاي RP: تمثيل دور شخصية تعيش داخل المدينة كأنها حياة حقيقية، وتتصرف بمنطق شخصيتك لا بمنطقك أنت.\n",
+        "• الميتا جيمنج MG: استخدام معلومات وصلتك من خارج اللعبة (ديسكورد، شات b و t) داخل الرول بلاي. شخصيتك تعرف فقط ما جرى أمامها.\n",
+        "• الباور جيمنج PG: فرض قوى خارقة أو تصرفات غير واقعية لا يمكن لشخصية عادية فعلها (تحمل طائرة بيديك، تصمد بعد قتلك).\n",
+        "• القتل العشوائي DM: مهاجمة أو قتل لاعب بدون سبب رول بلاي واضح.\n",
+        "• الانتقام القتل RK: الرجوع للانتقام من قاتلك بدون رول بلاي جديد. بعد موتك تفقد ذكرى الأحداث التي أدت لموتك.\n",
+        "• القتل الدائم CK: موت نهائي ينهي الشخصية بقرار إداري أو باتفاق اللاعب، وتُحذف الشخصية من السيرفر.\n",
+        "• قاعدة الحياة الجديدة NLR: بعد موتك انسَ سيناريو موتك ولا تعد لمكان موت لتأخذ belongings أو تواصل المشهد.\n",
+        "• داخل الشخصية IC: كل ما يقال ويُفعل بأنك شخصيتك داخل عالم اللعبة.\n",
+        "• خارج الشخصية OOC: الحديث الحقيقي خارج الرول بلاي، ويكون بأوامر الشات المخصصة مثل /b و /pm فقط.\n",
+        "• الخوف من الموت Fear RP: شخصيتك تخاف على حياتها؛ لا تشاور سلاحاً وأنت مطروق بالأرض ولا تقاوم أربع نقاط تفتح عليك النار.\n",
 })
 
 --[[ commands — the 7 classic sections (Chat/Factions/Vehicles/Properties/
@@ -297,7 +309,7 @@ if fileExists("images/logo_text.png") then
 end
 
 local LOGO_SIZE = 110
-local WORDMARK_LEN = 450 -- old client: 450px watermark strip
+local WORDMARK_LEN = 560 -- Fix #26: bigger wordmark (user)
 
 function main_menu_draw()
         state.alpha, state.sideX = animation(state.anim)
@@ -326,9 +338,11 @@ function main_menu_draw()
                         local len = WORDMARK_LEN * SCALE_Y
                         local thick = len / wordmarkAspect
                         local cx = state.sideX / 2
-                        local cy = 26 * SCALE_Y + LOGO_SIZE * SCALE_Y + (sy - (26 * SCALE_Y + LOGO_SIZE * SCALE_Y)) / 2
+                        -- Fix #26: raised up (biased to 38% of the free strip)
+                        local cy = 26 * SCALE_Y + LOGO_SIZE * SCALE_Y
+                                + (sy - (26 * SCALE_Y + LOGO_SIZE * SCALE_Y)) * 0.38
                         dxDrawImage(cx - len / 2, cy - thick / 2, len, thick,
-                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 50), true)
+                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), true)
                 end
         end
 end
@@ -550,21 +564,48 @@ function UIKitReady()
 
         UI.gridlist.staff = eui:uiCreateGridList(10, 50, contentW - 20, (contentH - 50) / 2,
                 tocolor(0, 0, 0, 0), UI.container.onlinestaff)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.5)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "", 0.15)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "", 0.15)
+        -- Fix #26 (user): Acc ID / Rank / Character / Account / Duty
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.34)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Rank", 0.17)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Acc ID", 0.11)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Account", 0.2)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Duty", 0.18)
         eui:uiSetAlign(UI.gridlist.staff, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff, "color_coded", true)
 
         UI.gridlist.staff2 = eui:uiCreateGridList(10, 50 + (contentH - 50) / 2 + 10,
                 contentW - 20, (contentH - 100) / 2, tocolor(0, 0, 0, 0), UI.container.onlinestaff)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.5)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "", 0.15)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "", 0.15)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.34)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Rank", 0.17)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Acc ID", 0.11)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Account", 0.2)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Duty", 0.18)
         eui:uiSetAlign(UI.gridlist.staff2, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff2, "color_coded", true)
+
+        --[[ ------------------ radio channels (Fix #26) ------------------ ]]
+        UI.gridlist.radio = eui:uiCreateGridList(10, 50, contentW - 20, contentH - 215,
+                tocolor(10, 10, 10, 0), UI.container.radio)
+        eui:uiGridListAddColumn(UI.gridlist.radio, "Channel", 0.32)
+        eui:uiGridListAddColumn(UI.gridlist.radio, "Stream URL", 0.68)
+        eui:uiSetAlign(UI.gridlist.radio, "left", "center")
+        eui:uiSetProperty(UI.gridlist.radio, "row_height", 30)
+
+        eui:uiCreateLabel(10, contentH - 152, contentW - 20, 20,
+                { en = "Add a channel (staff only):", ar = "إضافة قناة جديدة (للإدارة فقط):" },
+                tocolor(255, 255, 255, 220), "left", "center", UI.container.radio)
+        UI.edit.radio_name = eui:uiCreateEdit(10, contentH - 126, 240, 28, "",
+                { en = "Channel name", ar = "اسم القناة" },
+                tocolor(9, 12, 17, 235), UI.container.radio)
+        UI.edit.radio_url = eui:uiCreateEdit(260, contentH - 126, contentW - 260 - 175, 28, "",
+                { en = "Stream URL (http...)", ar = "رابط البث (http...)" },
+                tocolor(9, 12, 17, 235), UI.container.radio)
+        UI.button.radio_add = eui:uiCreateButton(contentW - 165, contentH - 126, 155, 28,
+                { en = "Add Channel", ar = "إضافة قناة" }, "primary", UI.container.radio)
+        eui:uiSetProperty(UI.button.radio_add, "TextColor", tocolor(255, 255, 255, 255))
+        UI.button.radio_refresh = eui:uiCreateButton(10, contentH - 88, 155, 28,
+                { en = "Refresh", ar = "تحديث" }, tocolor(10, 10, 10, 240), UI.container.radio)
+        eui:uiSetProperty(UI.button.radio_refresh, "TextColor", tocolor(255, 255, 255, 230))
 
         --[[ ------------------ leaderboard ------------------ (old tabs) ]]
 
@@ -867,6 +908,9 @@ function UIKitReady()
                                         eui:uiSetVisible(UI.window.report_confirm, false)
                                         eui:uiSetVisible(UI.window.report_center, true)
                                         eui:uiBringToFront(UI.window.report_center)
+                                        -- Fix #26 (user): report windows never received
+                                        -- keyboard focus -> typing was impossible
+                                        pcall(function() eui:uiSetFocusedElement(UI.memo.report_text) end)
                                         eui:uiSetText(UI.window.report_center,
                                                 { en = "Report Center | " .. REPORT_TYPES[selectedReportType],
                                                   ar = "مركز البلاغات | " .. REPORT_TYPES[selectedReportType] })
@@ -1018,6 +1062,8 @@ function UIKitReady()
                 if source == menu then
                         if container == UI.container.onlinestaff then
                                 triggerServerEvent("admin:showStaff", localPlayer)
+                        elseif container == UI.container.radio then
+                                triggerServerEvent("main-menu:radio:list", localPlayer)
                         elseif container == UI.container.leaderboard then
                                 if eui:uiGetSelectedTab(UI.tabpanel.leaderboard) == UI.tab["leaderboard:levels"] then
                                         updateLeaderboard("levels")
@@ -1028,6 +1074,37 @@ function UIKitReady()
                 end
         end)
 
+        addEventHandler("onClientUIClick", root, function()
+                if source == UI.button.radio_add then
+                        local nm = eui:uiGetText(UI.edit.radio_name) or ""
+                        local url = eui:uiGetText(UI.edit.radio_url) or ""
+                        triggerServerEvent("main-menu:radio:add", localPlayer, nm, url)
+                elseif source == UI.button.radio_refresh then
+                        triggerServerEvent("main-menu:radio:list", localPlayer)
+                end
+        end)
+        addEvent("main-menu:radio:list:callback", true)
+        addEventHandler("main-menu:radio:list:callback", root, function(list)
+                if not UI.gridlist.radio then return end
+                eui:uiGridListClear(UI.gridlist.radio)
+                if type(list) ~= "table" then return end
+                for _, st in ipairs(list) do
+                        local row = eui:uiGridListAddRow(UI.gridlist.radio)
+                        eui:uiGridListSetItemText(UI.gridlist.radio, row, 1, tostring(st[2] or "-"))
+                        eui:uiGridListSetItemText(UI.gridlist.radio, row, 2, tostring(st[3] or "-"))
+                end
+        end)
+        addEvent("main-menu:radio:added", true)
+        addEventHandler("main-menu:radio:added", root, function(ok, msg)
+                outputChatBox(msg, ok and 120 or 255, ok and 220 or 90, ok and 120 or 90)
+                if ok then
+                        pcall(function()
+                                eui:uiSetText(UI.edit.radio_name, "")
+                                eui:uiSetText(UI.edit.radio_url, "")
+                        end)
+                        triggerServerEvent("main-menu:radio:list", localPlayer)
+                end
+        end)
         addEvent("admin:showStaff", true)
         addEventHandler("admin:showStaff", root, function(list)
                 eui:uiGridListClear(UI.gridlist.staff)
@@ -1054,10 +1131,13 @@ function UIKitReady()
                         end
                         local grid = isSupport and UI.gridlist.staff2 or UI.gridlist.staff
                         local row = eui:uiGridListAddRow(grid)
-                        eui:uiGridListSetItemText(grid, row, 1, "•    [" .. pid .. "]  " .. name .. "  (#ff375f" .. pid .. "#FFFFFF)" .. rankTag)
-                        eui:uiGridListSetItemText(grid, row, 2, "ID: #ff375f" .. pid)
-                        eui:uiGridListSetItemText(grid, row, 3, hidden and "Hidden Admin" or "")
-                        eui:uiGridListSetItemText(grid, row, 4, hidden and "#00FF00On-Duty" or "#FF0000Off-Duty")
+                        -- Fix #26 (user): Acc ID / Rank / Character / Account / Duty
+                        eui:uiGridListSetItemText(grid, row, 1, "•    [" .. pid .. "]  " .. name)
+                        eui:uiGridListSetItemText(grid, row, 2, rankTag ~= "" and rankTag or "-")
+                        eui:uiGridListSetItemText(grid, row, 3, tostring(entry[8] or "-"))
+                        eui:uiGridListSetItemText(grid, row, 4, tostring(entry[7] or "-"))
+                        eui:uiGridListSetItemText(grid, row, 5, hidden and "Hidden Admin"
+                                or (entry[9] and "#00FF00On-Duty" or "#FF0000Off-Duty"))
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")
@@ -1128,7 +1208,9 @@ function UIKitReady()
                         })
                         eui:uiProgressBarSetProgress(UI.progressbar[1], math.floor((totalHours % 5) / 5 * 100))
                         -- cash + bank balance live in the play-time card
-                        local money = getPlayerMoney() or 0
+                        -- Fix #26: this server stores money in elementData "money" (custom economy)
+                        local money = tonumber(getElementData(localPlayer, "money"))
+                                or getPlayerMoney() or 0
                         local bank = tonumber(getElementData(localPlayer, "bankmoney")) or 0
                         eui:uiSetText(UI.label.play_time, {
                                 en = "\nPlay Time\n\n" .. tostring(math.floor(hours)) .. "h " .. (minutes % 60) .. "m\n\n"
@@ -1249,3 +1331,23 @@ end
 addEventHandler("onClientUIReady", resourceRoot, UIKitReady)
 addEvent("onClientUIKitReady", true)
 addEventHandler("onClientUIKitReady", root, UIKitReady)
+
+--[[ Fix #26 (user): "البلاغات م تقدر تكتب بها ولاحرف" — UIKit's own pipeline
+     does not always hand keyboard focus to the report edit/memo. A raw click
+     on their rects focuses them explicitly (same trick the staff panel uses). ]]
+addEventHandler("onClientClick", root, function(button, press)
+        if not press or button ~= "left" then return end
+        if not (UI.window.report_center and eui:uiGetVisible(UI.window.report_center)) then return end
+        local cx, cy = getCursorPosition()
+        if not cx then return end
+        cx, cy = cx * sx, cy * sy
+        local okM, mx, my = pcall(eui.uiGetPosition, UI.memo.report_text)
+        if okM and cx >= mx and cx <= mx + 530 * SCALE_Y and cy >= my and cy <= my + 175 * SCALE_Y then
+                pcall(function() eui:uiSetFocusedElement(UI.memo.report_text) end)
+                return
+        end
+        local okE, ex, ey = pcall(eui.uiGetPosition, UI.edit.report_target)
+        if okE and cx >= ex and cx <= ex + 530 * SCALE_Y and cy >= ey and cy <= ey + 25 * SCALE_Y then
+                pcall(function() eui:uiSetFocusedElement(UI.edit.report_target) end)
+        end
+end)

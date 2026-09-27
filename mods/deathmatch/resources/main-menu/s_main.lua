@@ -181,6 +181,11 @@ addEventHandler("admin:showStaff", root, function()
                                 (getElementData(player, "hiddenadmin") or 0) == 1, -- [4] hidden
                                 rname ~= "" and rname or nil,              -- [5] rank title
                                 type(rcolor) == "table" and rcolor or nil, -- [6] rank color
+                                tostring(getElementData(player, "account:username") or "-"), -- [7] account name (Fix #26)
+                                tostring(getElementData(player, "account:id")
+                                        or getElementData(player, "account:character:id") or "-"), -- [8] account id (Fix #26)
+                                (tonumber(getElementData(player, "duty_admin")) == 1
+                                        or tonumber(getElementData(player, "duty_supporter")) == 1), -- [9] on duty (Fix #26)
                         }
                 end
         end
@@ -238,4 +243,58 @@ addEventHandler("main-menu:linkdiscord:unlink", root, function(characterId)
         removeElementData(thePlayer, "main-menu:discord:account")
         -- the discord bot integration will clear the DB row once restored
         outputDebugString("[main-menu] unlink requested for character " .. tostring(characterId))
+end)
+
+--[[ ==================== radio channels (Fix #26) ==================== ]]
+addEvent("main-menu:radio:list", true)
+addEventHandler("main-menu:radio:list", root, function()
+        local thePlayer = client or source
+        if not isElement(thePlayer) then return end
+        local list = {}
+        local q = exports.mysql:query("SELECT id, station_name, source FROM radio_stations WHERE enabled='1' ORDER BY id ASC")
+        if q then
+                while true do
+                        local row = exports.mysql:fetch_assoc(q)
+                        if not row then break end
+                        list[#list + 1] = { tonumber(row.id), tostring(row.station_name), tostring(row.source) }
+                end
+                exports.mysql:free_result(q)
+        end
+        reply(thePlayer, "main-menu:radio:list:callback", list)
+end)
+
+addEvent("main-menu:radio:add", true)
+addEventHandler("main-menu:radio:add", root, function(name, url)
+        local thePlayer = client or source
+        if not isElement(thePlayer) then return end
+        -- BACKEND permission check: staff only
+        if (tonumber(getElementData(thePlayer, "admin_level")) or 0) <= 0
+                and (tonumber(getElementData(thePlayer, "account:gmlevel")) or 0) <= 0 then
+                triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
+                        false, "You don't have permission to use this command.")
+                return
+        end
+        name = tostring(name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        url = tostring(url or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if #name < 2 or #name > 50 then
+                triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
+                        false, "اسم القناة قصير أو طويل جداً (2-50 حرف).")
+                return
+        end
+        if url == "" or (#url > 255) or not url:find("^https?://") then
+                triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
+                        false, "رابط البث غير صالح (يجب أن يبدأ http أو https).")
+                return
+        end
+        local ok = exports.mysql:query_free("INSERT INTO radio_stations (station_name, source, enabled) VALUES ('"
+                .. exports.mysql:escape_string(name) .. "', '"
+                .. exports.mysql:escape_string(url) .. "', '1')")
+        if ok then
+                -- carradio re-syncs its stream table on its own refresh timer
+                triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
+                        true, "تمت إضافة قناة الراديو بنجاح ✔")
+        else
+                triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
+                        false, "فشل حفظ القناة في قاعدة البيانات.")
+        end
 end)

@@ -152,7 +152,8 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_admin, "TextColor", tocolor(255, 0, 0))
         UI.button.add_admin = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(6, 9, 14, 255), UI.container.staffs)
-        eui:uiSetProperty(UI.button.add_admin, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_admin, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_admin, "HoverGlow", true)
 
         --[[ ----------------------- add staff window ----------------------- ]]
         UI.window.add_staff = eui:uiCreateRectangle(false, false, 400, 390,
@@ -174,7 +175,8 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.cancel_add_staff, "TextColor", tocolor(255, 255, 255, 255))
         UI.button.add_staff = eui:uiCreateButton(200, 345, 190, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(3, 6, 11), UI.window.add_staff)
-        eui:uiSetProperty(UI.button.add_staff, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_staff, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_staff, "HoverGlow", true)
 
         --[[ ----------------------- delete staff dialog ----------------------- ]]
         UI.dialog.delete_staff = eui:uiCreateDialog(false, false, 300, 160, "Confirm")
@@ -263,11 +265,13 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_rank, "TextColor", tocolor(255, 0, 0))
         UI.button.add_rank = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add Rank", ar = "إضافة رتبة" }, tocolor(6, 9, 14, 255), UI.container.ranks)
-        eui:uiSetProperty(UI.button.add_rank, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_rank, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_rank, "HoverGlow", true)
         UI.button.save_rank_changes = eui:uiCreateButton(PANEL_W - MENU_W - 15 - 160,
                 PANEL_H - 10 - 45, 150, 35, { en = "Save Changes", ar = "حفظ التغييرات" },
                 tocolor(6, 9, 14, 255), UI.container.ranks)
-        eui:uiSetProperty(UI.button.save_rank_changes, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.save_rank_changes, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.save_rank_changes, "HoverGlow", true)
 
         UI.dialog.delete_rank = eui:uiCreateDialog(false, false, 300, 160, "Confirm")
         eui:uiSetVisible(UI.dialog.delete_rank, false)
@@ -300,7 +304,7 @@ function UIKitReady()
         -- containers): instant visual proof of which build the client is
         -- actually running — guards against MTA client-cache staleness
         -- (the "updated the server but the panel never changed" case)
-        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V5",
+        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V6",
                 themeColor("primary"), "right", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.version_badge, "default-large")
 

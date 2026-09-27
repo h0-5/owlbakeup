@@ -64,6 +64,12 @@ UI.getDrawFunction["ui-button"] = function(arg0)
   if UI.HoveredElement == arg0 and UI.DB[arg0].properties.HoverColor and UI.DB[arg0].properties.HoverColor.value then
     bgColor = UI.DB[arg0].properties.HoverColor.value
   end
+  -- [Vortex fix #12] pressed state: sink the button (darker fill) between
+  -- mouse-down and mouse-up so every press is acknowledged instantly
+  if UI.DB[arg0].state == "clicked" then
+    local br, bg_, bb, ba = dxGetColor(bgColor)
+    bgColor = tocolor(math.max(0, br - 45), math.max(0, bg_ - 45), math.max(0, bb - 45), ba)
+  end
   if UI.HoveredElement == arg0 then
     if UI.DB[arg0].properties.HoverGlow.value then
       dxDrawImage(UI.DB[arg0].dimensions.x - 25, UI.DB[arg0].dimensions.y - 25, UI.DB[arg0].dimensions.width + 50, UI.DB[arg0].dimensions.height + 50, "images/glow.png", 0, 0, 0, tocolor(dxGetColor(bgColor)), UI.postGUI)

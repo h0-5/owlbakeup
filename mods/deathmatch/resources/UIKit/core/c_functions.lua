@@ -87,9 +87,13 @@ function hoverUIElement(arg0, arg1, arg2, arg3, arg4)
   if isUIDisabled(arg0) then
     return false
   end
-  if UI.TempHoveredElement == arg0 then
-    UI.HoveredElement = isMouseInPosition(arg1, arg2, arg3, arg4) and arg0 or UI.HoveredElement
-  end
+  -- [Vortex fix #12] the decompiled gate (promote only when the element
+  -- equals the PREVIOUS frame's hover candidate) delayed every promotion
+  -- by one frame; clicks fired inside that gap landed on a stale/false
+  -- UI.HoveredElement and vanished -- fast move+click made buttons and
+  -- gridlist rows feel 'visual only'. Promote immediately (painter order:
+  -- the last drawn element under the cursor wins, same as hoverCandidate).
+  UI.HoveredElement = isMouseInPosition(arg1, arg2, arg3, arg4) and arg0 or UI.HoveredElement
   return true
 end
 function isUIDisabled(arg0)

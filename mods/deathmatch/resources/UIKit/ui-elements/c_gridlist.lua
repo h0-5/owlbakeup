@@ -312,14 +312,17 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
             -- used a static highlight): alpha sweeps 40 -> 155 over ~260ms
             -- from the moment the row was selected
             local selTick = UI.DB[arg0].data.selection_tick
-            local selAlpha = 155
+            local selAlpha = 200
             if selTick then
               local selDT = getTickCount() - selTick
               if selDT < 260 then
-                selAlpha = math.floor(40 + (155 - 40) * (selDT / 260))
+                selAlpha = math.floor(70 + (200 - 70) * (selDT / 260))
               end
             end
             dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
+            -- [Vortex fix #12] accent bar on the selected row: selection is
+            -- unmistakable even at a glance (fast fade + solid left bar)
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, 3, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
             if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
               UI.DB[arg0].data.hovered_row = forvar19 - 1
             end

@@ -127,7 +127,83 @@ function UI.drawing()
   end
 end
 addEventHandler("onClientRender", root, UI.drawing)
+-- [Vortex fix #12] hover state is inherently one frame stale (it is
+-- recomputed inside onClientRender); a click processed in that gap used
+-- the PREVIOUS cursor position and was dropped entirely. Recompute the
+-- topmost element under the cursor at the moment of the click itself.
+function UI.refreshHover()
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  local ax, ay = cx * sx, cy * sy
+  for i = #UI.DrawElements, 1, -1 do
+    local el = UI.DrawElements[i]
+    if isUIElement(el) and getElementType(el) ~= "ui-tab" and UI.DB[el] and UI.DB[el].visible and UI.isDraw[el] and UI.DB[el].dimensions then
+      local d = UI.DB[el].dimensions
+      if ax >= d.x and ay >= d.y and ax <= d.x + d.width and ay <= d.y + d.height and not isUIDisabled(el) then
+        return el
+      end
+    end
+  end
+  return false
+end
+-- [Vortex fix #12] hovered_row / hovered rows are DRAWN state: they are
+-- recomputed inside the element draw, so a click landing in the frame gap
+-- used the previous cursor position. Refresh them at click time.
+function UI.refreshGridlistHoverRow(arg0)
+  local db = UI.DB[arg0]
+  if not db or not db.data or not db.data.rows then
+    return
+  end
+  local cx, cy = getCursorPosition()
+  if not cx then
+    db.data.hovered_row = false
+    return
+  end
+  local ax, ay = cx * sx, cy * sy
+  local d = db.dimensions
+  local ch = db.properties.column_height.value
+  local rw = db.data.scrollbar and d.width - 10 or d.width
+  db.data.hovered_row = false
+  for i = db.data.row_i, db.data.row_f do
+    local cell = db.data.rows[i] and db.data.rows[i][1]
+    if cell then
+      local ry = d.y + 2 + ch + cell.height * (i - db.data.row_i)
+      if ax >= d.x and ay >= ry and ax <= d.x + rw and ay <= ry + cell.height then
+        db.data.hovered_row = i - 1
+      end
+    end
+  end
+end
+function UI.refreshMenuHoverRow(arg0)
+  local db = UI.DB[arg0]
+  if not db or not db.data or not db.data.rows then
+    return
+  end
+  local cx, cy = getCursorPosition()
+  if not cx then
+    db.data.hovered_row = false
+    return
+  end
+  local ax, ay = cx * sx, cy * sy
+  local d = db.dimensions
+  local rw = db.data.scrollbar and d.width - 10 or d.width
+  db.data.hovered_row = false
+  for i = db.data.row_i, db.data.row_f do
+    local row = db.data.rows[i]
+    if row then
+      local ry = d.y + 5 + (row.height * SCALE_Y + 4) * (i - db.data.row_i)
+      local rh = row.height * SCALE_Y
+      if ax >= d.x + 5 and ay >= ry and ax <= d.x + 5 + rw and ay <= ry + rh then
+        db.data.hovered_row = i
+      end
+    end
+  end
+end
 function UI.click(arg0, arg1, arg2, arg3)
+  -- [Vortex fix #12] fresh hover at click time (kills the stale-frame gap)
+  UI.HoveredElement = UI.refreshHover() or false
   if arg0 == "left" then
     if UI.HoveredElement then
       if clickTimer1 and isTimer(clickTimer1) then
@@ -204,6 +280,8 @@ function UI.click(arg0, arg1, arg2, arg3)
           end
         else
           if getElementType(UI.HoveredElement) == "ui-gridlist" then
+            -- [Vortex fix #12] drawn hovered_row is stale in the click gap
+            UI.refreshGridlistHoverRow(UI.HoveredElement)
             if not UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = -1
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
@@ -218,6 +296,8 @@ function UI.click(arg0, arg1, arg2, arg3)
               UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].animation[1] = getTickCount()
             end
           elseif getElementType(UI.HoveredElement) == "ui-menu" then
+            -- [Vortex fix #12] drawn hovered_row is stale in the click gap
+            UI.refreshMenuHoverRow(UI.HoveredElement)
             if UI.DB[UI.HoveredElement].data.hovered_row and UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
               -- [Vortex fix] decompiler moved the selected_row assignment above
               -- the hide block, so the OLD row was never hidden (sections stacked
@@ -311,6 +391,10 @@ function UI.click(arg0, arg1, arg2, arg3)
           end
         end
       end
+      -- [Vortex fix #12] audible acknowledgement when a button is pressed
+      if arg1 == "down" and getElementType(UI.HoveredElement) == "ui-button" then
+        playSound(":UIKit/sounds/click.wav")
+      end
       if arg1 == "down" and UI.DB[UI.HoveredElement].properties.DisableFocus.value ~= "False" then
         uiBringToFront(UI.HoveredElement)
       end
@@ -333,6 +417,8 @@ function UI.click(arg0, arg1, arg2, arg3)
 end
 addEventHandler("onClientClick", root, UI.click)
 function UI.doubleclick(arg0, arg1, arg2)
+  -- [Vortex fix #12] fresh hover here too
+  UI.HoveredElement = UI.refreshHover() or false
   if arg0 == "left" and UI.HoveredElement then
     if isUIDisabled(UI.HoveredElement) then
       return

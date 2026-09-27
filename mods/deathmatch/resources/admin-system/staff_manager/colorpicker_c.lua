@@ -167,7 +167,8 @@ end
 local function rebuildPickerHits()
         CP_HIT = {}
         if not (UI.window.picker and isElement(UI.window.picker)) then return end
-        CP_HIT[UI.window.picker] = { x = cpScreenRect(0, 0, 560, 360)[1], kind = "window" }
+        local wx, wy = cpScreenRect(0, 0, 560, 360)
+        CP_HIT[UI.window.picker] = { x = wx, y = wy, w = 560 * SCALE_Y, h = 360 * SCALE_Y, kind = "window" }
         local px, py, pw, ph = cpScreenRect(10, 35, 540, 40)
         CP_HIT[UI.rectangle.preview] = { x = px, y = py, w = pw, h = ph, kind = "preview" }
         for i, rgb in ipairs(PALETTE) do

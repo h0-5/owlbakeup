@@ -300,7 +300,7 @@ function UIKitReady()
         -- containers): instant visual proof of which build the client is
         -- actually running — guards against MTA client-cache staleness
         -- (the "updated the server but the panel never changed" case)
-        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V3",
+        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V4",
                 themeColor("primary"), "right", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.version_badge, "default-large")
 

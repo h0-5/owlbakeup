@@ -313,7 +313,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
           elseif not isUIDisabled(arg0) and UI.HoveredElement == arg0 and forvar24 == 1 then
             if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
               UI.DB[arg0].data.hovered_row = forvar19 - 1
-              if UI.DB[arg0].data.selected_row ~= forvar19 - 1 and forvar19 - 1 ~= forvar19 - 1 and not false then
+              if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
                 dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(60, 60, 60, 100), UI.postGUI)
               end
             end

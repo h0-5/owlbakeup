@@ -101,6 +101,24 @@ addEventHandler("onClientSettingChange", localPlayer, function(arg0, arg1, arg2)
   end
 end)
 floor = math.floor
+-- [Vortex fix #10] the decompiler dropped the original global text helpers
+-- (it only kept 'floor = math.floor'). They are used 155x across
+-- c_edit/c_memo/c_process INCLUDING the ui-edit and ui-memo draw handlers;
+-- as undefined globals they raised 'attempt to call nil' EVERY frame a
+-- visible edit/memo drew, and UI.drawing() has no pcall, so everything
+-- below the first visible edit/memo never rendered (empty changelogs/
+-- add-staff/ranks sections). Restored, UTF-8 aware with safe fallbacks.
+utfLen = utfLen or function(s)
+    s = tostring(s or "")
+    local ok, n = pcall(utf8.len, s)
+    if ok and n then return n end
+    return #s
+end
+utfSub = utfSub or function(s, i, j)
+    local ok, r = pcall(utf8.sub, tostring(s or ""), i, j)
+    if ok and r then return r end
+    return string.sub(tostring(s or ""), i, j)
+end
 tocolor = tocolor
 addEvent("onClientUIClick", false)
 addEvent("onClientUIStartClick", false)

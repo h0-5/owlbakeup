@@ -122,7 +122,8 @@
 	     repairs broken rank colors, /staffdb prints live DB state -->
 	<script src="staff_manager/staff_manager_setup_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_s.lua" type="server"/>
-	<script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
+	<script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
+	<script src="staff_manager/command_gates_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_c.lua" type="client" cache="false"/>
 	<script src="staff_manager/colorpicker_c.lua" type="client" cache="false"/>
 	<script src="staff_manager/staff_manager_g.lua" type="server"/>
@@ -135,7 +136,9 @@
 
 	<export function="canPlayerAccessStaffManager" type="server"/>
 	<export function="refreshPlayerRank" type="server"/>
-	<export function="playerHasRight" type="server"/>
+	<export function="playerHasRight" type="server"/>
+	<export function="hasCommandRight" type="server"/>
+	<export function="getCommandRight" type="server"/>
 	<export function="refreshAllPlayerRanks" type="server"/>
 	<export function="refreshRankMembers" type="server"/>
 	<export function="canPlayerAccessStaffManager" type="client"/>

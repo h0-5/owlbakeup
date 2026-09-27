@@ -1,10 +1,10 @@
-	
+﻿	
 ----------------------------[GO TO PLAYER]---------------------------------------
 function gotoPlayer(thePlayer, commandName, target)
  -- [Fix #19] backend-first gate: the rank's stored rights decide. If an
  -- owner unticked "admin.goto" for this rank, the command is refused here
  -- (not just hidden in a menu).
- if not exports.admin-system:hasCommandRight(thePlayer, "goto") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "goto") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -114,7 +114,7 @@ addCommandHandler("goto", gotoPlayer, false, false)
 
 function getPlayer(thePlayer, commandName, from, to)
  -- [Fix #19] backend-first right gate (admin.sendto)
- if not exports.admin-system:hasCommandRight(thePlayer, "sendto") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "sendto") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -179,7 +179,7 @@ addCommandHandler("sendto", getPlayer, false, false)
 ----------------------------[GET PLAYER HERE]---------------------------------------
 function getPlayer(thePlayer, commandName, target)
  -- [Fix #19] backend-first right gate (admin.gethere)
- if not exports.admin-system:hasCommandRight(thePlayer, "gethere") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "gethere") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -304,7 +304,7 @@ addCommandHandler("places", showValidTeleportLocations, false, false)
 
 function teleportToPresetPoint(thePlayer, commandName, target, optionalPlayer)
  -- [Fix #19] backend-first right gate (admin.gotoplace)
- if not exports.admin-system:hasCommandRight(thePlayer, "gotoplace") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "gotoplace") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end

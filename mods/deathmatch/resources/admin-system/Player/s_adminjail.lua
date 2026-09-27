@@ -1,7 +1,7 @@
-----------------------[JAIL]--------------------
+﻿----------------------[JAIL]--------------------
 function jailPlayer(thePlayer, commandName, who, minutes, ...)
  -- [Fix #19] backend-first right gate (admin.jail)
- if not exports.admin-system:hasCommandRight(thePlayer, "jail") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "jail") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -97,7 +97,7 @@ addCommandHandler("sjail", jailPlayer, false, false)
 --OFFLINE JAIL BY MAXIME--------------------
 function offlineJailPlayer(thePlayer, commandName, who, minutes, ...)
  -- [Fix #19] backend-first right gate (admin.jail)
- if not exports.admin-system:hasCommandRight(thePlayer, "ojail") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "ojail") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -214,7 +214,7 @@ addEventHandler("admin:timerUnjailPlayer", getRootElement(), timerUnjailPlayer)
 
 function unjailPlayer(thePlayer, commandName, who)
  -- [Fix #19] backend-first right gate (admin.unjail)
- if not exports.admin-system:hasCommandRight(thePlayer, "unjail") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "unjail") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end

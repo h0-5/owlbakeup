@@ -1,7 +1,7 @@
--- BAN
+﻿-- BAN
 function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
  -- [Fix #19] backend-first right gate (admin.ban)
- if not exports.admin-system:hasCommandRight(thePlayer, "pban") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "pban") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -129,7 +129,7 @@ end
 --OFFLINE BAN BY MAXIME
 function offlineBanAPlayer(thePlayer, commandName, targetUsername, hours, ...)
  -- [Fix #19] backend-first right gate (admin.ban)
- if not exports.admin-system:hasCommandRight(thePlayer, "oban") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "oban") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -242,7 +242,7 @@ addCommandHandler("soban", offlineBanAPlayer, false, false)
 -- /UNBAN
 function unbanPlayer(thePlayer, commandName, ...)
  -- [Fix #19] backend-first right gate (admin.unban)
- if not exports.admin-system:hasCommandRight(thePlayer, "unban") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "unban") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -362,7 +362,7 @@ addCommandHandler("unban", unbanPlayer, false, false)
 -- /UNBANIP
 function unbanPlayerIP(thePlayer, commandName, ip)
  -- [Fix #19] backend-first right gate (admin.unban)
- if not exports.admin-system:hasCommandRight(thePlayer, "unbanip") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "unbanip") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end
@@ -408,7 +408,7 @@ addCommandHandler("unbanip", unbanPlayerIP, false, false)
 -- /UNBANIP
 function unbanPlayerSerial(thePlayer, commandName, ip)
  -- [Fix #19] backend-first right gate (admin.unban)
- if not exports.admin-system:hasCommandRight(thePlayer, "unbanserial") then
+ if not exports['admin-system']:hasCommandRight(thePlayer, "unbanserial") then
   outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
   return
  end

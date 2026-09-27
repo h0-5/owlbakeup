@@ -76,11 +76,11 @@ local panelData = { changelogs = {} }
      the original config into `var0`; ids are the ones the code builds
      content for, permissions from reloadAdminPanelMenu/showPanel logic) ]]
 local SECTIONS = {
-        { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "icons/menu_shield.png", permission = false },
-        { id = "roles_members",      en = "Role Members",  ar = "أعضاء الرتب",      icon = "icons/menu_person.png", permission = "editmembers" },
-        { id = "changelogs",         en = "Changelogs",    ar = "سجل التغييرات",    icon = "icons/menu_chat.png",   permission = false },
-        { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "icons/menu_trophy.png", permission = "editranks" },
-        { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "icons/menu_globe.png",  permission = false },
+        { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "staff_manager/icons/menu_shield.png", permission = false },
+        { id = "roles_members",      en = "Role Members",  ar = "أعضاء الرتب",      icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
+        { id = "changelogs",         en = "Changelogs",    ar = "سجل التغييرات",    icon = "staff_manager/icons/menu_chat.png",   permission = false },
+        { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
+        { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
 }
 
 --[[ layout constants — straight from the decompiled code ]]
@@ -110,7 +110,7 @@ function UIKitReady()
         eui:uiSetVisible(UI.window.admin_panel, false)
         eui:uiBringToFront(UI.window.admin_panel)
 
-        UI.image.title_logo = eui:uiCreateImage(15, 12, 32, 32, "icons/menu_shield.png", UI.window.admin_panel)
+        UI.image.title_logo = eui:uiCreateImage(15, 12, 32, 32, "staff_manager/icons/menu_shield.png", UI.window.admin_panel)
         UI.label.MainMenuTitle = eui:uiCreateLabel(55, 10, 200, 45, "Admin Panel",
                 tocolor(255, 255, 255), "left", "center", UI.window.admin_panel)
         eui:uiSetFont(UI.label.MainMenuTitle, "default-large")
@@ -118,6 +118,9 @@ function UIKitReady()
         UI.button.close_panel = eui:uiCreateButton(5, PANEL_H - 45, 150, 40,
                 { en = "Close", ar = "إغلاق" }, tocolor(6, 9, 14, 255), UI.window.admin_panel)
         eui:uiSetProperty(UI.button.close_panel, "HoverTextColor", tocolor(255, 0, 0))
+        -- UIKit's default button TextColor is theme black (invisible on the
+        -- dark buttons) — every button below sets an explicit text color
+        eui:uiSetProperty(UI.button.close_panel, "TextColor", tocolor(255, 255, 255, 255))
 
         -- one rounded content panel + container per section
         for _, section in ipairs(SECTIONS) do
@@ -149,6 +152,7 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_admin, "TextColor", tocolor(255, 0, 0))
         UI.button.add_admin = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(6, 9, 14, 255), UI.container.staffs)
+        eui:uiSetProperty(UI.button.add_admin, "TextColor", tocolor(255, 255, 255, 255))
 
         --[[ ----------------------- add staff window ----------------------- ]]
         UI.window.add_staff = eui:uiCreateRectangle(false, false, 400, 390,
@@ -167,8 +171,10 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.add_staff_ranks, "row_height", 25)
         UI.button.cancel_add_staff = eui:uiCreateButton(10, 345, 185, 35,
                 { en = "Cancel", ar = "إلغاء" }, tocolor(3, 6, 11), UI.window.add_staff)
+        eui:uiSetProperty(UI.button.cancel_add_staff, "TextColor", tocolor(255, 255, 255, 255))
         UI.button.add_staff = eui:uiCreateButton(200, 345, 190, 35,
                 { en = "Add", ar = "إضافة" }, tocolor(3, 6, 11), UI.window.add_staff)
+        eui:uiSetProperty(UI.button.add_staff, "TextColor", tocolor(255, 255, 255, 255))
 
         --[[ ----------------------- delete staff dialog ----------------------- ]]
         UI.dialog.delete_staff = eui:uiCreateDialog(false, false, 300, 160, "Confirm")
@@ -257,9 +263,11 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_rank, "TextColor", tocolor(255, 0, 0))
         UI.button.add_rank = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add Rank", ar = "إضافة رتبة" }, tocolor(6, 9, 14, 255), UI.container.ranks)
+        eui:uiSetProperty(UI.button.add_rank, "TextColor", tocolor(255, 255, 255, 255))
         UI.button.save_rank_changes = eui:uiCreateButton(PANEL_W - MENU_W - 15 - 160,
                 PANEL_H - 10 - 45, 150, 35, { en = "Save Changes", ar = "حفظ التغييرات" },
                 tocolor(6, 9, 14, 255), UI.container.ranks)
+        eui:uiSetProperty(UI.button.save_rank_changes, "TextColor", tocolor(255, 255, 255, 255))
 
         UI.dialog.delete_rank = eui:uiCreateDialog(false, false, 300, 160, "Confirm")
         eui:uiSetVisible(UI.dialog.delete_rank, false)

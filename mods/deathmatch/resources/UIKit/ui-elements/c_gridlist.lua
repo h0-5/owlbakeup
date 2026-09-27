@@ -295,7 +295,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       columnX[forvar17] = UI.DB[arg0].dimensions.x + columnOffset
       columnOffset = columnOffset + forvar18.width * UI.DB[arg0].dimensions.width
       if UI.DB[arg0].properties.columns_names_visible.value == "True" then
-        dxDrawText(forvar18.text, UI.DB[arg0].dimensions.x + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI)
+        dxDrawText(forvar18.text, columnX[forvar17] + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, columnX[forvar17] + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI) -- [Vortex fix] header x = columnX (the decompiled draw used the gridlist left edge for EVERY column -> all headers stacked on top of each other)
       end
     end
     if UI.DB[arg0].properties.columns_names_visible.value == "True" then

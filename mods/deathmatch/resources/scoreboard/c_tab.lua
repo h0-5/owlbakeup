@@ -1,7 +1,7 @@
 ﻿--
 -- scoreboard / c_tab.lua  (V8 - Vortex)
 -- Redesigned to match the reference shot: centered search pill, top accent
--- strip, V logo, "N Players / Ø£Ø¹Ù„Ù‰ Ø£Ø¯Ø§Ø¡" right block, charname (username)
+-- strip, V logo, "N Players / أعلى تواجد" right block, charname (username)
 -- names, live 21-rank ladder colors, "Xh Ym" playtime, dimmed rows.
 --
 
@@ -456,7 +456,7 @@ local function drawHeader()
                         logoSize, logoSize, logoTex, 0, 0, 0, tocolor(255, 255, 255, 255), true)
         end
 
-        -- centered search pill ("Ø§Ø¨Ø­Ø«...")
+        -- centered search pill ("بحث...")
         searchBox.w = 320 * s
         searchBox.h = 32 * s
         searchBox.x = BOARD.x + (BOARD.w - searchBox.w) / 2
@@ -470,7 +470,7 @@ local function drawHeader()
                 dxDrawImage(searchBox.x + 12 * s, searchBox.y + (searchBox.h - 14 * s) / 2, 14 * s, 14 * s,
                         searchTex, 0, 0, 0, tocolor(255, 255, 255, searchOn and 255 or 150), true)
         end
-        local sLabel = searchBuf ~= "" and searchBuf or "Ø§Ø¨Ø­Ø«..."
+        local sLabel = searchBuf ~= "" and searchBuf or "بحث..."
         local sColor = searchBuf ~= "" and tocolor(255, 255, 255, 255) or tocolor(140, 148, 168, 255)
         dxDrawText(sLabel, searchBox.x + 32 * s, searchBox.y,
                 searchBox.x + searchBox.w - 14 * s, searchBox.y + searchBox.h,
@@ -481,7 +481,7 @@ local function drawHeader()
                         tocolor(255, 255, 255, 255), true)
         end
 
-        -- right block: "N Players" + icon, then the peak line "Ø£Ø¹Ù„Ù‰ Ø£Ø¯Ø§Ø¡: N"
+        -- right block: "N Players" + icon, then the peak line "أعلى تواجد: N"
         local rightEdge = BOARD.x + BOARD.w - PAD_X
         dxDrawText(countText, BOARD.x + BOARD.w * 0.55, BOARD.y + 8 * s,
                 rightEdge - 24 * s, BOARD.y + 34 * s,

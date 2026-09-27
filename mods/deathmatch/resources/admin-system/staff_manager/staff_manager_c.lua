@@ -327,8 +327,17 @@ function UIKitReady()
         eui:uiSetProperty(UI.button.delete_rank, "TextColor", tocolor(255, 0, 0))
         UI.button.add_rank = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
                 { en = "Add Rank", ar = "إضافة رتبة" }, tocolor(6, 9, 14, 255), UI.container.ranks)
-        eui:uiSetProperty(UI.button.add_rank, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.add_rank, "TextColor", tocolor(255, 255, 255, 255))
+
         eui:uiSetProperty(UI.button.add_rank, "HoverGlow", true)
+        -- [Fix #20] the original client has a dedicated "Change Rank Name"
+        -- button (the decompiled GUIEditor.button.ChangeRankName). Without it
+        -- there is no way to rename a rank at all: the rank_name edit box is
+        -- the ONLY input and it was wired to Add Rank only.
+        UI.button.rename_rank = eui:uiCreateButton(330, PANEL_H - 10 - 45, 150, 35,
+                { en = "Rename Rank", ar = "إعادة تسمية" }, tocolor(6, 9, 14, 255), UI.container.ranks)
+        eui:uiSetProperty(UI.button.rename_rank, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.rename_rank, "HoverGlow", true)
         UI.button.save_rank_changes = eui:uiCreateButton(PANEL_W - MENU_W - 15 - 160,
                 PANEL_H - 10 - 45, 150, 35, { en = "Save Changes", ar = "حفظ التغييرات" },
                 tocolor(6, 9, 14, 255), UI.container.ranks)

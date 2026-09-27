@@ -24,6 +24,16 @@
 --     (fx/ring.fx, fx/rounded.fx): perfectly smooth anti-aliased circle
 --     lines, the pixelated dxDrawCircle edges are gone (fallback kept)
 --
+-- Fix #21 refinements (user feedback):
+--   * EVERYTHING got bigger: status rings 26 -> 36 px (stroke 4), bigger
+--     frame + logo, clock, date, money and the zone label are now easily
+--     readable (they were far too small)
+--   * zone rule: ALL of Los Santos = SAFE ZONE, every other city / area =
+--     DANGER ZONE
+--   * the urine ring shows RELIEF: full right after /piss finishes, then it
+--     depletes gradually while the bladder refills server-side (empty = you
+--     need to pee again)
+--
 -- blocks (old client):
 --   * statusHud      top-right: 7 progress rings
 --                    (health/sleepy/thirsty/hungry/toilet/fatigue/shower),
@@ -202,8 +212,10 @@ local CONFIG = {
         hold      = false, -- F4 held = open, released = close
         right     = false, -- strip hugs the right edge
         hideClock = false,
+        -- Fix #21 (user rule): ALL of Los Santos is a safe zone, every other
+        -- city / countryside area is a danger zone
         safeZones = {
-                ["East Beach"] = true, ["Commerce"] = true,
+                ["Los Santos"] = true,
         },
 }
 
@@ -426,8 +438,8 @@ addEvent("onClientHudVisibilityChange", false)
 -- perfectly centered on the icon at every ring size. Full state = full circle,
 -- depleting gradually until the line disappears (old client behaviour).
 --------------------------------------------------------------------------------
-local RING_SIZE, RING_GAP = 26, 8
-local RING_STROKE = 3            -- arc thickness (old client bold look)
+local RING_SIZE, RING_GAP = 36, 11
+local RING_STROKE = 4            -- arc thickness (Fix #21: bigger + bolder)
 local RING_DEFS = {
         -- id        svg color    icon tint (exact old)   icon file
         { id = "health",    color = "#00ff85", tint = {0, 255, 132},   icon = "health"  },
@@ -483,12 +495,12 @@ end
 --   ring_y    = vertically centered in the frame
 --   shield    = same column as cleanness, 150*scale below the ring row
 --------------------------------------------------------------------------------
-local PANEL_PAD_L = 10
-local LOGO_SIZE  = 30
-local LOGO_GAP   = 12
-local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 230
-local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 14
-local PANEL_H = 42
+local PANEL_PAD_L = 12
+local LOGO_SIZE  = 40
+local LOGO_GAP   = 14
+local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 318
+local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 16
+local PANEL_H = 56
 local PANEL_X = sx - PANEL_W
 local STRIP_H = 37
 
@@ -498,8 +510,8 @@ local FRAME_BORDER = tocolor(149, 84, 255, 115)
 local FRAME_FILL   = tocolor(10, 6, 20, 55)
 
 local function drawStatusFrame(x, y, w, h, postGUI)
-        dxDrawRoundedRectangle(x, y, w, h, FRAME_BORDER, 9, postGUI)
-        dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 7, postGUI)
+        dxDrawRoundedRectangle(x, y, w, h, FRAME_BORDER, 12, postGUI)
+        dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 10, postGUI)
 end
 
 local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 25, current = -80 } }
@@ -563,28 +575,29 @@ local moneyFlex = nil   -- smoothed text width driving the icon position
 local function drawMoneyBlock(rightX, y, postGUI)
         local money = getPlayerMoney(localPlayer) or 0
         local coins = tonumber(getElementData(localPlayer, "bios:coins"))
-        local rowH = 22
+        local rowH = 28
 
         -- row 1: money (green dot, old client colors, no background)
+        -- Fix #21: amount big enough to read at a glance
         local text = formatMoney(money)
-        local tw = dxGetTextWidth(text, 1, fontDefault()) or 0
+        local tw = dxGetTextWidth(text, 1.15, fontDefault()) or 0
         if not moneyFlex then moneyFlex = tw end
         moneyFlex = moneyFlex + (tw - moneyFlex) * 0.12   -- flexible slot
         local cy = y + rowH / 2
-        local iconCX = rightX - moneyFlex - 10 - 7.5
-        drawSmoothDisc(iconCX, cy, 7.5, 0, 255, 133, 255, postGUI)
-        dxDrawText("$", iconCX - 7.5, cy - 8, iconCX + 7.5, cy + 8,
-                tocolor(8, 40, 26, 255), 0.7, fontDefault(), "center", "center", false, false, postGUI)
-        dxDrawText(text, iconCX + 10, y, rightX, y + rowH,
-                tocolor(255, 255, 255, 255), 1, fontDefault(), "right", "center", false, false, postGUI)
+        local iconCX = rightX - moneyFlex - 12 - 10
+        drawSmoothDisc(iconCX, cy, 10, 0, 255, 133, 255, postGUI)
+        dxDrawText("$", iconCX - 10, cy - 11, iconCX + 10, cy + 11,
+                tocolor(8, 40, 26, 255), 0.85, fontDefault(), "center", "center", false, false, postGUI)
+        dxDrawText(text, iconCX + 12, y, rightX, y + rowH,
+                tocolor(255, 255, 255, 255), 1.15, fontDefault(), "right", "center", false, false, postGUI)
         local bottom = y + rowH
 
         -- row 2: coins (red dot) — only while the coins system exists
         if coins then
-                local r2y = y + rowH + 8
-                drawSmoothDisc(iconCX, r2y + rowH / 2, 7.5, 255, 45, 45, 255, postGUI)
-                dxDrawText(tostring(coins), iconCX + 10, r2y, rightX, r2y + rowH,
-                        tocolor(255, 255, 255, 200), 0.8, fontHud(), "right", "center", false, false, postGUI)
+                local r2y = y + rowH + 10
+                drawSmoothDisc(iconCX, r2y + rowH / 2, 10, 255, 45, 45, 255, postGUI)
+                dxDrawText(tostring(coins), iconCX + 12, r2y, rightX, r2y + rowH,
+                        tocolor(255, 255, 255, 210), 0.95, fontHud(), "right", "center", false, false, postGUI)
                 bottom = r2y + rowH
         end
         return bottom - y
@@ -619,10 +632,14 @@ local function statusHudDrawImpl()
                 local ring = rings[def.id]
                 local x = firstX + (S + G) * i
                 local cx, cy = x + S / 2, ringY + S / 2
+                -- Fix #21: the urine ring shows RELIEF — full right after /piss,
+                -- depletes gradually as the bladder refills (empty = need to pee)
+                local value = ring and ring.value or 0
+                local shown = def.id == "urine" and (100 - value) or value
                 -- progress arc: starts 12 o'clock, sweeps clockwise (old client)
-                if ring and ring.value > 0.25 then
+                if shown > 0.25 then
                         drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
-                                def.tint[1], def.tint[2], def.tint[3], 255, ring.value / 100, postGUI)
+                                def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, postGUI)
                 end
                 local icon = tex[def.icon]
                 if icon then
@@ -674,23 +691,25 @@ local function statusHudDrawImpl()
         -- clock + date (old formats, right aligned under the frame)
         if not CONFIG.hideClock then
                 -- Fix #20: breathing room restored (frame -> clock -> money)
+                -- Fix #21: clock + date big enough to read
                 local textY = panelY + PANEL_H + 14
-                outlineText(getCurrentTime(), sx - 140, textY, 128, 24,
-                        tocolor(255, 255, 255, 255), 0.38, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 140, textY + 18, 128, 16,
-                        tocolor(255, 255, 255, 200), 0.3, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentTime(), sx - 250, textY, 238, 36,
+                        tocolor(255, 255, 255, 255), 0.55, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentDate(), sx - 250, textY + 28, 238, 26,
+                        tocolor(255, 255, 255, 210), 0.42, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 8, textY + 46, postGUI)
-                moneyBlockBottom = textY + 46 + mh
+                local mh = drawMoneyBlock(sx - 10, textY + 64, postGUI)
+                moneyBlockBottom = textY + 64 + mh
         else
-                local mh = drawMoneyBlock(sx - 8, panelY + PANEL_H + 14, postGUI)
+                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 14, postGUI)
                 moneyBlockBottom = panelY + PANEL_H + 14 + mh
         end
 
         -- zone label, bottom-left above the radar (old client)
-        outlineText(zoneText:gsub("#%x%x%x%x%x%x", ""), 18, sy - 206, 340, 16,
-                tocolor(255, 255, 255, 255), 0.85, fontHud(), "left", "top", postGUI)
-        outlineText(zoneLabel, 18, sy - 188, 340, 16, zoneLabelColor, 0.85, fontHud(), "left", "top", postGUI)
+        -- Fix #21: bigger and readable
+        outlineText(zoneText:gsub("#%x%x%x%x%x%x", ""), 18, sy - 226, 460, 22,
+                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "top", postGUI)
+        outlineText(zoneLabel, 18, sy - 202, 460, 22, zoneLabelColor, 1, fontHud(), "left", "top", postGUI)
 end
 statusHudDraw = statusHudDrawImpl
 
@@ -723,7 +742,7 @@ setTimer(function()
         local zone = getZoneName(x, y, z, false)
         zoneText = "#bfbfbf" .. city .. " #ffffff| " .. zone
         if getElementInterior(localPlayer) == 0 then
-                if CONFIG.safeZones[zone] or CONFIG.safeZones[city] then
+                if CONFIG.safeZones[city] then
                         zoneLabel = "SAFE ZONE"
                         zoneLabelColor = tocolor(153, 255, 0, 255)
                         wasDanger = false

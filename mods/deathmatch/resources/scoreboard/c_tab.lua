@@ -495,11 +495,7 @@ local function drawHeader()
                 dxDrawImage(rightEdge - 18 * s, BOARD.y + 13 * s, 15 * s, 15 * s,
                         groupTex, 0, 0, 0, tocolor(255, 255, 255, 230), true)
         end
-        -- blue up arrow
-        local ax = rightEdge - 5 * s
-        local ay = BOARD.y + 44 * s
-        drawTriangle(ax, ay - 5 * s, ax - 5 * s, ay + 3 * s, ax + 5 * s, ay + 3 * s, accent(240))
-        dxDrawText("أعلى أداء: " .. tostring(maxOnline), BOARD.x + BOARD.w * 0.55, BOARD.y + 36 * s,
+        dxDrawText("أعلى تواجد: " .. tostring(maxOnline), BOARD.x + BOARD.w * 0.55, BOARD.y + 36 * s,
                 rightEdge - 12 * s, BOARD.y + 62 * s,
                 tocolor(158, 167, 188, 240), 1, fontAR, "right", "center", true, false, true)
 end

@@ -3,10 +3,11 @@ local myWindow = nil
 local loading = nil
 local tab, grid, col = {}, {}, {}
 local currentCate = "Chat"
-function bindKeys()
-	-- F1 is owned by the main-menu resource now; the old command help moved to F2
-	bindKey("F2", "down", F1RPhelp)
-	triggerServerEvent("sendCmdsHelpToClient", localPlayer)
+function bindKeys()
+	-- [Mod 2] F1/F2 are owned by the main-menu resource (personal info + reports);
+	-- the command help stays available with /commands
+	addCommandHandler("commands", F1RPhelp)
+	triggerServerEvent("sendCmdsHelpToClient", localPlayer)
 end
 addEventHandler("onClientResourceStart", resourceRoot, bindKeys)
 

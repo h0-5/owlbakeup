@@ -874,14 +874,21 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         end)
         for _, staff in ipairs(admins or {}) do
                 local row = eui:uiGridListAddRow(UI.gridlist.staffs)
-                local color = LevelColor[tostring(staff.AdminID)] or { 255, 255, 255 }
+                -- [Mod 2 fix] LIVE rank for ONLINE staff (bridge element data,
+                -- matched by ACCOUNT id) wins over the stored DB role; offline
+                -- staff keep the DB rank. Panel now always agrees with the tab.
+                local color = (staff.Online and type(staff.LiveColor) == "table") and staff.LiveColor
+                        or LevelColor[tostring(staff.AdminID)] or { 255, 255, 255 }
+                local rankName = (staff.Online and staff.LiveRank and staff.LiveRank ~= "")
+                        and tostring(staff.LiveRank)
+                        or tostring(LevelNames[tostring(staff.AdminID)] or "N/A")
                 local rating = 0
                 if tonumber(staff.FeedbackCount) and tonumber(staff.FeedbackCount) > 0 then
                         rating = (tonumber(staff.FeedbackRating) or 0) / tonumber(staff.FeedbackCount)
                 end
-                eui:uiGridListSetItemText(UI.gridlist.staffs, row, 1,
-                        tostring(LevelNames[tostring(staff.AdminID)] or "N/A"))
-                eui:uiGridListSetItemText(UI.gridlist.staffs, row, 2, tostring(staff.Account))
+                eui:uiGridListSetItemText(UI.gridlist.staffs, row, 1, rankName)
+                eui:uiGridListSetItemText(UI.gridlist.staffs, row, 2,
+                        (staff.Online and "#00FF00● " or "#808080○ ") .. tostring(staff.Account))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 3,
                         tostring(staff.ReportsCount or 0))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 4,

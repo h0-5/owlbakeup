@@ -67,6 +67,10 @@ local SECTIONS = {
         { id = "character_info", en = "Personal Info",  ar = "المعلومات الشخصية",  icon = "icons/menu_person.png" },
         { id = "onlinestaff",    en = "Online Staff",   ar = "الإدارة المتصلة",    icon = "icons/menu_shield.png" },
         { id = "leaderboard",    en = "Leaderboard",    ar = "المتصدرين",          icon = "icons/menu_trophy.png" },
+        -- [Mod 2] F2 sections: reports + rules + help, ABOVE link discord
+        { id = "reports",        en = "Reports",        ar = "البلاغات",           icon = "icons/reportpanel.png" },
+        { id = "rules",          en = "Server Rules",   ar = "القوانين",           icon = "icons/verified.png" },
+        { id = "help",           en = "Help Center",    ar = "طلب المساعدة",       icon = "icons/heart.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/menu_chat.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
 }
@@ -196,8 +200,8 @@ if fileExists(":UIKit/images/gradient_x.png") then
         bgGradient = dxCreateTexture(":UIKit/images/gradient_x.png", "argb", true, "clamp")
 end
 
-local LOGO_SIZE = 56 * SCALE_Y
-local LOGO_X, LOGO_Y = 14 * SCALE_X, 10 * SCALE_Y
+-- [Mod 2] bigger centered logo + vertical cursive wordmark
+local LOGO_SIZE = 110 * SCALE_Y
 
 function main_menu_draw()
         state.alpha, state.sideX = animation(state.anim)
@@ -212,9 +216,23 @@ function main_menu_draw()
         if state.sideX > 0 then
                 dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), true)
         end
-        -- Vortex logo on the strip
-        if logoTex and state.sideX > LOGO_SIZE then
-                dxDrawImage(LOGO_X, LOGO_Y, LOGO_SIZE, LOGO_SIZE, logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), true)
+        -- [Mod 2] branding strip: big centered logo, then "Vortex" written
+        -- vertically (cursive pricedown, rotated 90 = reads top->bottom)
+        if logoTex and state.sideX > 60 then
+                local bigX = (state.sideX - LOGO_SIZE) / 2
+                local bigY = 26 * SCALE_Y
+                dxDrawImage(bigX, bigY, LOGO_SIZE, LOGO_SIZE, logoTex, 0, 0, 0, tocolor(255, 255, 255, 215), true)
+                local wordScale = 1.35 * SCALE_Y
+                local wordW = 64 * SCALE_Y
+                local wordH = 250 * SCALE_Y
+                local wordX = (state.sideX - wordW) / 2
+                local wordY = bigY + LOGO_SIZE + 40 * SCALE_Y
+                local wordColor = tocolor(255, 255, 255, 235)
+                local shadowColor = tocolor(94, 76, 252, 120)
+                dxDrawText("Vortex", wordX + 2, wordY + 2, wordX + wordW + 2, wordY + wordH + 2,
+                        shadowColor, wordScale, "pricedown", "center", "center", false, false, true, false, false, 90)
+                dxDrawText("Vortex", wordX, wordY, wordX + wordW, wordY + wordH,
+                        wordColor, wordScale, "pricedown", "center", "center", false, false, true, false, false, 90)
         end
 end
 
@@ -238,6 +256,18 @@ end
 bindKey("F1", "down", MainMenuKey)
 addCommandHandler("menu", MainMenuKey, false, false)
 
+-- [Mod 2] F2 = reports hub (opens the same Vortex menu directly on the
+-- reports section; rules + help live right below it)
+function ReportsMenuKey()
+        if getElementData(localPlayer, "character:id")
+                or getElementData(localPlayer, "loggedin") == 1 then
+                local wasOpen = state.state
+                showSideBar(not wasOpen, "reports")
+        end
+end
+bindKey("F2", "down", ReportsMenuKey)
+-- /report stays owned by report-system (classic admin window)
+
 addEvent("onClientPlayerQuitFromCharacter", true)
 addEventHandler("onClientPlayerQuitFromCharacter", localPlayer, function()
         showSideBar(false)
@@ -255,14 +285,21 @@ function getMenuElement()
         return menu
 end
 
-function showSideBar(show)
+function showSideBar(show, openSection)
         state.state = show
         showCursor(show)
         if show then
                 state.anim = { getTickCount(), state.alpha, state.sideX, 250, 250, 350, true }
                 addEventHandler("onClientRender", root, main_menu_draw, false, "high-2")
                 eui:uiSetVisible(UI.window.MainMenu, true)
-                eui:uiMenuSetSelectedRow(menu, 1)
+                -- [Mod 2] optional section to land on (F2 -> reports)
+                local target = 1
+                if openSection then
+                        for i, section in ipairs(SECTIONS) do
+                                if section.id == openSection then target = i end
+                        end
+                end
+                eui:uiMenuSetSelectedRow(menu, target)
         else
                 removeEventHandler("onClientRender", root, main_menu_draw)
                 state.anim = { getTickCount(), state.alpha, state.sideX, 0, -260, 250, false }
@@ -330,6 +367,174 @@ function UIKitReady()
 
                 eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
                         tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)
+        end
+
+        --[[ ------------------ reports (F2) ------------------ ]]
+
+        -- [Mod 2] dedicated reports design. Mirrors the report-system flow:
+        -- triggerServerEvent("clientSendReport", localPlayer, target, text, type)
+        -- with the SAME 7 categories (report-system/g_reports.lua order) so the
+        -- admin side keeps working untouched.
+        local REPORT_TYPES = {
+                { "Issue with another player",     "Use this type if you are reporting a player about a issue that has occured." },
+                { "Interior Issue",                "Use this type if you are having a issue with a interior." },
+                { "Item Issue",                    "Use this type if you need items spawned or anything related to your item inventory." },
+                { "General Question",              "Use this type if you have any questions." },
+                { "Vehicle Related Issues",        "Use this type if you have a issue with a vehicle." },
+                { "Vehicle Build/Import Requests", "Use this type to contact the VCT." },
+                { "Scripting Question",            "Use this type if you wish to contact the Scripting Team." },
+        }
+
+        local function resolveReportTarget(text)
+                -- same resolution the old F2 window used: full/partial name or player id
+                if type(text) ~= "string" or text == "" then return false end
+                local found = false
+                if tonumber(text) then
+                        for _, value in ipairs(getElementsByType("player")) do
+                                if tonumber(getElementData(value, "playerid")) == tonumber(text) then
+                                        found = value
+                                        break
+                                end
+                        end
+                else
+                        for _, value in ipairs(getElementsByType("player")) do
+                                if string.find(string.lower(getPlayerName(value)), string.lower(text), 1, true) then
+                                        found = value
+                                        break
+                                end
+                        end
+                end
+                return found
+        end
+
+        eui:uiCreateLabel(30, 52, (contentW - 60) * 0.45, 22, { en = "Report type", ar = "نوع البلاغ" },
+                tocolor(255, 255, 255, 160), "left", "center", UI.container.reports)
+        UI.combobox.report_type = eui:uiCreateComboBox(30, 78, (contentW - 60) * 0.45, 32,
+                "اختر النوع...", tocolor(9, 12, 17, 235), UI.container.reports)
+        eui:uiSetProperty(UI.combobox.report_type, "text_color", tocolor(255, 255, 255, 255))
+        for _, rtype in ipairs(REPORT_TYPES) do
+                eui:uiComboBoxAddItem(UI.combobox.report_type, rtype[1])
+        end
+        eui:uiComboBoxSetSelected(UI.combobox.report_type, 0)
+        UI.label.report_type_desc = eui:uiCreateLabel(30, 116, (contentW - 60) * 0.45, 44,
+                REPORT_TYPES[1][2], tocolor(255, 255, 255, 120), "left", "top", UI.container.reports)
+
+        eui:uiCreateLabel(30 + (contentW - 60) * 0.5, 52, (contentW - 60) * 0.5, 22,
+                { en = "Player you report (optional)", ar = "اللاعب المراد الإبلاغ عنه (اختياري)" },
+                tocolor(255, 255, 255, 160), "left", "center", UI.container.reports)
+        UI.edit.report_target = eui:uiCreateEdit(30 + (contentW - 60) * 0.5, 78, (contentW - 60) * 0.5, 32,
+                "", "اسم اللاعب / رقمه", tocolor(9, 12, 17, 235), UI.container.reports)
+        eui:uiSetProperty(UI.edit.report_target, "UnderLineVisible", "False")
+
+        UI.memo.report_text = eui:uiCreateMemo(30, 170, contentW - 60, contentH - 170 - 92,
+                "", tocolor(255, 255, 255, 255), UI.container.reports)
+        UI.label.report_counter = eui:uiCreateLabel(30, contentH - 84, 220, 24, "0 / 150",
+                tocolor(46, 213, 115, 255), "left", "center", UI.container.reports)
+        UI.button.report_submit = eui:uiCreateButton(contentW - 30 - 190, contentH - 84, 190, 42,
+                { en = "Send Report", ar = "إرسال البلاغ" }, "primary", UI.container.reports)
+        eui:uiSetProperty(UI.button.report_submit, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.report_submit, "HoverTextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.report_submit, "HoverGlow", true)
+
+        if not UI._mod2WiredText then
+        UI._mod2WiredText = true
+addEventHandler("onClientUITextChange", root, function()
+                if source == UI.memo.report_text and isElement(UI.label.report_counter) then
+                        local len = #tostring(eui:uiGetText(UI.memo.report_text) or "")
+                        eui:uiSetText(UI.label.report_counter, len .. " / 150")
+                end
+        end)
+        end
+
+        if not UI._mod2WiredReport then
+        UI._mod2WiredReport = true
+addEventHandler("onClientUIClick", root, function()
+                if source ~= UI.button.report_submit then return end
+                local text = tostring(eui:uiGetText(UI.memo.report_text) or "")
+                local typeIdx = (tonumber(eui:uiComboBoxGetSelected(UI.combobox.report_type)) or 0) + 1
+                if text:len() < 10 then
+                        notify({ en = "Report is too short (min 10 chars)", ar = "البلاغ قصير جداً (10 أحرف على الأقل)" }, 3000, "error")
+                        eui:uiLabelApplyShakeAnimation(UI.label.report_counter, tocolor(255, 65, 65, 255))
+                        return
+                end
+                if text:len() > 150 then
+                        notify({ en = "Report is too long (max 150 chars)", ar = "البلاغ طويل جداً (150 حرفاً كحد أقصى)" }, 3000, "error")
+                        eui:uiLabelApplyShakeAnimation(UI.label.report_counter, tocolor(255, 65, 65, 255))
+                        return
+                end
+                local target = resolveReportTarget(tostring(eui:uiGetText(UI.edit.report_target) or ""))
+                triggerServerEvent("clientSendReport", localPlayer, target or localPlayer, text, typeIdx)
+                eui:uiSetText(UI.memo.report_text, "")
+                eui:uiSetText(UI.label.report_counter, "0 / 150")
+                notify({ en = "Report sent to the staff team", ar = "تم إرسال البلاغ إلى الإدارة" }, 4000, "success")
+        end)
+        end
+
+        --[[ ------------------ rules ------------------ ]]
+
+        -- [Mod 2] dedicated rules design: the full server rules rendered in the
+        -- Vortex panel (same text the old login flow used, now always reachable)
+        local rulesText = ""
+        local rulesXml = xmlLoadFile("rules.xml")
+        if rulesXml then
+                rulesText = tostring(xmlNodeGetValue(rulesXml) or "")
+                xmlUnloadFile(rulesXml)
+        end
+        eui:uiCreateLabel(30, 50, contentW - 60, 24,
+                { en = "Read the rules carefully - breaking them is punishable", ar = "اقرأ القوانين بعناية - مخالفتها عرضة للعقوبة" },
+                tocolor(255, 255, 255, 150), "center", "center", UI.container.rules)
+        UI.memo.rules = eui:uiCreateMemo(30, 82, contentW - 60, contentH - 100,
+                rulesText, tocolor(255, 255, 255, 255), UI.container.rules)
+
+        --[[ ------------------ help ------------------ ]]
+
+        -- [Mod 2] dedicated help center: what is roleplay + quick actions
+        local rpText = ""
+        local rpXml = xmlLoadFile("whatisroleplaying.xml")
+        if rpXml then
+                rpText = tostring(xmlNodeGetValue(rpXml) or "")
+                xmlUnloadFile(rpXml)
+        end
+        local helpCardW = (contentW - 40) * 0.55
+        eui:uiCreateLabel(30, 50, helpCardW, 24, { en = "What is roleplay?", ar = "ما هو الرول بلاي؟" },
+                tocolor(255, 255, 255, 160), "left", "center", UI.container.help)
+        UI.memo.help_rp = eui:uiCreateMemo(30, 82, helpCardW, contentH - 100,
+                rpText, tocolor(255, 255, 255, 255), UI.container.help)
+
+        local helpX = 30 + helpCardW + 10
+        local helpW = contentW - 30 - helpX
+        local helpCardH = (contentH - 100 - 20) / 3
+        local helpCards = {
+                { key = "report",  icon = "icons/reportpanel.png",     en = "Ask the staff for help",   ar = "اطلب المساعدة من الإدارة" },
+                { key = "staff",   icon = "icons/menu_shield.png",     en = "See the online staff",     ar = "الإدارة المتصلة الآن" },
+                { key = "discord", icon = "icons/discord.png",         en = "Join our Discord",         ar = "الديسكورد الرسمي" },
+        }
+        for i, card in ipairs(helpCards) do
+                local cardY = 82 + (i - 1) * (helpCardH + 10)
+                local rect = eui:uiCreateRectangle(helpX, cardY, helpW, helpCardH,
+                        tocolor(9, 12, 17, 200), true, true, true, true, UI.container.help)
+                eui:uiCreateImage(14, helpCardH / 2 - 17, 34, 34, card.icon, rect)
+                eui:uiCreateLabel(60, 0, helpW - 70, helpCardH, { en = card.en, ar = card.ar },
+                        tocolor(255, 255, 255, 255), "left", "center", rect)
+                UI.rectangle["help_" .. card.key] = rect
+        end
+
+        if not UI._mod2WiredHelp then
+        UI._mod2WiredHelp = true
+addEventHandler("onClientUIClick", root, function()
+                if source == UI.rectangle.help_report then
+                        for i, section in ipairs(SECTIONS) do
+                                if section.id == "reports" then eui:uiMenuSetSelectedRow(menu, i) end
+                        end
+                elseif source == UI.rectangle.help_staff then
+                        for i, section in ipairs(SECTIONS) do
+                                if section.id == "onlinestaff" then eui:uiMenuSetSelectedRow(menu, i) end
+                        end
+                elseif source == UI.rectangle.help_discord then
+                        setClipboard(LINKS.discord)
+                        notify({ en = "Discord link copied", ar = "تم نسخ رابط الديسكورد" }, 3000, "success")
+                end
+        end)
         end
 
         --[[ ------------------ character_info ------------------ ]]
@@ -544,30 +749,24 @@ function UIKitReady()
 
         addEventHandler("onClientUIClick", root, function()
                 if source == UI.button["character:quit"] then
-                        -- [Vortex fix] the change-character request used to sit in
-                        -- a 6s timer (leftover of the original loading-screen flow);
-                        -- with no `public` loading screen on this server the player
-                        -- just saw "nothing happen". Fire it IMMEDIATELY, exactly
-                        -- like the proven F10 options flow.
+                        -- [Mod 2 fix] F1 change-character now runs the EXACT old F10
+                        -- flow. The old backup (account + hud c_options.lua) listens
+                        -- to the client event "accounts:logout" with options_logOut:
+                        --   updateCharacters -> accounts:characters:change ->
+                        --   onClientChangeChar -> options_disable ->
+                        --   Characters_showSelection() -> clearChat()
+                        -- The previous code only fired the server event, so the
+                        -- server cleaned up while the 3D character-selection screen
+                        -- never appeared (player stuck in an empty dimension).
                         addEventHandler("onClientKey", root, cancelBindsEvent)
                         showSideBar(false)
-                        if resRunning("public") then
-                                pcall(function() exports.public:loading("character:quit", true) end)
-                        end
                         if resRunning("roleplay") then
                                 pcall(function() exports.roleplay:switchOutPlayer() end)
                         else
-                                -- this server's account system: real change-character flow
-                                triggerServerEvent("accounts:characters:change", localPlayer, "Change Character")
+                                triggerEvent("accounts:logout", localPlayer)
                         end
                         setTimer(function()
-                                if resRunning("roleplay") then
-                                        triggerServerEvent("character:quit", localPlayer)
-                                end
                                 removeEventHandler("onClientKey", root, cancelBindsEvent)
-                                if resRunning("public") then
-                                        pcall(function() exports.public:loading("character:quit", false) end)
-                                end
                         end, 3000, 1)
                 elseif source == UI.button.copy_discord then
                         setClipboard(LINKS.discord)
@@ -685,70 +884,101 @@ function UIKitReady()
 
         addEventHandler("onClientUIVisibilityChange", root, function(visible)
                 if visible and source == UI.window.MainMenu then
-                        local char = getCharacter()
-                        local info = char.Info or {}
-                        local gender = GENDERS[tonumber(info.Gender) or -1] or "-"
-                        local birth = "-"
-                        if type(info.BirthDate) == "table" and info.BirthDate[1] then
-                                birth = tostring(info.BirthDate[1]) .. "/" .. tostring(info.BirthDate[2]) .. "/" .. tostring(info.BirthDate[3])
-                        end
-                        local money = convertNumber(getPlayerMoney())
-                        local level = safeExport("level-system", "getPlayerLevel") or 1
-                        local levelExp = safeExport("level-system", "getPlayerExp")
-                                or safeExport("level-system", "getPlayerLevel") or 0
-                        local playTime = safeExport("play-time", "getCurrentPlayTime") or 0
+                        -- [Mod 2 fix] REAL character data from this server's account
+                        -- system. The old filler read char.Info from the not-restored
+                        -- roleplay exports + license keys that do not exist here
+                        -- (license.Vehicles/Boats/Aircraft/Pilots), so every field
+                        -- showed "-" / red "No". All keys below are verified against
+                        -- account/s_characters.lua spawnCharacter (dbid, age, gender,
+                        -- race, height, weight, fingerprint, hoursplayed, bankmoney,
+                        -- license.car/bike/boat/pilot/gun, job, factionrank).
                         local bullet = "${color.primary}• "
 
-                        eui:uiSetText(UI.label[1], {
-                                en = bullet .. "Personal ID »  #FFFFFF" .. tostring(char.ID) .. "\n"
-                                        .. bullet .. "Name »  #FFFFFF" .. tostring(char.Name or "-") .. "\n"
-                                        .. bullet .. "Gender »  #FFFFFF" .. gender .. "\n"
-                                        .. bullet .. "Date of birth »  #FFFFFF" .. birth .. "\n"
-                                        .. bullet .. "Age »  #FFFFFF" .. tostring(info.Age or "-") .. " years old\n"
-                                        .. bullet .. "Fingerprints »  #FFFFFF" .. tostring(info.FingerPrint or "-") .. "\n"
-                                        .. bullet .. "Country »  #FFFFFF" .. tostring(char.country and COUNTRIES[char.country] or "Unknown") .. "\n"
-                                        .. bullet .. "Career »  #FFFFFF" .. (getElementData(localPlayer, "job") or "Unemployed") .. "\n\n"
-                                        .. bullet .. "Money »  #00FF00$" .. money .. "\n"
-                                        .. bullet .. "Main Bank Account »  #FFFFFF" .. tostring(info.BankAccount or "Not Found"),
-                                ar = bullet .. "رقم الشخصية »  #FFFFFF" .. tostring(char.ID) .. "\n"
-                                        .. bullet .. "الاسم »  #FFFFFF" .. tostring(char.Name or "-") .. "\n"
-                                        .. bullet .. "الجنس »  #FFFFFF" .. gender .. "\n"
-                                        .. bullet .. "تاريخ الميلاد »  #FFFFFF" .. birth .. "\n"
-                                        .. bullet .. "العمر »  #FFFFFF" .. tostring(info.Age or "-") .. " سنة\n"
-                                        .. bullet .. "بصمة الأصابع »  #FFFFFF" .. tostring(info.FingerPrint or "-") .. "\n"
-                                        .. bullet .. "الجنسية »  #FFFFFF" .. tostring(char.country and COUNTRIES[char.country] or "Unknown") .. "\n"
-                                        .. bullet .. "المهنة »  #FFFFFF" .. (getElementData(localPlayer, "job") or "Unemployed") .. "\n"
-                                        .. bullet .. "المال »  #00FF00$" .. money .. "\n"
-                                        .. bullet .. "الحساب البنكي الرئيسي »  #FFFFFF" .. tostring(info.BankAccount or "لا يوجد"),
-                        })
-                        eui:uiSetText(UI.label.level, "Level ${color.primary} " .. tostring(level))
-                        eui:uiSetText(UI.label.level_exp, tostring(levelExp) .. " / " .. tostring(level))
-                        eui:uiSetText(UI.label.play_time, {
-                                en = "\nPlay Time\n\n" .. convertTimeToString(playTime),
-                                ar = "وقت اللعب\n\n" .. convertTimeToString(playTime),
-                        })
-                        eui:uiProgressBarSetProgress(UI.progressbar[1], tonumber(level) or 1)
+                        local charId = tonumber(getElementData(localPlayer, "dbid"))
+                                or tonumber(getElementData(localPlayer, "account:character:id")) or "-"
+                        local charName = tostring(getPlayerName(localPlayer)):gsub("_", " ")
+                        local genderVal = tonumber(getElementData(localPlayer, "gender")) or 0
+                        local gender = (genderVal == 1) and { "Female", "أنثى" } or { "Male", "ذكر" }
+                        local raceVal = tonumber(getElementData(localPlayer, "race"))
+                        local races = { [0] = { "Black", "أسود" }, [1] = { "White", "أبيض" }, [2] = { "Asian", "آسيوي" }, [3] = { "Latino", "لاتيني" } }
+                        local race = races[raceVal] or { "-", "-" }
+                        local age = tonumber(getElementData(localPlayer, "age")) or "-"
+                        local height = tonumber(getElementData(localPlayer, "height")) or "-"
+                        local weight = tonumber(getElementData(localPlayer, "weight")) or "-"
+                        local fingerprint = tostring(getElementData(localPlayer, "fingerprint") or "-")
+                        if fingerprint == "" then fingerprint = "-" end
+                        local job = tostring(getElementData(localPlayer, "job") or "")
+                        if job == "" then job = nil end
+                        local factionRank = tostring(getElementData(localPlayer, "factionrank") or "")
+                        if factionRank == "" then factionRank = nil end
+                        local desc = tostring(getElementData(localPlayer, "description") or "")
+                        if desc == "" then desc = nil end
+                        if desc and #desc > 64 then desc = desc:sub(1, 61) .. "..." end
 
-                        local marital = info.marital_status or "Single"
-                        local languages = ""
-                        for _, lang in ipairs(info.Languages or { "English" }) do
-                                languages = languages .. "${color.primary}  » #FFFFFF" .. tostring(lang) .. " (100%)\n"
+                        eui:uiSetText(UI.label[1], {
+                                en = bullet .. "Character ID »  #FFFFFF" .. tostring(charId) .. "\n"
+                                        .. bullet .. "Name »  #FFFFFF" .. tostring(charName) .. "\n"
+                                        .. bullet .. "Gender »  #FFFFFF" .. gender[1] .. "\n"
+                                        .. bullet .. "Age »  #FFFFFF" .. tostring(age) .. " years old\n"
+                                        .. bullet .. "Height »  #FFFFFF" .. tostring(height) .. " cm\n"
+                                        .. bullet .. "Weight »  #FFFFFF" .. tostring(weight) .. " kg\n"
+                                        .. bullet .. "Ethnicity »  #FFFFFF" .. race[1] .. "\n"
+                                        .. bullet .. "Fingerprint »  #FFFFFF" .. fingerprint .. "\n"
+                                        .. bullet .. "Description »  #FFFFFF" .. tostring(desc or "-"),
+                                ar = bullet .. "رقم الشخصية »  #FFFFFF" .. tostring(charId) .. "\n"
+                                        .. bullet .. "الاسم »  #FFFFFF" .. tostring(charName) .. "\n"
+                                        .. bullet .. "الجنس »  #FFFFFF" .. gender[2] .. "\n"
+                                        .. bullet .. "العمر »  #FFFFFF" .. tostring(age) .. " سنة\n"
+                                        .. bullet .. "الطول »  #FFFFFF" .. tostring(height) .. " سم\n"
+                                        .. bullet .. "الوزن »  #FFFFFF" .. tostring(weight) .. " كجم\n"
+                                        .. bullet .. "العِرق »  #FFFFFF" .. race[2] .. "\n"
+                                        .. bullet .. "بصمة الأصابع »  #FFFFFF" .. fingerprint .. "\n"
+                                        .. bullet .. "الوصف »  #FFFFFF" .. tostring(desc or "-"),
+                        })
+                        -- [Mod 2 fix] money cards show the REAL cash + bank balance
+                        local money = getPlayerMoney() or 0
+                        local bank = tonumber(getElementData(localPlayer, "bankmoney")) or 0
+                        eui:uiSetText(UI.label.level, {
+                                en = "Cash ${color.primary}$" .. convertNumber(money),
+                                ar = "المال ${color.primary}$" .. convertNumber(money),
+                        })
+                        eui:uiSetText(UI.label.level_exp, {
+                                en = "Bank ${color.primary}$" .. convertNumber(bank),
+                                ar = "البنك ${color.primary}$" .. convertNumber(bank),
+                        })
+                        local share = 0
+                        if (money + bank) > 0 then share = math.floor(money / (money + bank) * 100) end
+                        eui:uiProgressBarSetProgress(UI.progressbar[1], share)
+                        local hours = tonumber(getElementData(localPlayer, "hoursplayed")) or 0
+                        local minutes = math.floor((tonumber(getElementData(localPlayer, "timeinserver")) or 0))
+                        eui:uiSetText(UI.label.play_time, {
+                                en = "\nPlay Time\n\n" .. tostring(math.floor(hours)) .. "h " .. (minutes % 60) .. "m",
+                                ar = "وقت اللعب\n\n" .. tostring(math.floor(hours)) .. " ساعة " .. (minutes % 60) .. " دقيقة",
+                        })
+
+                        -- [Mod 2 fix] licenses use the REAL keys (license.car/bike/boat/
+                        -- pilot/gun) + faction rank; the old block read keys that never
+                        -- existed on this server so everything showed red "No"
+                        local function hasLicense(key)
+                                return (tonumber(getElementData(localPlayer, key)) or 0) >= 1
                         end
                         eui:uiSetText(UI.label[4], {
-                                en = bullet .. "Marital Status »  #FFFFFF" .. tostring(marital) .. "\n\n\n"
-                                        .. bullet .. "Languages: #FFFFFF\n" .. languages .. "\n"
-                                        .. bullet .. "Cars Driving License:  #FFFFFF" .. (getElementData(localPlayer, "license.Vehicles") and "Yes" or "#FF0000No") .. "\n"
-                                        .. bullet .. "Boats Driving License:  #FFFFFF" .. (getElementData(localPlayer, "license.Boats") and "Yes" or "#FF0000No") .. "\n"
-                                        .. bullet .. "Aircraft Driving License:  #FFFFFF" .. (getElementData(localPlayer, "license.Aircraft") and "Yes" or "#FF0000No") .. "\n"
-                                        .. bullet .. "Pilots License:  #FFFFFF" .. (getElementData(localPlayer, "license.Pilots") and "Yes" or "#FF0000No"),
-                                ar = bullet .. "الحالة الاجتماعية »  #FFFFFF" .. tostring(marital == "Married" and "متزوج" or "أعزب") .. "\n\n\n"
-                                        .. bullet .. "اللغات: #FFFFFF\n" .. languages .. "\n"
-                                        .. bullet .. "رخصة قيادة السيارات:  #FFFFFF" .. (getElementData(localPlayer, "license.Vehicles") and "نعم" or "#FF0000لا") .. "\n"
-                                        .. bullet .. "رخصة قيادة القوارب:  #FFFFFF" .. (getElementData(localPlayer, "license.Boats") and "نعم" or "#FF0000لا") .. "\n"
-                                        .. bullet .. "رخصة قيادة الطائرات:  #FFFFFF" .. (getElementData(localPlayer, "license.Aircraft") and "نعم" or "#FF0000لا") .. "\n"
-                                        .. bullet .. "رخصة الطيار:  #FFFFFF" .. (getElementData(localPlayer, "license.Pilots") and "نعم" or "#FF0000لا"),
+                                en = bullet .. "Career »  #FFFFFF" .. tostring(job or "Unemployed") .. "\n"
+                                        .. bullet .. "Faction Rank »  #FFFFFF" .. tostring(factionRank or "None") .. "\n"
+                                        .. bullet .. "Car License:  #FFFFFF" .. (hasLicense("license.car") and "Yes" or "#FF0000No") .. "\n"
+                                        .. bullet .. "Bike License:  #FFFFFF" .. (hasLicense("license.bike") and "Yes" or "#FF0000No") .. "\n"
+                                        .. bullet .. "Boats License:  #FFFFFF" .. (hasLicense("license.boat") and "Yes" or "#FF0000No") .. "\n"
+                                        .. bullet .. "Pilots License:  #FFFFFF" .. (hasLicense("license.pilot") and "Yes" or "#FF0000No") .. "\n"
+                                        .. bullet .. "Gun License:  #FFFFFF" .. (hasLicense("license.gun") and "Yes" or "#FF0000No"),
+                                ar = bullet .. "المهنة »  #FFFFFF" .. tostring(job or "عاطل") .. "\n"
+                                        .. bullet .. "رتبة الفاشن »  #FFFFFF" .. tostring(factionRank or "لا يوجد") .. "\n"
+                                        .. bullet .. "رخصة السيارة:  #FFFFFF" .. (hasLicense("license.car") and "نعم" or "#FF0000لا") .. "\n"
+                                        .. bullet .. "رخصة الدراجة:  #FFFFFF" .. (hasLicense("license.bike") and "نعم" or "#FF0000لا") .. "\n"
+                                        .. bullet .. "رخصة القوارب:  #FFFFFF" .. (hasLicense("license.boat") and "نعم" or "#FF0000لا") .. "\n"
+                                        .. bullet .. "رخصة الطيار:  #FFFFFF" .. (hasLicense("license.pilot") and "نعم" or "#FF0000لا") .. "\n"
+                                        .. bullet .. "رخصة السلاح:  #FFFFFF" .. (hasLicense("license.gun") and "نعم" or "#FF0000لا"),
                         })
-                        local accName = getElementData(localPlayer, "character:account")
+                        local accName = getElementData(localPlayer, "account:username")
                         if type(accName) ~= "string" or accName == "" then accName = getPlayerName(localPlayer) end
                         eui:uiSetText(UI.label.username, accName)
                 end

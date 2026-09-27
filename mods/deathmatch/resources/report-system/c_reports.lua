@@ -6,8 +6,9 @@ function resourceStop()
 end
 addEventHandler("onClientResourceStop", getResourceRootElement(), resourceStop)
 
-function resourceStart()
-	bindKey("F2", "down", toggleReport)
+function resourceStart()
+	-- [Mod 2] F2 opens the new Vortex menu reports section (main-menu);
+	-- the classic window stays reachable through /report
 end
 addEventHandler("onClientResourceStart", getResourceRootElement(), resourceStart)
 
@@ -175,7 +176,7 @@ function showReportMainUI()
 			guiLabelSetColor(lNameCheck, 0, 255, 0)
 			addEventHandler("onClientGUIChanged", tPlayerName, checkNameExists)
 
-			lReportType = guiCreateLabel(0.4, 0.28, 0.23, 0.3, "حدد الخيار الذي أفضل \ nsuites التقرير الخاص بك . \ ن و /n/ هذا يرسل التقرير الخاص بك /n/ ل الموظف المناسب.", true, wReportMain)
+			lReportType = guiCreateLabel(0.4, 0.28, 0.23, 0.3, "حدد الخيار الذي أفضل\nيناسب التقرير الخاص بك.\nهذا يرسل التقرير الخاص بك للموظف المناسب.", true, wReportMain)
 
 			cReportType = guiCreateComboBox(0.65, 0.32, 0.3, 0.34, "نوع التقرير", true, wReportMain)
 			for key, value in ipairs(reportTypes) do

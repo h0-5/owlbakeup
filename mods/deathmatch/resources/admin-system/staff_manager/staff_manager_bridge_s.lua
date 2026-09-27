@@ -388,6 +388,30 @@ addEventHandler("onPlayerLogout", root, function()
         clearPlayerRank(source)
 end)
 
+-- [Mod 2 fix] apply the rank the INSTANT the account is known. The login
+-- panel calls refreshPlayerRank itself, but every other login path (seamless
+-- revalidation, /loginto, future systems) only sets account:id - without this
+-- hook those players kept stale/missing rank element data (the "new rank
+-- system is still not active" symptom). Keyed by ACCOUNT id only: character
+-- ids never enter the rank lookup.
+local pendingRankTimers = {}
+addEventHandler("onElementDataChange", root, function(key)
+        if key ~= "account:id" then return end
+        if not isElement(source) or getElementType(source) ~= "player" then return end
+        local acc = tonumber(getElementData(source, "account:id"))
+        if isTimer(pendingRankTimers[source]) then killTimer(pendingRankTimers[source]) end
+        if acc then
+                pendingRankTimers[source] = setTimer(function(p)
+                        if isElement(p) then
+                                refreshPlayerRank(p)
+                                pendingRankTimers[p] = nil
+                        end
+                end, 500, 1, source)
+        else
+                clearPlayerRank(source)
+        end
+end)
+
 -- ============================================================================
 -- exports
 -- ============================================================================

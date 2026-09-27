@@ -267,8 +267,11 @@ end
 
 local function fetchStaffReport()
         local out = {}
+        -- [Mod 2 fix] alias a.id AS AccountID: the daily-report stats below
+        -- read row.AccountID, which never existed (a.id) so the owl_logs
+        -- activity numbers silently errored out (pcall) and stayed 0
         local q = mysql:query([[
-                SELECT a.id, a.username, m.RoleID
+                SELECT a.id AS AccountID, a.username, m.RoleID
                 FROM staff_role_members m
                 JOIN accounts a ON a.id = m.AccountID
                 GROUP BY a.id ORDER BY a.username ASC]])
@@ -339,12 +342,26 @@ local function sendFullData(player)
                         levels, {}, {}, {}, {}, {})
                 return levels, admins
         end
+        -- [Mod 2 fix] map online players by ACCOUNT id once; every staff row
+        -- carries the live rank (rank:name / rank:color element data pushed by
+        -- the Vortex bridge) so the panel ALWAYS agrees with the scoreboard,
+        -- even when the DB role changed while the staff member was offline
+        local onlineByAccount = {}
+        for _, p in ipairs(getElementsByType("player")) do
+                local acc = tonumber(getElementData(p, "account:id"))
+                if acc then onlineByAccount[acc] = p end
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
+                local onlinePlayer = onlineByAccount[tonumber(row.id)]
                 admins[#admins + 1] = {
                         AdminID = tonumber(row.RoleID),
                         Account = row.username,
+                        AccountID = tonumber(row.id),
+                        Online = onlinePlayer ~= nil,
+                        LiveRank = onlinePlayer and getElementData(onlinePlayer, "rank:name") or nil,
+                        LiveColor = onlinePlayer and getElementData(onlinePlayer, "rank:color") or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,
@@ -409,12 +426,26 @@ local function sendPanel(player)
                           role_members = {}, staff_report = {} })
                 return false
         end
+        -- [Mod 2 fix] map online players by ACCOUNT id once; every staff row
+        -- carries the live rank (rank:name / rank:color element data pushed by
+        -- the Vortex bridge) so the panel ALWAYS agrees with the scoreboard,
+        -- even when the DB role changed while the staff member was offline
+        local onlineByAccount = {}
+        for _, p in ipairs(getElementsByType("player")) do
+                local acc = tonumber(getElementData(p, "account:id"))
+                if acc then onlineByAccount[acc] = p end
+        end
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
+                local onlinePlayer = onlineByAccount[tonumber(row.id)]
                 admins[#admins + 1] = {
                         AdminID = tonumber(row.RoleID),
                         Account = row.username,
+                        AccountID = tonumber(row.id),
+                        Online = onlinePlayer ~= nil,
+                        LiveRank = onlinePlayer and getElementData(onlinePlayer, "rank:name") or nil,
+                        LiveColor = onlinePlayer and getElementData(onlinePlayer, "rank:color") or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,

@@ -305,34 +305,40 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
     end
     if 1 <= #UI.DB[arg0].data.rows then
       UI.DB[arg0].data.hovered_row = false
+      -- [Vortex fix #14] row banding rebuilt. The decompiled draw painted the
+      -- selection rectangle PER CELL (a 5-column list stroked the same rect 5x,
+      -- alpha stacking into a near-opaque purple slab that drowned the row
+      -- text -> "the name disappears when I click" + harsh fade = broken
+      -- animation). The highlight is now drawn ONCE per row, BEFORE the cells,
+      -- with a subtle alpha cap so every rank color / name stays readable.
       for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
+        local rowCell1 = UI.DB[arg0].data.rows[forvar19][1]
+        local rowH = (rowCell1 and rowCell1.height) or 20
+        local rowY = UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i)
+        if UI.DB[arg0].data.selected_row == forvar19 - 1 then
+          -- short, soft fade: 40 -> 110 over ~180ms (calm, not flashy)
+          local selTick = UI.DB[arg0].data.selection_tick
+          local selAlpha = 110
+          if selTick then
+            local selDT = getTickCount() - selTick
+            if selDT < 180 then
+              selAlpha = math.floor(40 + (110 - 40) * (selDT / 180))
+            end
+          end
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
+          -- accent bar on the left edge keeps the selection unmistakable
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, 3, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
+        end
+        if not isUIDisabled(arg0) and UI.HoveredElement == arg0
+          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, rowH) then
+          UI.DB[arg0].data.hovered_row = forvar19 - 1
+          if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(60, 60, 60, 90), UI.postGUI)
+          end
+        end
         for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
-          if UI.DB[arg0].data.selected_row == forvar19 - 1 and not false then
-            -- [Vortex fix #11] selection fade-in restored (the decompiled draw
-            -- used a static highlight): alpha sweeps 40 -> 155 over ~260ms
-            -- from the moment the row was selected
-            local selTick = UI.DB[arg0].data.selection_tick
-            local selAlpha = 200
-            if selTick then
-              local selDT = getTickCount() - selTick
-              if selDT < 260 then
-                selAlpha = math.floor(70 + (200 - 70) * (selDT / 260))
-              end
-            end
-            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
-            -- [Vortex fix #12] accent bar on the selected row: selection is
-            -- unmistakable even at a glance (fast fade + solid left bar)
-            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, 3, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
-            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
-              UI.DB[arg0].data.hovered_row = forvar19 - 1
-            end
-          elseif not isUIDisabled(arg0) and UI.HoveredElement == arg0 and forvar24 == 1 then
-            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
-              UI.DB[arg0].data.hovered_row = forvar19 - 1
-              if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
-                dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(60, 60, 60, 100), UI.postGUI)
-              end
-            end
+          if false then
+            -- (selection/hover banding now handled once per row, above)
           end
           dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, forvar25.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
           dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)

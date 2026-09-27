@@ -816,9 +816,9 @@ function getFactionFinance(factionID)
 						from = "Government"
 					end
 				end
-				if row["characterto"] ~= nil then
-					to = row["characterto"]:gsub("_", " ")
-				elseif tonumber(row["to"]) and tonumber(row["to"]) < 0 then
+				if type(row["characterto"]) == "string" then
+					to = row["characterto"]:gsub("_", " ")
+				elseif tonumber(row["to"]) and tonumber(row["to"]) < 0 then
 					to = getTeamName(exports.pool:getElement("team", -tonumber(row["to"])))
 				end
 				

@@ -197,7 +197,9 @@ local function pingColor(ping)
 end
 
 local function isHidden(p)
-        return tonumber(getElementData(p, "hiddenadmin")) == 1
+        -- [Fix #30] robust across type flips (DB string "1", number 1, boolean)
+        local v = getElementData(p, "hiddenadmin")
+        return v == true or v == "1" or tonumber(v) == 1
 end
 
 -- [Vortex duty/permission fixes] duty_admin / duty_supporter are server-set

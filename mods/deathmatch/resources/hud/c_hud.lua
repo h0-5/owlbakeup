@@ -454,6 +454,9 @@ local RING_DEFS = {
 
 local rings = {}       -- [id] = {value=0..100}
 local statusValues = {} -- [id] = number (what the old client kept in statusHud vars)
+-- [Fix #30] render-target cache state (declared EARLY: setProgress flips the
+-- dirty flag, so it must be an upvalue of setProgress, not a later local)
+local panelRT, panelRTDirty = false, true
 
 local function createRing(id, colorHex)
         local ring = { value = 0 }
@@ -471,8 +474,11 @@ function setProgress(id, value)
         local ring = rings[id]
         if not ring then return end
         value = clampPercent(value)
-        ring.value = value
-        statusValues[id] = value
+        if ring.value ~= value then
+                ring.value = value
+                statusValues[id] = value
+                panelRTDirty = true   -- [Fix #30] repaint the cached panel
+        end
 end
 
 local function getRingValue(id)
@@ -519,6 +525,88 @@ local statusHudDraw -- forward declaration
 local moneyBlockBottom = false   -- bottom Y of the money block (used by vehicle row)
 local zoneText, zoneLabel = "", ""
 local zoneLabelColor = tocolor(255, 255, 255, 255)
+
+--------------------------------------------------------------------------------
+-- [Fix #30 - FPS] RENDER-TARGET CACHE for the status panel.
+-- The frame + logo + 7 rings + icons used to be re-drawn EVERY frame
+-- (~25 shader/image draws). They only change when a VALUE changes or the
+-- panel slides in / a critical icon blinks - so they are painted into a
+-- small render target and each frame now costs ONE dxDrawImage.
+--------------------------------------------------------------------------------
+local lastPulsePaint = 0
+local PANEL_RT_PAD = 2
+
+local function destroyPanelRT()
+        if isElement(panelRT) then destroyElement(panelRT) end
+        panelRT = false
+end
+
+local function ensurePanelRT()
+        if not isElement(panelRT) then
+                panelRT = dxCreateRenderTarget(PANEL_W + PANEL_RT_PAD * 2,
+                        PANEL_H + PANEL_RT_PAD * 2, true)
+                panelRTDirty = true
+        end
+        return isElement(panelRT)
+end
+
+local function pulseForPaint()
+        return math.abs(math.sin(getTickCount() / 300)) * 230
+end
+
+local function repaintPanelRT()
+        if not ensurePanelRT() then return false end
+        dxSetRenderTarget(panelRT, true)
+        local ox, oy = PANEL_RT_PAD, PANEL_RT_PAD -- draw offset inside the RT
+        drawStatusFrame(ox, oy, PANEL_W, PANEL_H, false)
+        if tex.logo then
+                dxDrawImage(ox + PANEL_PAD_L, oy + (PANEL_H - LOGO_SIZE) / 2,
+                        LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235))
+        end
+        local ringY = oy + (PANEL_H - RING_SIZE) / 2
+        local S, G = RING_SIZE, RING_GAP
+        local firstX = ox + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
+        for i = 0, 6 do
+                local def = RING_DEFS[i + 1]
+                local ring = rings[def.id]
+                local x = firstX + (S + G) * i
+                local cx, cy = x + S / 2, ringY + S / 2
+                local value = ring and ring.value or 0
+                local shown = def.id == "urine" and (100 - value) or value
+                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, false)
+                if shown > 0.25 then
+                        drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
+                                def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, false)
+                end
+                local icon = tex[def.icon]
+                if icon then
+                        local a = 220
+                        if def.id == "health" then
+                                a = getRingValue("health") > 10 and 220 or pulseForPaint()
+                        elseif def.id == "sleep" or def.id == "sleepy" then
+                                a = getRingValue("sleepy") < 90 and 220 or pulseForPaint()
+                        elseif def.id == "thirsty" then
+                                a = getRingValue("thirsty") > 5 and 220 or pulseForPaint()
+                        elseif def.id == "hungry" then
+                                a = getRingValue("hungry") > 5 and 220 or pulseForPaint()
+                        elseif def.id == "toilet" then
+                                a = getRingValue("urine") < 90 and 220 or pulseForPaint()
+                        elseif def.id == "fatigue" then
+                                a = getRingValue("fatigue") < 90 and 220 or pulseForPaint()
+                        elseif def.id == "shower" then
+                                a = getRingValue("cleanness") > 5 and 220 or pulseForPaint()
+                        end
+                        local dw, dh = iconDrawSize(def.icon, S * 0.62)
+                        local ix = x + S / 2 - dw / 2
+                        local iy = ringY + S / 2 - dh / 2
+                        dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
+                                tocolor(def.tint[1], def.tint[2], def.tint[3], a))
+                end
+        end
+        dxSetRenderTarget()
+        panelRTDirty = false
+        return true
+end
 
 function showStatusHud(state)
         if state == statusHud.visible then return end
@@ -612,74 +700,86 @@ local function statusHudDrawImpl()
                 and not getElementData(localPlayer, "character:id") then return end
 
         local postGUI = true
+        local nowTick = getTickCount()
         local animY = anim(statusHud.anims.count, statusHud.anims.time, statusHud.anims.from, statusHud.anims.to)
         local panelY = animY + 25 - 20 * SCALE
         if panelY < -PANEL_H then return end
-
-        -- Fix #19 light purple frame + Vortex logo (left of all the states)
-        drawStatusFrame(PANEL_X, panelY, PANEL_W, PANEL_H, postGUI)
-        if tex.logo then
-                dxDrawImage(PANEL_X + PANEL_PAD_L, panelY + (PANEL_H - LOGO_SIZE) / 2,
-                        LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235), postGUI)
-        end
+        local animating = (nowTick - statusHud.anims.count) < (statusHud.anims.time + 60)
 
         -- pulse (old client): math.abs(sin(tick/300)) * 230 drives critical blink
-        local pulse = math.abs(math.sin(getTickCount() / 300)) * 230
+        local pulse = math.abs(math.sin(nowTick / 300)) * 230
+        local anyCritical =
+                (getRingValue("health") <= 10) or (getRingValue("sleepy") >= 90)
+                or (getRingValue("thirsty") <= 5) or (getRingValue("hungry") <= 5)
+                or (getRingValue("urine") >= 90) or (getRingValue("fatigue") >= 90)
+                or (getRingValue("cleanness") <= 5)
 
-        -- ring row (7 rings, health leftmost — exact old order)
-        local ringY = panelY + (PANEL_H - RING_SIZE) / 2
-        local S, G = RING_SIZE, RING_GAP
-        local firstX = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
-        for i = 0, 6 do
-                local def = RING_DEFS[i + 1]
-                local ring = rings[def.id]
-                local x = firstX + (S + G) * i
-                local cx, cy = x + S / 2, ringY + S / 2
-                -- Fix #21: the urine ring shows RELIEF — full right after /piss,
-                -- depletes gradually as the bladder refills (empty = need to pee)
-                local value = ring and ring.value or 0
-                local shown = def.id == "urine" and (100 - value) or value
-                -- Fix #29 (user): the ring circle reads as a SOLID body now -
-                -- a dark disc fills the inside (not just borders) and the
-                -- progress arc sweeps over it
-                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
-                -- progress arc: starts 12 o'clock, sweeps clockwise (old client)
-                if shown > 0.25 then
-                        drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
-                                def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, postGUI)
+        -- [Fix #30 - FPS] the frame + logo + 7 rings + icons live in a render
+        -- target that is repainted ONLY on value changes / slide-in / blink
+        -- steps. One dxDrawImage per frame instead of ~25 shader draws.
+        local rtPainted = false
+        if (panelRTDirty or animating or (anyCritical and nowTick - lastPulsePaint > 120)) then
+                lastPulsePaint = nowTick
+                rtPainted = repaintPanelRT()
+        end
+        if isElement(panelRT) and rtPainted ~= nil then
+                dxDrawImage(PANEL_X - PANEL_RT_PAD, panelY - PANEL_RT_PAD,
+                        PANEL_W + PANEL_RT_PAD * 2, PANEL_H + PANEL_RT_PAD * 2,
+                        panelRT, 0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
+        else
+                -- no render target (creation failed): direct draw fallback
+                drawStatusFrame(PANEL_X, panelY, PANEL_W, PANEL_H, postGUI)
+                if tex.logo then
+                        dxDrawImage(PANEL_X + PANEL_PAD_L, panelY + (PANEL_H - LOGO_SIZE) / 2,
+                                LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235), postGUI)
                 end
-                local icon = tex[def.icon]
-                if icon then
-                        -- old blink rules: value-driven alpha (220 steady / pulse critical)
-                        local a = 220
-                        if def.id == "health" then
-                                a = getRingValue("health") > 10 and 220 or pulse
-                        elseif def.id == "sleep" or def.id == "sleepy" then
-                                a = getRingValue("sleepy") < 90 and 220 or pulse
-                        elseif def.id == "thirsty" then
-                                a = getRingValue("thirsty") > 5 and 220 or pulse
-                        elseif def.id == "hungry" then
-                                a = getRingValue("hungry") > 5 and 220 or pulse
-                        elseif def.id == "toilet" then
-                                a = getRingValue("urine") < 90 and 220 or pulse
-                        elseif def.id == "fatigue" then
-                                a = getRingValue("fatigue") < 90 and 220 or pulse
-                        elseif def.id == "shower" then
-                                a = getRingValue("cleanness") > 5 and 220 or pulse
+                local ringY = panelY + (PANEL_H - RING_SIZE) / 2
+                local S, G = RING_SIZE, RING_GAP
+                local firstX = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
+                for i = 0, 6 do
+                        local def = RING_DEFS[i + 1]
+                        local ring = rings[def.id]
+                        local x = firstX + (S + G) * i
+                        local cx, cy = x + S / 2, ringY + S / 2
+                        local value = ring and ring.value or 0
+                        local shown = def.id == "urine" and (100 - value) or value
+                        drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
+                        if shown > 0.25 then
+                                drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
+                                        def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, postGUI)
                         end
-                        -- Fix #20: aspect-correct icon, EXACTLY centered on the ring center
-                        local dw, dh = iconDrawSize(def.icon, S * 0.62)
-                        local ix = x + S / 2 - dw / 2
-                        local iy = ringY + S / 2 - dh / 2
-                        dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
-                                tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
+                        local icon = tex[def.icon]
+                        if icon then
+                                local a = 220
+                                if def.id == "health" then
+                                        a = getRingValue("health") > 10 and 220 or pulse
+                                elseif def.id == "sleep" or def.id == "sleepy" then
+                                        a = getRingValue("sleepy") < 90 and 220 or pulse
+                                elseif def.id == "thirsty" then
+                                        a = getRingValue("thirsty") > 5 and 220 or pulse
+                                elseif def.id == "hungry" then
+                                        a = getRingValue("hungry") > 5 and 220 or pulse
+                                elseif def.id == "toilet" then
+                                        a = getRingValue("urine") < 90 and 220 or pulse
+                                elseif def.id == "fatigue" then
+                                        a = getRingValue("fatigue") < 90 and 220 or pulse
+                                elseif def.id == "shower" then
+                                        a = getRingValue("cleanness") > 5 and 220 or pulse
+                                end
+                                local dw, dh = iconDrawSize(def.icon, S * 0.62)
+                                local ix = x + S / 2 - dw / 2
+                                local iy = ringY + S / 2 - dh / 2
+                                dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
+                                        tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
+                        end
                 end
         end
 
         -- shield ring: old client draws it under the last column while > 0
         if getRingValue("shield") > 0 then
-                local x = firstX + (S + G) * 6
-                local y = ringY + 150 * SCALE
+                local S, G = RING_SIZE, RING_GAP
+                local x = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + (S + G) * 6
+                local y = panelY + (PANEL_H - RING_SIZE) / 2 + 150 * SCALE
                 local cx, cy = x + S / 2, y + S / 2
                 drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
                 if getRingValue("shield") > 0.25 then
@@ -698,24 +798,22 @@ local function statusHudDrawImpl()
 
         -- clock + date (old formats, right aligned under the frame)
         if not CONFIG.hideClock then
-                -- Fix #20: breathing room restored (frame -> clock -> money)
-                -- Fix #21: clock + date big enough to read
-                -- Fix #23: clock + date BIG like the old client reference
+                -- Fix #30 (user): the clock and date were STILL too small -
+                -- now genuinely big: 1.35 scale clock, 0.9 date
                 local textY = panelY + PANEL_H + 14
-                outlineText(getCurrentTime(), sx - 300, textY, 288, 48,
-                        tocolor(255, 255, 255, 255), 0.8, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 300, textY + 50, 288, 34,
-                        tocolor(255, 255, 255, 210), 0.6, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentTime(), sx - 380, textY, 368, 66,
+                        tocolor(255, 255, 255, 255), 1.35, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentDate(), sx - 380, textY + 72, 368, 44,
+                        tocolor(255, 255, 255, 210), 0.9, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 10, textY + 88, postGUI)
-                moneyBlockBottom = textY + 88 + mh
+                local mh = drawMoneyBlock(sx - 10, textY + 124, postGUI)
+                moneyBlockBottom = textY + 124 + mh
         else
                 local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 14, postGUI)
                 moneyBlockBottom = panelY + PANEL_H + 14 + mh
         end
 
         -- zone label, bottom-left above the radar (old client)
-        -- Fix #21: bigger and readable
         outlineText(zoneText:gsub("#%x%x%x%x%x%x", ""), 18, sy - 226, 460, 22,
                 tocolor(255, 255, 255, 255), 1, fontHud(), "left", "top", postGUI)
         outlineText(zoneLabel, 18, sy - 202, 460, 22, zoneLabelColor, 1, fontHud(), "left", "top", postGUI)
@@ -1134,6 +1232,15 @@ if getElementData(localPlayer, "temp:AFK") then
         addEventHandler("onClientKey", root, checkAFK)
 end
 
+-- [Fix #30] the strip used to be built ONCE at activation: any server-side
+-- hud:items update (duty item added, duty state flipped, new items) never
+-- reached the open strip until re-login. Live-refresh on data change.
+addEventHandler("onClientElementDataChange", localPlayer, function(key)
+        if key == "hud:items" then
+                updateHudItemsList()
+        end
+end)
+
 --------------------------------------------------------------------------------
 -- ACTIVATION — old client events + this server's loggedin flag
 --------------------------------------------------------------------------------
@@ -1156,12 +1263,19 @@ end
 
 local function deactivateHud()
         showStatusHud(false)
+        destroyPanelRT()   -- [Fix #30] free the render target with the textures
         for _, t in pairs(tex) do
                 if isElement(t) then destroyElement(t) end
         end
         tex = {}
         moneyFlex = nil
 end
+
+-- [Fix #30] render-target content is lost on device restore (alt-tab,
+-- resolution change) - force one repaint afterwards
+addEventHandler("onClientRestore", root, function()
+        panelRTDirty = true
+end)
 
 addEventHandler("onClientResourceStart", resourceRoot, function()
         -- mid-session client restart: activate right away

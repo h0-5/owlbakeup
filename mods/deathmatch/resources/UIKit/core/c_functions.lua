@@ -28,7 +28,38 @@ function dxGetColor(arg0)
 end
 -- [Vortex fix] default rounded-corner options (lost global restored)
 local ROUNDED_ALL = { up = { left = true, right = true }, down = { left = true, right = true } }
+-- [Fix #30 - FPS] the old path painted EVERY rounded rectangle with
+-- 3 dxDrawRectangle + 4 dxDrawCircle calls. dxDrawCircle is a CPU triangle
+-- fan - the F1 menu paints dozens of rounded boxes per frame (buttons,
+-- tabpanels, gridlists, windows, dialogs), i.e. HUNDREDS of dxDrawCircle
+-- calls every frame. One analytic SDF shader draw replaces all of it (same
+-- file the HUD uses), same visual result.
+local roundedShader = false
+if fileExists("fx/rounded.fx") then
+  roundedShader = dxCreateShader("fx/rounded.fx", 0, 0, false, "all")
+end
+local function unpackColorARGB(argb)
+  if not argb then return 255, 255, 255, 255 end
+  local b = argb % 256
+  local g = math.floor(argb / 256) % 256
+  local r = math.floor(argb / 65536) % 256
+  local a = math.floor(argb / 16777216) % 256
+  return r, g, b, a
+end
 function dxDrawRoundedRectangle(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg8)
+  if roundedShader and type(arg6) ~= "table" then
+    local r, g, b, a = unpackColorARGB(arg4)
+    arg5 = tonumber(arg5) or 8
+    if arg2 < 2 or arg3 < 2 or arg2 < arg5 * 2 or arg3 < arg5 * 2 then
+      dxDrawRectangle(arg0, arg1, arg2, arg3, arg4, UI.postGUI)
+      return
+    end
+    dxSetShaderValue(roundedShader, "gSize", arg2, arg3)
+    dxSetShaderValue(roundedShader, "gRadius", math.min(arg5, arg2 / 2, arg3 / 2))
+    dxSetShaderValue(roundedShader, "gColor", r / 255, g / 255, b / 255, a / 255)
+    dxDrawImage(arg0, arg1, arg2, arg3, roundedShader, 0, 0, 0, tocolor(255, 255, 255, 255), UI.postGUI)
+    return
+  end
   arg2, arg3, arg0, arg1 = arg2 - arg5 * 2, arg3 - arg5 * 2, arg0 + arg5, arg1 + arg5
   dxDrawRectangle(arg0 - arg5, arg1, arg2 + arg5 * 2, arg3, arg4, UI.postGUI)
   dxDrawRectangle(arg0, arg1 - arg5, arg2, arg5, arg4, UI.postGUI)

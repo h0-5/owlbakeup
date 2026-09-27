@@ -1028,7 +1028,14 @@ function pmPlayer(thePlayer, commandName, who, ...)
 
 			local senderPmPerk, senderPmState = exports.donators:hasPlayerPerk(thePlayer, 1)
 			local targetPmPerk, targetPmState = exports.donators:hasPlayerPerk(targetPlayer, 1)
-
+			-- [Fix #30] universal PM lock (F4 strip "togpm") - staff on duty bypass
+			if tonumber(getElementData(targetPlayer, "pm:blocked")) == 1
+				and not exports.global:isStaffOnDuty(thePlayer)
+				and not (getElementData(thePlayer, "reportadmin") == targetPlayer) then
+				outputChatBox("Player has locked private messages.", thePlayer, 255, 255, 0)
+				outputChatBox("اللاعب قافل الرسائل الخاصة.", thePlayer, 255, 255, 0)
+				return false
+			end
 			if targetPmPerk and tonumber(targetPmState) == 1 then -- if target has pms off.
 				if not exports.global:isStaffOnDuty(thePlayer) and not (getElementData(thePlayer, "reportadmin") == targetPlayer) and not call(getResourceFromName("social-system"), "isFriendOf", getElementData(thePlayer, 'account:id'), getElementData(targetPlayer, 'account:id')) then
 					outputChatBox("Player is ignoring private messages.", thePlayer, 255, 255, 0)
@@ -1948,24 +1955,24 @@ addCommandHandler("togooc", toggleOOC, false, false)
 addCommandHandler("stogooc", toggleOOC, false, false)
 
 function togglePM(thePlayer, commandName)
-	local logged = getElementData(thePlayer, "loggedin")
-
-	local hasPerk, value = exports.donators:hasPlayerPerk(thePlayer, 1)
-	if logged~=1 then
+	if not isElement(thePlayer) or getElementData(thePlayer, "loggedin") ~= 1 then
 		return false
 	end
-
-	if hasPerk or exports.integration:isPlayerTrialAdmin(thePlayer) then
-		if tonumber(value)== 1 then
-			--outputChatBox("PM's are now enabled.", thePlayer, 0, 255, 0)
-			exports.donators:updatePerkValue(thePlayer, 1, 0)
-		else
-			--outputChatBox("PM's are now disabled.", thePlayer, 255, 0, 0)
-			exports.donators:updatePerkValue(thePlayer, 1, 1)
-		end
+	-- [Fix #30] PM lock for EVERYONE (old client F4 strip "togpm"). The
+	-- legacy gate required a donator perk, which read as "the PM lock does
+	-- not exist". The lock is now a synced elementData ("pm:blocked") that
+	-- pmPlayer respects; staff on duty always get through.
+	local blocked = tonumber(getElementData(thePlayer, "pm:blocked")) == 1
+	if blocked then
+		setElementData(thePlayer, "pm:blocked", 0, true)
+		outputChatBox("PM's are now enabled.", thePlayer, 0, 255, 0)
+		outputChatBox("تم فتح الرسائل الخاصة.", thePlayer, 0, 255, 0)
 	else
-		outputChatBox("You don't have this perk activated. Please visit OwlGaming store under F10 menu.", thePlayer)
+		setElementData(thePlayer, "pm:blocked", 1, true)
+		outputChatBox("PM's are now disabled.", thePlayer, 255, 0, 0)
+		outputChatBox("تم قفل الرسائل الخاصة.", thePlayer, 255, 0, 0)
 	end
+	return true
 end
 addEvent("chat:togpm", true)
 addEventHandler("chat:togpm", root, togglePM)

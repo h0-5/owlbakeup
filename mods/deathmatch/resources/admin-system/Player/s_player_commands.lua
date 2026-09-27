@@ -1198,7 +1198,9 @@ addCommandHandler("changename", asetPlayerName, false, false)
 -- /HIDEADMIN
 function hideAdmin(thePlayer, commandName)
 	if exports.integration:isPlayerSeniorAdmin(thePlayer) then
-		local hiddenAdmin = getElementData(thePlayer, "hiddenadmin")
+		-- [Fix #30] tonumber guard: the DB value can arrive as the STRING
+		-- "0"/"1", and ("0" == 0) is false in Lua - the toggle then died
+		local hiddenAdmin = tonumber(getElementData(thePlayer, "hiddenadmin")) or 0
 
 		if (hiddenAdmin==0) then
 			exports.anticheat:changeProtectedElementDataEx(thePlayer, "hiddenadmin", 1, true)

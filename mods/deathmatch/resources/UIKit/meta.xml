@@ -37,6 +37,8 @@
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
 	<file src="fonts/PFDinDisplayPro-Regular.ttf" />
+	<!-- shaders -->
+	<file src="fx/rounded.fx" />
 	<!-- images -->
 	<file src="images/arc_glow_h.png" />
 	<file src="images/arc_glow_v.png" />

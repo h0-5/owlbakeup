@@ -364,6 +364,9 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
             dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(60, 60, 60, 90), UI.postGUI)
           end
         end
+        -- [Fix #30 - FPS] the row separator was painted PER CELL (a 5-column
+        -- list stroked the same 0.5px line 5x per row). Draw it once.
+        dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i) + rowH, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
         for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
           -- [Vortex fix #14b] selected row text is forced WHITE: rank colors
           -- like navy/maroon drowned on the selection band and the name
@@ -373,7 +376,6 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
             cellColor = tocolor(255, 255, 255, 255)
           end
           dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, cellColor, UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
-          dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
         end
       end
     end

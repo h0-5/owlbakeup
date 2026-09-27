@@ -410,30 +410,105 @@ local DEFAULT_ITEMS = {
         { "head_turning", "on", "head_turning", "Head Turning", "" },
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
         { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
-        { "ads",          "on", "ads",          "Advertisements", "" },
+        -- ("ads" dropped: icons/ads.png does not exist, the item rendered nothing)
         -- Fix #23 (user): visible systems the strip was missing
         { "lockvehicle",  "on", "car_lock",     "Lock/Unlock Vehicle", "" },
 }
 
-local function pushDefaultItems(player)
-        local items = getElementData(player, "hud:items")
-        if type(items) == "table" and #items > 0 then return end -- resources may have added their own
-        local list = {}
-        for _, item in ipairs(DEFAULT_ITEMS) do
-                table.insert(list, { item[1], item[2], item[3], item[4], item[5], nil })
-        end
-        -- Fix #23 (user): staff-only admin badge toggle (on/off duty = badge
-        -- shows above the head while on duty, disappears when off duty).
-        -- Routed through the REAL /adminduty command so all its checks apply.
-        if (tonumber(getElementData(player, "admin_level")) or 0) > 0
-                or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0 then
-                local duty = tonumber(getElementData(player, "duty_admin")) == 1
-                        or tonumber(getElementData(player, "duty_supporter")) == 1
-                table.insert(list, { "adminduty", duty and "on" or "off", "admin_badge", "Admin Duty (Badge)", "" })
-        end
-        setProtected(player, "hud:items", list)
+local function isStaffForStrip(player)
+        -- rank ladder first (staff bridge), legacy columns as fallback
+        local idx = tonumber(getElementData(player, "rank:index"))
+        if idx then return idx >= 4 end -- Trial Moderator+
+        return (tonumber(getElementData(player, "admin_level")) or 0) > 0
+                or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0
 end
 
+-- [Fix #30] UPSERT, not "only when empty". The old early-return meant any
+-- player whose hud:items had been set once (stale list from an earlier
+-- login, another resource, an older build) NEVER received the new items -
+-- the owner reported "F4 has no duty toggle and no PM lock". Every login
+-- the defaults are merged in (missing rows added, duplicates skipped) and
+-- the duty row is re-synced to the live duty state.
+local function pushDefaultItems(player)
+        if not isElement(player) then return end
+        local items = getElementData(player, "hud:items")
+        if type(items) ~= "table" then items = {} end
+
+        local function upsert(id, state, icon, tip1, tip2)
+                for _, row in ipairs(items) do
+                        if type(row) == "table" and row[1] == id then
+                                return
+                        end
+                end
+                items[#items + 1] = { id, state, icon, tip1, tip2, nil }
+        end
+
+        for _, item in ipairs(DEFAULT_ITEMS) do
+                upsert(item[1], item[2], item[3], item[4], item[5])
+        end
+        -- staff-only duty toggle (on/off duty = badge above the head while on
+        -- duty). Trial Moderator+ gets the ADMIN badge (/adminduty); pure
+        -- supporters get the SUPPORT badge (/sduty). Both routed through the
+        -- REAL commands so every check/announcement applies.
+        local ridx = tonumber(getElementData(player, "rank:index"))
+        local adminLevel = tonumber(getElementData(player, "admin_level")) or 0
+        local supporterLevel = tonumber(getElementData(player, "supporter_level")) or 0
+        local isAdminDuty = (ridx and ridx >= 4) or adminLevel > 0
+        local isSupportDuty = not isAdminDuty
+                and ((ridx and ridx >= 1 and ridx <= 3) or supporterLevel > 0
+                        or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0)
+        if isAdminDuty or isSupportDuty then
+                local duty = (isAdminDuty and tonumber(getElementData(player, "duty_admin")) == 1)
+                        or (isSupportDuty and tonumber(getElementData(player, "duty_supporter")) == 1)
+                local id = isAdminDuty and "adminduty" or "supduty"
+                upsert(id, duty and "on" or "off", isAdminDuty and "admin_badge" or "support_badge",
+                        isAdminDuty and "Admin Duty (Badge)" or "Support Duty (Badge)", "")
+                for _, row in ipairs(items) do
+                        if type(row) == "table" and row[1] == id then
+                                row[2] = duty and "on" or "off"
+                        end
+                end
+        end
+        setProtected(player, "hud:items", items)
+end
+
+-- [Fix #30] the duty state lives in elementData, so keep the strip icon
+-- truthful whenever it flips (via /adminduty, /gm duty, the panel, ...)
+local function refreshStripDutyState(player)
+        if not isElement(player) then return end
+        local items = getElementData(player, "hud:items")
+        if type(items) ~= "table" then return end
+        local changed = false
+        for _, row in ipairs(items) do
+                if type(row) == "table" and row[1] == "adminduty" then
+                        local want = (tonumber(getElementData(player, "duty_admin")) == 1) and "on" or "off"
+                        if row[2] ~= want then row[2] = want; changed = true end
+                elseif type(row) == "table" and row[1] == "supduty" then
+                        local want = (tonumber(getElementData(player, "duty_supporter")) == 1) and "on" or "off"
+                        if row[2] ~= want then row[2] = want; changed = true end
+                end
+        end
+        if changed then setProtected(player, "hud:items", items) end
+end
+
+-- [Fix #30] THIS server's account stack never fires onPlayerLogin (verified:
+-- not a single triggerEvent("onPlayerLogin") exists in the repo) - the old
+-- hook silently never ran, so the strip stayed empty. Hook the events the
+-- stack ACTUALLY fires: accounts:character:select + the loggedin data flip.
+addEvent("accounts:character:select", true)
+addEventHandler("accounts:character:select", root, function()
+        pushDefaultItems(source)
+end)
+
+addEventHandler("onElementDataChange", root, function(key, _, newValue)
+        if key == "loggedin" and tonumber(newValue) == 1 then
+                pushDefaultItems(source)
+        elseif key == "duty_admin" or key == "duty_supporter" then
+                refreshStripDutyState(source)
+        end
+end)
+
+-- legacy MTA login event kept for compatibility
 addEventHandler("onPlayerLogin", root, function()
         pushDefaultItems(source)
 end)
@@ -473,6 +548,9 @@ addEventHandler("hud:onHudItemClick", root, function(item)
                 -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
                 -- announcements, element data) instead of a client-side fake
                 executeCommandHandler("adminduty", player)
+        elseif item == "supduty" then
+                -- Fix #30: supporter duty through the REAL /sduty command
+                executeCommandHandler("sduty", player)
         end
 end)
 

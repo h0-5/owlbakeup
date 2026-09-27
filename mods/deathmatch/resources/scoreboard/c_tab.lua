@@ -774,6 +774,11 @@ function getScoreboardTestTable()
                 getBadges = getBadges,
                 getDisplayName = getDisplayName,
                 getPlaytime = getPlaytime,
+                isHidden = isHidden,
+                isStaff = isStaff,
+                isOnDuty = isOnDuty,
+                isStaffOffDuty = isStaffOffDuty,
+                canSeeAccounts = canSeeAccounts,
                 LADDER = LADDER,
                 LADDER_COLOR = LADDER_COLOR,
         }

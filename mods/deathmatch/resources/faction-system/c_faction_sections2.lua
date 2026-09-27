@@ -1,54 +1,13 @@
 -- ============================================================
--- Management section
--- ============================================================
-function drawManagement()
-    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
-
-    dxDrawText("\216\165\216\175\216\167\216\177\216\169 \216\167\217\132\217\129\216\167\216\170\217\138\217\134", cx, cy, cx + cw, cy + 26 * scale,
-        THEME.text, 1.1, "default-bold", "left", "center", true, false, true)
-    local cogSize = 20 * scale
-    drawIcon("cog", cx + cw - cogSize - 4 * scale, cy + 3 * scale, cogSize, tocolor(255, 255, 255, 130))
-
-    -- MOTD editor
-    local mY = cy + 36 * scale
-    dxDrawText("\216\177\216\179\216\167\217\132\216\169 \216\167\217\132\217\138\217\136\217\133 (MOTD)", cx, mY, cx + 300 * scale, mY + 20 * scale,
-        THEME.textDim, 1.0, "default", "left", "center", true, false, true)
-    local mEditY = mY + 24 * scale
-    local hover = isMouseIn(cx, mEditY, cw, 60 * scale)
-    dxDrawRoundedRect(cx, mEditY, cw, 60 * scale, hover and THEME.inputBgHov or THEME.inputBg, 5, true)
-    dxDrawRectangle(cx, mEditY + 59 * scale, cw, 1, THEME.lineStrong, true)
-    dxDrawText(F.motdBuffer ~= "" and F.motdBuffer or T.motdph,
-        cx + 10 * scale, mEditY, cx + cw - 10 * scale, mEditY + 60 * scale,
-        F.motdBuffer ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "top", true, false, true)
-    F._motdEdit = { x = cx, y = mEditY, w = cw, h = 60 * scale }
-
-    local sY = mEditY + 68 * scale
-    local sW = 130 * scale
-    hover = isMouseIn(cx, sY, sW, 32 * scale)
-    dxDrawRoundedRect(cx, sY, sW, 32 * scale, hover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
-    dxDrawText(T.savemotd, cx, sY, cx + sW, sY + 32 * scale,
-        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
-    F._motdSaveBtn = { x = cx, y = sY, w = sW, h = 32 * scale }
-
-    -- quit button
-    local qY = sY + 44 * scale
-    hover = isMouseIn(cx, qY, sW, 32 * scale)
-    dxDrawRoundedRect(cx, qY, sW, 32 * scale, hover and tocolor(180, 40, 40, 220) or tocolor(120, 30, 30, 160), 5, true)
-    dxDrawText(T.quit, cx, qY, cx + sW, qY + 32 * scale,
-        tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
-    F._quitBtn = { x = cx, y = qY, w = sW, h = 32 * scale }
-end
-
--- ============================================================
 -- Finance section
 -- ============================================================
 local finCols = {
     { name = "ID",     frac = 0.10 },
-    { name = "\216\167\217\132\217\136\217\130\216\170",  frac = 0.25 }, -- الوقت
-    { name = "\216\167\217\132\217\134\217\136\216\185",  frac = 0.10 }, -- النوع
-    { name = "\217\133\217\134",       frac = 0.18 }, -- من
-    { name = "\216\165\217\132\217\137",       frac = 0.18 }, -- إلى
-    { name = "\216\167\217\132\217\133\216\168\217\132\216\159",  frac = 0.19 }, -- المبلغ
+    { name = "الوقت",  frac = 0.25 },
+    { name = "النوع",  frac = 0.10 },
+    { name = "من",     frac = 0.18 },
+    { name = "إلى",    frac = 0.18 },
+    { name = "المبلغ", frac = 0.19 },
 }
 
 function drawFinance()
@@ -63,9 +22,6 @@ function drawFinance()
 
     local fin = F.finance
     if not fin then return end
-
-    local bankIconSize = 20 * scale
-    drawIcon("bank", cx + cw - bankIconSize - 4 * scale, cy + 3 * scale, bankIconSize, tocolor(255, 255, 255, 130))
 
     -- assets panel (right)
     local aW = cw * 0.32
@@ -97,7 +53,7 @@ function drawFinance()
     -- transactions (left)
     local tW = cw - aW - 15 * scale
     local listY = cy + 34 * scale
-    local listH = ch - 34 * scale - 10 * scale
+    local listH = ch - 34 * scale - 44 * scale
     local colX = cx
     for _, col in ipairs(finCols) do
         local colW = tW * col.frac
@@ -114,6 +70,7 @@ function drawFinance()
     local visibleRows = math.floor(listH / rowH)
     local maxScroll = math.max(0, #txs - visibleRows) * rowH
     F.financeScroll = math.min(F.financeScroll, maxScroll)
+    F.financeScroll = math.max(0, F.financeScroll)
     local startIdx = math.floor(F.financeScroll / rowH) + 1
 
     for i = startIdx, math.min(startIdx + visibleRows, #txs) do
@@ -149,6 +106,15 @@ function drawFinance()
     if maxScroll > 0 then
         drawScrollbar(cx + tW - 12 * scale, listY, listH, F.financeScroll, maxScroll)
     end
+
+    -- refresh button (bottom)
+    local rW = 110 * scale
+    local btnY = cy + ch - 34 * scale
+    local rHover = isMouseIn(cx, btnY, rW, 28 * scale)
+    dxDrawRoundedRect(cx, btnY, rW, 28 * scale, rHover and THEME.btnBgHover or THEME.btnBg, 5, true)
+    dxDrawText(T.refresh, cx, btnY, cx + rW, btnY + 28 * scale,
+        rHover and THEME.primary or THEME.textDim, 0.9, "default-bold", "center", "center", true, false, true)
+    F._finRefreshBtn = { x = cx, y = btnY, w = rW, h = 28 * scale }
 end
 
 -- ============================================================
@@ -158,13 +124,44 @@ function drawNote()
     local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
     local isLeaderNote = F.isLeader and F.section == "note"
 
-    dxDrawText(isLeaderNote and "\217\133\217\132\216\167\216\184\216\157\216\167\216\170 \216\167\217\132\217\130\216\167\216\166\216\175" or "\217\133\217\132\216\167\216\184\216\157\216\167\216\170 \216\167\217\132\217\129\216\167\216\170\217\138\217\134",
+    dxDrawText(isLeaderNote and "ملاحظات القادة" or "ملاحظات الفاكشن",
         cx, cy, cx + cw, cy + 26 * scale, THEME.text, 1.1, "default-bold", "left", "center", true, false, true)
     local noteIconSize = 20 * scale
     drawIcon("note", cx + cw - noteIconSize - 4 * scale, cy + 3 * scale, noteIconSize, tocolor(255, 255, 255, 130))
 
-    local nY = cy + 36 * scale
-    local nH = ch - 36 * scale - (isLeaderNote and 50 * scale or 10 * scale)
+    -- MOTD editor (leaders)
+    local mY = cy + 30 * scale
+    if isLeaderNote then
+        dxDrawText("رسالة اليوم (MOTD)", cx, mY, cx + 300 * scale, mY + 18 * scale,
+            THEME.textDim, 0.95, "default", "left", "center", true, false, true)
+        local mEditY = mY + 22 * scale
+        local mH = 46 * scale
+        local mHover = isMouseIn(cx, mEditY, cw, mH)
+        dxDrawRoundedRect(cx, mEditY, cw, mH, mHover and THEME.inputBgHov or THEME.inputBg, 5, true)
+        dxDrawRectangle(cx, mEditY + mH - 1, cw, 1, THEME.lineStrong, true)
+        dxDrawText(F.motdBuffer ~= "" and F.motdBuffer or T.motdph,
+            cx + 10 * scale, mEditY, cx + cw - 10 * scale, mEditY + mH,
+            F.motdBuffer ~= "" and THEME.text or THEME.textFaint, 1.0, "default", "left", "top", true, false, true)
+        F._motdEdit = { x = cx, y = mEditY, w = cw, h = mH }
+
+        local mSY = mEditY + mH + 8 * scale
+        local mSW = 130 * scale
+        local msHover = isMouseIn(cx, mSY, mSW, 30 * scale)
+        dxDrawRoundedRect(cx, mSY, mSW, 30 * scale, msHover and tocolor(226, 72, 72, 220) or tocolor(226, 72, 72, 160), 5, true)
+        dxDrawText(T.savemotd, cx, mSY, cx + mSW, mSY + 30 * scale,
+            tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+        F._motdSaveBtn = { x = cx, y = mSY, w = mSW, h = 30 * scale }
+        mY = mSY + 38 * scale
+    end
+
+    -- faction note
+    if isLeaderNote then
+        dxDrawText("الملاحظات", cx, mY, cx + cw, mY + 18 * scale,
+            THEME.text, 0.95, "default", "left", "center", true, false, true)
+    end
+    local nY = mY + 22 * scale
+    local nH = ch - (nY - cy) - (isLeaderNote and 50 * scale or 10 * scale)
+    nH = math.max(nH, 40 * scale)
     local hover = isMouseIn(cx, nY, cw, nH)
     dxDrawRoundedRect(cx, nY, cw, nH, hover and THEME.inputBgHov or THEME.inputBg, 5, true)
     dxDrawRectangle(cx, nY + nH - 1, cw, 1, THEME.lineStrong, true)
@@ -183,22 +180,27 @@ function drawNote()
         dxDrawText(T.savenote, cx, sY, cx + sW, sY + 32 * scale,
             tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
         F._noteSaveBtn = { x = cx, y = sY, w = sW, h = 32 * scale }
+
+        -- quit faction button
+        local qX = cx + sW + 10 * scale
+        hover = isMouseIn(qX, sY, sW, 32 * scale)
+        dxDrawRoundedRect(qX, sY, sW, 32 * scale, hover and tocolor(180, 40, 40, 220) or tocolor(120, 30, 30, 160), 5, true)
+        dxDrawText(T.quit, qX, sY, qX + sW, sY + 32 * scale,
+            tocolor(255, 255, 255, 255), 1.0, "default-bold", "center", "center", true, false, true)
+        F._quitBtn = { x = qX, y = sY, w = sW, h = 32 * scale }
     end
 end
 
 -- ============================================================
--- Duty sections
--- ============================================================
--- ============================================================
--- Logs section (faction transaction log)
+-- Logs section
 -- ============================================================
 local logCols = {
     { name = "ID",     frac = 0.08 },
-    { name = "\216\167\217\132\217\136\217\130\216\170",  frac = 0.24 }, -- الوقت
-    { name = "\216\167\217\132\217\134\217\136\216\185",  frac = 0.10 }, -- النوع
-    { name = "\217\133\217\134",       frac = 0.19 }, -- من
-    { name = "\216\165\217\132\217\137",       frac = 0.19 }, -- إلى
-    { name = "\216\167\217\132\217\133\216\168\217\132\216\159",  frac = 0.20 }, -- المبلغ
+    { name = "الوقت",  frac = 0.24 },
+    { name = "النوع",  frac = 0.10 },
+    { name = "من",     frac = 0.19 },
+    { name = "إلى",    frac = 0.19 },
+    { name = "المبلغ", frac = 0.20 },
 }
 
 function drawLogs()
@@ -217,20 +219,45 @@ function drawLogs()
     local logIconSize = 20 * scale
     drawIcon("log", cx + cw - logIconSize - 4 * scale, cy + 3 * scale, logIconSize, tocolor(255, 255, 255, 130))
 
-    local listY = cy + 34 * scale
-    local listH = ch - 34 * scale - 10 * scale
+    -- local action log (top band)
+    local actionLog = F.actionLog or {}
+    local headerY = cy
+    if #actionLog > 0 then
+        local aH = math.min(74 * scale, 8 + #actionLog * 18 * scale)
+        dxDrawRoundedRect(cx, cy, cw, aH, tocolor(15, 18, 24, 255), 5, true)
+        dxDrawText("آخر الإجراءات", cx + 10 * scale, cy + 6 * scale, cx + cw, cy + 24 * scale,
+            THEME.text, 0.9, "default-bold", "left", "center", true, false, true)
+        local aY = cy + 26 * scale
+        local maxShow = math.floor((aH - 28 * scale) / (18 * scale))
+        for i = 1, math.min(maxShow, #actionLog) do
+            local entry = actionLog[i]
+            dxDrawText("• " .. tostring(entry.text), cx + 14 * scale, aY, cx + cw - 14 * scale, aY + 18 * scale,
+                THEME.textDim, 0.9, "default", "left", "center", true, false, true)
+            aY = aY + 18 * scale
+        end
+        dxDrawRectangle(cx, cy + aH, cw, 1, THEME.lineStrong, true)
+        headerY = cy + aH + 8 * scale
+    end
+
+    local listY = headerY + 30 * scale
+    local listH = ch - (listY - cy) - 10 * scale
     local colX = cx
     for _, col in ipairs(logCols) do
         local colW = cw * col.frac
-        dxDrawText(col.name, colX + 8 * scale, cy, colX + colW, cy + 30 * scale,
+        dxDrawText(col.name, colX + 8 * scale, headerY, colX + colW, headerY + 30 * scale,
             THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
         colX = colX + colW
     end
-    dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
+    dxDrawRectangle(cx, headerY + 30 * scale, cw, 1, THEME.lineStrong, true)
 
     local txs = {}
     for _, t in ipairs(fin.thisWeek or {}) do table.insert(txs, t) end
     for _, t in ipairs(fin.prevWeek or {}) do table.insert(txs, t) end
+
+    if #txs == 0 and #actionLog == 0 then
+        dxDrawText(T.nologs, cx, listY, cx + cw - 14 * scale, listY + 60 * scale,
+            THEME.textFaint, 1.0, "default", "center", "center", true, false, true)
+    end
 
     local visibleRows = math.floor(listH / rowH)
     local maxScroll = math.max(0, #txs - visibleRows) * rowH
@@ -273,8 +300,50 @@ function drawLogs()
     end
 end
 
+-- ============================================================
+-- Duty section (packages + locations + vehicles in one panel)
+-- ============================================================
+local dutyTabs = {
+    { id = "packages",  label = "الحصص" },
+    { id = "locations", label = "المواقع" },
+    { id = "vehicles",  label = "المركبات" },
+}
+
+dutyRows = {}
+
 function drawDuty()
     local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+
+    -- sub-tab bar
+    local tabW = 110 * scale
+    local tabH = 28 * scale
+    F._dutyTabs = {}
+    for i, t in ipairs(dutyTabs) do
+        local tx = cx + (i - 1) * (tabW + 6 * scale)
+        local selected = F.dutyTab == t.id
+        local hover = isMouseIn(tx, cy, tabW, tabH)
+        dxDrawRoundedRect(tx, cy, tabW, tabH, selected and tocolor(226, 72, 72, 40) or (hover and tocolor(255, 255, 255, 12) or tocolor(20, 24, 30, 255)), 5, true)
+        if selected then
+            dxDrawRectangle(tx, cy, 3, tabH, THEME.primary, true)
+        end
+        dxDrawText(t.label, tx + 8 * scale, cy, tx + tabW, cy + tabH,
+            selected and THEME.primary or THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
+        F._dutyTabs[i] = { id = t.id, x = tx, y = cy, w = tabW, h = tabH }
+    end
+
+    local bodyY = cy + tabH + 8 * scale
+    local bodyH = ch - tabH - 8 * scale
+
+    if F.dutyTab == "packages" then
+        drawDutyPackages(cx, bodyY, cw, bodyH)
+    elseif F.dutyTab == "locations" then
+        drawDutyLocations(cx, bodyY, cw, bodyH)
+    else
+        drawDutyVehicles(cx, bodyY, cw, bodyH)
+    end
+end
+
+function drawDutyPackages(cx, cy, cw, ch)
     local listY = cy + 34 * scale
     local listH = ch - 34 * scale - 46 * scale
 
@@ -282,10 +351,10 @@ function drawDuty()
     dxDrawText("ID", colX + 8 * scale, cy, colX + cw * 0.15, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     colX = colX + cw * 0.15
-    dxDrawText("\216\167\217\132\216\167\216\179\217\133", colX + 8 * scale, cy, colX + cw * 0.45, cy + 30 * scale,
+    dxDrawText("الاسم", colX + 8 * scale, cy, colX + cw * 0.45, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     colX = colX + cw * 0.45
-    dxDrawText("\216\167\217\132\217\133\217\136\216\167\216\185\216\167\216\170", colX + 8 * scale, cy, colX + cw * 0.40, cy + 30 * scale,
+    dxDrawText("المواقع", colX + 8 * scale, cy, colX + cw * 0.40, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
 
@@ -294,22 +363,30 @@ function drawDuty()
         table.insert(duties, { id = v[1], name = v[2], locs = v[4] })
     end
     table.sort(duties, function(a, b) return tostring(a.id) < tostring(b.id) end)
+    dutyRows.packages = duties
 
     local visibleRows = math.floor(listH / rowH)
     local maxScroll = math.max(0, #duties - visibleRows) * rowH
     F.dutyScroll = math.min(F.dutyScroll, maxScroll)
+    F.dutyScroll = math.max(0, F.dutyScroll)
     local startIdx = math.floor(F.dutyScroll / rowH) + 1
 
     for i = startIdx, math.min(startIdx + visibleRows, #duties) do
         local d = duties[i]
         if not d then break end
         local rowY = listY + (i - startIdx) * rowH
+        local selected = F.dutySelPkg == d.id
         local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
-        if i % 2 == 0 then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
-        end
-        if hover then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        if selected then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, THEME.rowSelected, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        else
+            if i % 2 == 0 then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+            end
+            if hover then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+            end
         end
         dxDrawText(tostring(d.id), cx + 8 * scale, rowY, cx + cw * 0.15, rowY + rowH,
             THEME.textDim, 1.0, "default", "left", "center", true, false, true)
@@ -329,6 +406,11 @@ function drawDuty()
         dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
     end
 
+    if #duties == 0 then
+        dxDrawText(T.noduty, cx, listY, cx + cw - 14 * scale, listY + 60 * scale,
+            THEME.textFaint, 1.0, "default", "center", "center", true, false, true)
+    end
+
     if maxScroll > 0 then
         drawScrollbar(cx + cw - 12 * scale, listY, listH, F.dutyScroll, maxScroll)
     end
@@ -336,7 +418,7 @@ function drawDuty()
     local btnY = cy + ch - 40 * scale
     local btnW, btnH = 130 * scale, 30 * scale
     F._dutyBtns = {}
-    local labels = { "\216\165\216\182\216\167\217\129\216\169 \216\175\217\138\217\136\216\170\217\138", "\216\173\216\176\217\129 \216\175\217\138\217\136\216\170\217\138" }
+    local labels = { T.addduty, T.delduty }
     local bx = cx
     for i = 1, 2 do
         local hover = isMouseIn(bx, btnY, btnW, btnH)
@@ -348,17 +430,16 @@ function drawDuty()
     end
 end
 
-function drawDutyLocations()
-    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+function drawDutyLocations(cx, cy, cw, ch)
     local listY = cy + 34 * scale
     local listH = ch - 34 * scale - 46 * scale
 
     local cols = {
-        { name = "ID",     frac = 0.10 },
-        { name = "\216\167\217\132\216\167\216\179\217\133", frac = 0.25 },
-        { name = "\216\167\217\132\217\132\216\183\216\167\217\130", frac = 0.10 },
-        { name = "\216\167\217\132\216\175\216\167\216\174\217\132\217\137", frac = 0.10 },
-        { name = "\216\167\217\132\216\168\216\185\216\175", frac = 0.10 },
+        { name = "ID",      frac = 0.10 },
+        { name = "الاسم",   frac = 0.25 },
+        { name = "النطاق",  frac = 0.10 },
+        { name = "الداخل",  frac = 0.10 },
+        { name = "البعد",   frac = 0.10 },
         { name = "X, Y, Z", frac = 0.35 },
     }
     local colX = cx
@@ -375,22 +456,30 @@ function drawDutyLocations()
         if not v[10] then table.insert(locs, v) end
     end
     table.sort(locs, function(a, b) return tostring(a[1]) < tostring(b[1]) end)
+    dutyRows.locations = locs
 
     local visibleRows = math.floor(listH / rowH)
     local maxScroll = math.max(0, #locs - visibleRows) * rowH
     F.dutyLocationsScroll = math.min(F.dutyLocationsScroll, maxScroll)
+    F.dutyLocationsScroll = math.max(0, F.dutyLocationsScroll)
     local startIdx = math.floor(F.dutyLocationsScroll / rowH) + 1
 
     for i = startIdx, math.min(startIdx + visibleRows, #locs) do
         local l = locs[i]
         if not l then break end
         local rowY = listY + (i - startIdx) * rowH
+        local selected = F.dutySelLoc == l[1]
         local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
-        if i % 2 == 0 then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
-        end
-        if hover then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        if selected then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, THEME.rowSelected, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        else
+            if i % 2 == 0 then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+            end
+            if hover then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+            end
         end
         local vals = { tostring(l[1] or "-"), tostring(l[2] or "-"), tostring(l[6] or "-"),
                        tostring(l[8] or "-"), tostring(l[7] or "-") }
@@ -398,13 +487,18 @@ function drawDutyLocations()
         local cX2 = cx
         for j = 1, 5 do
             dxDrawText(vals[j], cX2 + 8 * scale, rowY, cX2 + cw * fracs[j], rowY + rowH,
-                THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+                selected and THEME.text or THEME.textDim, 1.0, "default", "left", "center", true, false, true)
             cX2 = cX2 + cw * fracs[j]
         end
         dxDrawText(string.format("%s, %s, %s", tostring(l[3] or 0), tostring(l[4] or 0), tostring(l[5] or 0)),
             cX2 + 8 * scale, rowY, cx + cw, rowY + rowH,
-            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+            selected and THEME.text or THEME.textDim, 1.0, "default", "left", "center", true, false, true)
         dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if #locs == 0 then
+        dxDrawText(T.noproplist, cx, listY, cx + cw - 14 * scale, listY + 60 * scale,
+            THEME.textFaint, 1.0, "default", "center", "center", true, false, true)
     end
 
     if maxScroll > 0 then
@@ -414,7 +508,7 @@ function drawDutyLocations()
     local btnY = cy + ch - 40 * scale
     local btnW, btnH = 130 * scale, 30 * scale
     F._dlBtns = {}
-    local labels = { "\216\165\216\182\216\167\217\129\216\169 \217\133\217\136\216\167\216\185", "\216\173\216\176\217\129 \217\133\217\136\216\167\216\185" }
+    local labels = { T.addloc, T.delloc }
     local bx = cx
     for i = 1, 2 do
         local hover = isMouseIn(bx, btnY, btnW, btnH)
@@ -426,8 +520,7 @@ function drawDutyLocations()
     end
 end
 
-function drawDutyVehicles()
-    local cx, cy, cw, ch = contentX(), contentY(), contentW(), contentH()
+function drawDutyVehicles(cx, cy, cw, ch)
     local listY = cy + 34 * scale
     local listH = ch - 34 * scale - 46 * scale
 
@@ -435,10 +528,10 @@ function drawDutyVehicles()
     dxDrawText("ID", colX + 8 * scale, cy, colX + cw * 0.2, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     colX = colX + cw * 0.2
-    dxDrawText("\216\177\217\130\217\133 \217\133\216\177\226\128\145\216\167\216\169", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
+    dxDrawText("رقم المركبة", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     colX = colX + cw * 0.4
-    dxDrawText("\216\167\217\132\216\167\216\179\217\133", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
+    dxDrawText("الاسم", colX + 8 * scale, cy, colX + cw * 0.4, cy + 30 * scale,
         THEME.textDim, 1.0, "default-bold", "left", "center", true, false, true)
     dxDrawRectangle(cx, cy + 30 * scale, cw, 1, THEME.lineStrong, true)
 
@@ -447,31 +540,44 @@ function drawDutyVehicles()
         if v[10] then table.insert(vehs, v) end
     end
     table.sort(vehs, function(a, b) return tostring(a[1]) < tostring(b[1]) end)
+    dutyRows.vehicles = vehs
 
     local visibleRows = math.floor(listH / rowH)
     local maxScroll = math.max(0, #vehs - visibleRows) * rowH
     F.dutyVehiclesScroll = math.min(F.dutyVehiclesScroll, maxScroll)
+    F.dutyVehiclesScroll = math.max(0, F.dutyVehiclesScroll)
     local startIdx = math.floor(F.dutyVehiclesScroll / rowH) + 1
 
     for i = startIdx, math.min(startIdx + visibleRows, #vehs) do
         local v = vehs[i]
         if not v then break end
         local rowY = listY + (i - startIdx) * rowH
+        local selected = F.dutySelLoc == v[1]
         local hover = isMouseIn(cx, rowY, cw - 14 * scale, rowH)
-        if i % 2 == 0 then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
-        end
-        if hover then
-            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+        if selected then
+            dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, THEME.rowSelected, true)
+            dxDrawRectangle(cx, rowY, 3, rowH, THEME.primary, true)
+        else
+            if i % 2 == 0 then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 5), true)
+            end
+            if hover then
+                dxDrawRectangle(cx, rowY, cw - 14 * scale, rowH, tocolor(255, 255, 255, 12), true)
+            end
         end
         dxDrawText(tostring(v[1] or "-"), cx + 8 * scale, rowY, cx + cw * 0.2, rowY + rowH,
-            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+            selected and THEME.text or THEME.textDim, 1.0, "default", "left", "center", true, false, true)
         dxDrawText(tostring(v[9] or "-"), cx + cw * 0.2 + 8 * scale, rowY, cx + cw * 0.6, rowY + rowH,
             THEME.text, 1.0, "default", "left", "center", true, false, true)
         local vehName = getVehicleNameFromModel(tonumber(v[10]) or 0) or tostring(v[10] or "-")
         dxDrawText(tostring(vehName), cx + cw * 0.6 + 8 * scale, rowY, cx + cw, rowY + rowH,
-            THEME.textDim, 1.0, "default", "left", "center", true, false, true)
+            selected and THEME.text or THEME.textDim, 1.0, "default", "left", "center", true, false, true)
         dxDrawRectangle(cx, rowY + rowH - 1, cw - 14 * scale, 1, THEME.line, true)
+    end
+
+    if #vehs == 0 then
+        dxDrawText(T.noproplist, cx, listY, cx + cw - 14 * scale, listY + 60 * scale,
+            THEME.textFaint, 1.0, "default", "center", "center", true, false, true)
     end
 
     if maxScroll > 0 then
@@ -481,7 +587,7 @@ function drawDutyVehicles()
     local btnY = cy + ch - 40 * scale
     local btnW, btnH = 130 * scale, 30 * scale
     F._dvBtns = {}
-    local labels = { "\216\165\216\182\216\167\217\129\216\169 \217\133\216\177\226\128\145\216\167\216\169", "\216\173\216\176\217\129 \217\133\216\177\226\128\145\216\167\216\169" }
+    local labels = { T.addveh, T.delveh }
     local bx = cx
     for i = 1, 2 do
         local hover = isMouseIn(bx, btnY, btnW, btnH)

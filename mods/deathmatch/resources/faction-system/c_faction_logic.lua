@@ -1,6 +1,5 @@
 -- ============================================================
 -- Faction System - Client Logic (state, events, input)
--- All texts use escaped UTF-8 byte sequences
 -- ============================================================
 
 -- ============================================================
@@ -16,6 +15,8 @@ F = {
     vehiclesSelected = 0,
     ranksSelected = 0,
     ranksScroll = 0,
+    promoteScroll = 0,
+    perksScroll = 0,
     financeScroll = 0,
     logsScroll = 0,
     dutyScroll = 0,
@@ -29,8 +30,6 @@ F = {
     factionType = 0,
     factionID = -1,
     team = nil,
-    custom = {},
-    locations = {},
     finance = nil,
     financeLoaded = false,
     rankNameBuffer = "",
@@ -47,6 +46,10 @@ F = {
         confirm = false,
         confirmText = "",
         confirmAction = nil,
+        textInput = false,
+        textInputLabel = "",
+        textInputText = "",
+        textInputCallback = nil,
     },
     menu = {},
     cursorX = 0,
@@ -54,10 +57,23 @@ F = {
     cursorValid = false,
     dutyPackages = nil,
     dutyAllow = {},
+    dutyTab = "packages",
+    dutySelPkg = nil,
+    dutySelLoc = nil,
+    actionLog = {},
 }
 
 customg = {}
 locationsg = {}
+
+-- ============================================================
+-- Local action log
+-- ============================================================
+function logAction(text)
+    if not F.actionLog then F.actionLog = {} end
+    table.insert(F.actionLog, 1, { text = text, time = "الآن" })
+    if #F.actionLog > 60 then table.remove(F.actionLog) end
+end
 
 -- ============================================================
 -- Receive faction data from server
@@ -114,12 +130,11 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
     for k, name in ipairs(memberUsernames or {}) do
         local rank = tonumber(memberRanks[k]) or 1
         local rankName = (factionRanks and factionRanks[rank]) or ("Rank " .. rank)
-        local wage = (factionWages and factionWages[rank]) or 0
         local lastLogin = tonumber(memberLastLogin[k])
-        local loginText = "\216\163\216\168\216\175\217\139\226\128\145"
-        if lastLogin == 0 then loginText = "\216\167\217\132\217\138\217\136\217\133"
-        elseif lastLogin == 1 then loginText = "\216\163\217\133\216\179"
-        elseif lastLogin and lastLogin > 1 then loginText = lastLogin .. " \217\138\217\136\217\133" end
+        local loginText = "أبداً"
+        if lastLogin == 0 then loginText = "اليوم"
+        elseif lastLogin == 1 then loginText = "أمس"
+        elseif lastLogin and lastLogin > 1 then loginText = lastLogin .. " يوم" end
 
         local isOnline = memberOnline and memberOnline[k] == true
         if isOnline then F.onlineCount = F.onlineCount + 1 end
@@ -130,7 +145,6 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
             phoneTxt = tostring(phone) .. "-" .. tostring(membersPhone[k])
         end
 
-        -- member perks (for duty perks window)
         local myPerks = {}
         if memberPerks and memberPerks[k] and type(memberPerks[k]) == "table" then
             for pk, pv in pairs(memberPerks[k]) do
@@ -143,7 +157,6 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
             rawName = name,
             rank = rank,
             rankName = rankName,
-            wage = wage,
             login = loginText,
             online = isOnline,
             duty = onDuty,
@@ -166,6 +179,7 @@ function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders, memberO
     F.ranksScroll = 0
     F.financeLoaded = false
     F.finance = nil
+    F.actionLog = {}
 
     F.visible = true
     showCursor(true)
@@ -184,6 +198,10 @@ addEventHandler("hideFactionMenu", getRootElement(), function()
         confirm = false,
         confirmText = "",
         confirmAction = nil,
+        textInput = false,
+        textInputLabel = "",
+        textInputText = "",
+        textInputCallback = nil,
     }
     activeEdit = nil
     showCursor(false)
@@ -196,7 +214,6 @@ addEventHandler("onClientPlayerWasted", localPlayer, function()
     end
 end)
 
--- F3 closes when open (server opens it; we handle the close)
 addEventHandler("onClientKey", root, function(button, press)
     if button == "F3" and press and F.visible then
         cancelEvent()
@@ -250,4 +267,23 @@ end)
 
 function fetchDutyInfo()
     triggerServerEvent("fetchDutyInfo", resourceRoot, F.factionID)
+end
+
+-- ============================================================
+-- Generic text input prompt
+-- ============================================================
+function openTextInput(label, callback)
+    F.sub.textInput = true
+    F.sub.textInputLabel = label or ""
+    F.sub.textInputText = ""
+    F.sub.textInputCallback = callback
+    activeEdit = "textInput"
+end
+
+function closeTextInput()
+    F.sub.textInput = false
+    F.sub.textInputLabel = ""
+    F.sub.textInputText = ""
+    F.sub.textInputCallback = nil
+    if activeEdit == "textInput" then activeEdit = nil end
 end

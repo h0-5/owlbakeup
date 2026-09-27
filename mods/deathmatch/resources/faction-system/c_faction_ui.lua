@@ -1,7 +1,6 @@
 -- ============================================================
 -- Faction System - Client UI (OWL Design)
--- All rendering and layout. Texts are stored as UTF-8 escaped
--- byte sequences to survive any file encoding issues.
+-- All rendering and layout. Arabic strings in real UTF-8.
 -- ============================================================
 
 sx, sy = guiGetScreenSize()
@@ -14,44 +13,26 @@ T = {
     ranks     = "الرتب",
     vehicles  = "المركبات",
     duty      = "الديوتي",
-    dutyloc   = "مواقع الديوتي",
-    dutyveh   = "سيارات الديوتي",
-    mgmt      = "الإدارة",
     finance   = "المالية",
     logs      = "السجل",
     note      = "الملاحظات",
     online    = "متصل",
     offline   = "غير متصل",
-    today     = "اليوم",
-    yesterday = "أمس",
-    never     = "أبداً",
-    days      = "يوم",
     onduty    = "في الخدمة",
     offduty   = "خارج",
-    leader    = "زعيم",
-    member    = "عضو",
     kick      = "طرد",
     promote   = "ترقية/خفض",
     setleader = "تعيين قائد",
-    addmem    = "إضافة",
     perks     = "صلاحيات",
     respawn   = "رسبنة السيارات",
-    save      = "حفظ التغييرات",
-    close     = "إغلاق",
-    yes       = "نعم",
-    no        = "لا",
     quit      = "مغادرة الفاكشن",
     savemotd  = "حفظ الرسالة",
     savenote  = "حفظ الملاحظات",
     add       = "إضافة",
     cancel    = "إلغاء",
     nameph    = "اسم الشخصية",
-    rankph    = "اسم الرتبة",
-    wageph    = "الراتب",
     motdph    = "اكتب رسالة اليوم",
     noteph    = "لا توجد ملاحظات",
-    selectmem = "ارجوك اختر عضوا اولا",
-    title     = "الأعضاء",
     connected = "المتصلون",
     assets    = "الأصول",
     bank      = "حساب البنك",
@@ -59,7 +40,17 @@ T = {
     props     = "الخصائص",
     total     = "المجموع",
     loading   = "جاري تحميل البيانات...",
-    notfound  = "اللاعب غير متصل",
+    addduty   = "إضافة ديوتي",
+    delduty   = "حذف ديوتي",
+    addloc    = "إضافة موقع",
+    delloc    = "حذف موقع",
+    addveh    = "إضافة مركبة",
+    delveh    = "حذف مركبة",
+    selduty   = "يجب اختيار عنصر من القائمة اولاً",
+    noproplist= "لا توجد مواقع/مركبات لهذا الفاكشن",
+    noduty    = "لا توجد حصص ديوتي لهذا الفاكشن",
+    refresh   = "تحديث",
+    nologs    = "لا توجد سجلات بعد",
 }
 
 THEME = {
@@ -189,10 +180,7 @@ function buildMenu()
         table.insert(F.menu, { id = "vehicles", title = T.vehicles, icon = "car" })
         if F.factionType and F.factionType >= 2 then
             table.insert(F.menu, { id = "duty", title = T.duty, icon = "box" })
-            table.insert(F.menu, { id = "dutylocations", title = T.dutyloc, icon = "pin" })
-            table.insert(F.menu, { id = "dutyvehicles", title = T.dutyveh, icon = "truck" })
         end
-        table.insert(F.menu, { id = "management", title = T.mgmt, icon = "cog" })
         table.insert(F.menu, { id = "finance", title = T.finance, icon = "bank" })
         table.insert(F.menu, { id = "logs", title = T.logs, icon = "log" })
     end
@@ -225,16 +213,16 @@ function drawHeader()
 
     -- info
     local infoY = y + 48 * scale
-    dxDrawText("#00FF00\226\128\162 #FFFFFF" .. F.onlineCount .. " " .. T.online .. "  #FF0000\226\128\162 #FFFFFF" .. (F.maxMembers - F.onlineCount) .. " " .. T.offline,
+    dxDrawText("#00FF00• #FFFFFF" .. F.onlineCount .. " " .. T.online .. "  #FF0000• #FFFFFF" .. (F.maxMembers - F.onlineCount) .. " " .. T.offline,
         contentX(), infoY, contentX() + 500 * scale, infoY + 22 * scale, tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
 
     if F.phone then
-        dxDrawText("#E24848\226\128\162 #FFFFFF" .. "\216\167\217\132\216\174\216\183 \216\167\217\132\216\179\216\167\216\174\217\134: " .. tostring(F.phone),
+        dxDrawText("#E24848• #FFFFFF" .. "رقم الراديو: " .. tostring(F.phone),
             contentX(), infoY + 22 * scale, contentX() + 500 * scale, infoY + 44 * scale,
             tocolor(255, 255, 255, 255), 1.0, "default", "left", "center", true, false, true)
     end
 
-    -- level/online box (matching reference level panel)
+    -- level/online box
     local boxW, boxH = 150 * scale, 60 * scale
     local boxX = x + winW - boxW - 15 * scale
     local boxY = y + 50 * scale
@@ -257,7 +245,7 @@ function drawHeader()
     drawIcon("close", closeX + 5 * scale, closeY + 5 * scale, closeSize - 10 * scale, tocolor(255, 255, 255, 220))
     F._closeBtn = { x = closeX, y = closeY, w = closeSize, h = closeSize }
 
-    -- more button (change faction, matching reference more.png)
+    -- more button (change faction)
     local moreSize = 34 * scale
     local moreX = closeX - moreSize - 6 * scale
     hover = isMouseIn(moreX, closeY, moreSize, moreSize)

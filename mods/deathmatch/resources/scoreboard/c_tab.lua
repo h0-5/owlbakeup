@@ -302,7 +302,9 @@ local function clampSB(c)
 end
 
 local function getRankColor(p, rankName)
-        if isHidden(p) then return tocolor(220, 226, 234, 255) end
+        -- [Vortex] hidden AND off-duty staff read as plain players: the whole
+        -- row goes white. Hidden also drops the rank title (see getRank).
+        if isHidden(p) or isStaffOffDuty(p) then return PLAIN_COLOR end
         -- the rank's own panel color wins over everything
         local rc = getElementData(p, "rank:color")
         if type(rc) == "table" and rc[1] then

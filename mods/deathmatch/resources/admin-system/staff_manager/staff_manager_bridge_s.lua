@@ -181,7 +181,7 @@ function getPlayerRankRecordByAccountID(accountID)
                 ID = tonumber(role.ID),
                 index = index,
                 name = role.LevelName,
-                rights = fromJSON(role.Rights or "") or {},
+                rights = unwrapRights(fromJSON(role.Rights or "")),
                 color = color,
         }
 end
@@ -294,6 +294,22 @@ end
 -- exact right check against the rank's stored Rights JSON
 function playerHasRight(player, right)
         if not right then return false end
+        -- [Fix #18] live rights are pushed as element data by applyPlayerRank
+        -- (rank:rights is the raw JSON string). Unwrap the MTA array wrapper
+        -- so rights["admin.goto"] resolves instead of always nil.
+        local raw = getElementData(player, "rank:rights")
+        if type(raw) == "string" and raw ~= "" then
+                local parsed = fromJSON(raw)
+                if type(parsed) == "table" then
+                        if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+                                parsed = parsed[1]
+                        end
+                        if parsed[right] == true then return true end
+                        if parsed[right] ~= nil then return false end
+                end
+        end
+        -- fall back to a fresh DB read (rank edited but the player is not
+        -- online / element data not pushed yet)
         local record = getPlayerRankRecord(player)
         if not record then
                 -- legacy fallback: only the old top ladder gets the flat grant

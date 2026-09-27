@@ -727,14 +727,9 @@ function onWheel(key)
         end
 end
 
--- mouse wheel scrolling via onClientKey: this fires even while the cursor is
--- visible, unlike bindKey which the GUI can swallow
-addEventHandler("onClientKey", root, function(key, press)
-        if not state or press ~= "down" then return end
-        if key == "mouse_wheel_up" or key == "mouse_wheel_down" then
-                onWheel(key)
-        end
-end)
+-- mouse wheel scrolling is handled by the search/key handler above: it
+-- fires even while the cursor is visible, unlike bindKey which the GUI
+-- can swallow
 
 local function toggle(show)
         if show == state then return end
@@ -750,29 +745,16 @@ local function toggle(show)
                 hoverAnim = 0
                 lastTick = getTickCount()
                 drawErrorShown = false
-                -- transparent edit that captures keyboard input for the search box;
-                -- no_binds_when_editing stops MTA binds (chat/movement) from firing
-                -- while the player is typing a name
-                if not searchEdit then
-                        searchEdit = guiCreateEdit(0, 0, 1, 1, "", false)
-                        if searchEdit then
-                                guiSetAlpha(searchEdit, 0)
-                                guiSetInputMode("no_binds_when_editing")
-                        end
-                else
-                        guiSetText(searchEdit, "")
-                end
                 addEventHandler("onClientRender", root, render)
                 bindKey("mouse2", "down", toggleCursor)
         else
                 removeEventHandler("onClientRender", root, render)
                 unbindKey("mouse2", "down", toggleCursor)
-                if searchEdit then guiSetVisible(searchEdit, false) end
                 if cursorOn then showCursor(false) end
                 cursorOn = false
                 searchOn = false
         end
-end
+end)
 
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then

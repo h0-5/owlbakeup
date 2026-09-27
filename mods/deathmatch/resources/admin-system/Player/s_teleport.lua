@@ -1,7 +1,14 @@
 	
 ----------------------------[GO TO PLAYER]---------------------------------------
-function gotoPlayer(thePlayer, commandName, target)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVCTMember(thePlayer) then
+function gotoPlayer(thePlayer, commandName, target)
+ -- [Fix #19] backend-first gate: the rank's stored rights decide. If an
+ -- owner unticked "admin.goto" for this rank, the command is refused here
+ -- (not just hidden in a menu).
+ if not exports.admin-system:hasCommandRight(thePlayer, "goto") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+ if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVCTMember(thePlayer) then
 		if commandName:lower() == "goto" then
 			if not (target) then
 				outputChatBox("SYNTAX: /" .. commandName .. " [Partial Player Nick]", thePlayer, 255, 194, 14)

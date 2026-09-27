@@ -127,8 +127,13 @@ function makeForumThread(targetPlayerName, bannedUserName, hours, adminTitle , p
 end
 
 --OFFLINE BAN BY MAXIME
-function offlineBanAPlayer(thePlayer, commandName, targetUsername, hours, ...)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) then
+function offlineBanAPlayer(thePlayer, commandName, targetUsername, hours, ...)
+ -- [Fix #19] backend-first right gate (admin.ban)
+ if not exports.admin-system:hasCommandRight(thePlayer, "oban") then
+  outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+  return
+ end
+	if exports.integration:isPlayerTrialAdmin(thePlayer) then
 		if not (targetUsername) or not (hours) or (tonumber(hours)<0) or not (...) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Player Username] [Time in Hours, 0 = Infinite] [Reason]", thePlayer, 255, 194, 14)
 		else

@@ -467,11 +467,18 @@ local function utf8Backspace(str)
         return str:sub(1, pos - 1)
 end
 
-addEventHandler("onClientCharacter", root, function(character)
-        if not state or not searchOn then return end
-        searchBuf = searchBuf .. character
-        scroll = 0
-end)
+-- true only when s is exactly one UTF-8 code point (Arabic / accented letters
+-- arrive from onClientKey as a single multibyte key name)
+local function utf8IsSingleChar(s)
+        if type(s) ~= "string" or #s < 2 then return false end
+        local b1 = s:byte(1)
+        if b1 < 194 or b1 > 244 then return false end
+        for i = 2, #s do
+                local b = s:byte(i)
+                if b < 128 or b > 191 then return false end
+        end
+        return true
+end
 
 addEventHandler("onClientKey", root, function(key, press)
         if not state or press ~= "down" then return end
@@ -491,6 +498,17 @@ addEventHandler("onClientKey", root, function(key, press)
         elseif key == "escape" then
                 searchOn = false
                 searchBuf = ""
+                cancelEvent()
+        elseif type(key) == "string" and #key == 1 and key:match("[%w%s]") then
+                -- printable single key (letter / digit / space): MTA reports
+                -- the key name, which is the character itself
+                searchBuf = searchBuf .. key
+                scroll = 0
+                cancelEvent()
+        elseif utf8IsSingleChar(key) then
+                -- one whole multibyte code point (Arabic etc.)
+                searchBuf = searchBuf .. key
+                scroll = 0
                 cancelEvent()
         end
 end)

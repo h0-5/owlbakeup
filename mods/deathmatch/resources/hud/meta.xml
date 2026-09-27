@@ -256,6 +256,10 @@
     <file src="afk.png" />
     <file src="images/vortex_logo.png" />
 
+    <!-- Fix #20: smooth GPU drawing (analytic anti-aliased ring / rounded rect) -->
+    <file src="fx/ring.fx" />
+    <file src="fx/rounded.fx" />
+
     <!-- old-client icon set (designed, Fix #18) -->
     <file src="icons/seatbelt.png" />
     <file src="icons/police.png" />

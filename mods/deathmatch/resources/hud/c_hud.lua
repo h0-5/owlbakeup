@@ -14,6 +14,16 @@
 --     the slot is FLEXIBLE (smoothly expands as money grows, shrinks when it
 --     drops) and amounts use thousand separators like the old client
 --
+-- Fix #20 refinements (user feedback):
+--   * breathing room restored between the states frame, the clock and the
+--     money row (they were squeezed together)
+--   * status icons keep their TRUE aspect ratio and land EXACTLY on the ring
+--     center (fractional centering + uncompressed ARGB textures — no more
+--     distortion and no optical off-center)
+--   * rings / dots / rounded frames are drawn with analytic HLSL shaders
+--     (fx/ring.fx, fx/rounded.fx): perfectly smooth anti-aliased circle
+--     lines, the pixelated dxDrawCircle edges are gone (fallback kept)
+--
 -- blocks (old client):
 --   * statusHud      top-right: 7 progress rings
 --                    (health/sleepy/thirsty/hungry/toilet/fatigue/shower),
@@ -85,7 +95,9 @@ local function loadTextures()
         for _, name in ipairs(ICON_NAMES) do
                 local path = "icons/" .. name .. ".png"
                 if fileExists(path) then
-                        tex[name] = dxCreateTexture(path, "dxt5", true, "clamp")
+                        -- Fix #20: uncompressed ARGB — DXT compression shifted the
+                        -- perceived glyph mass inside tiny icons
+                        tex[name] = dxCreateTexture(path, "argb", true, "clamp")
                 else
                         missing[name] = true
                 end
@@ -93,7 +105,7 @@ local function loadTextures()
         for _, name in ipairs(STATUS_ICON_NAMES) do
                 local path = "status_icons/" .. name .. ".png"
                 if fileExists(path) then
-                        tex[name] = dxCreateTexture(path, "dxt3", true, "clamp")
+                        tex[name] = dxCreateTexture(path, "argb", true, "clamp")
                 else
                         missing[name] = true
                 end
@@ -101,6 +113,86 @@ local function loadTextures()
 end
 
 function getBGTexture() return tex.bg end
+
+--------------------------------------------------------------------------------
+-- Fix #20 — smooth GPU drawing + exact icon geometry
+--   * ring / disc / rounded-rect shapes go through tiny HLSL shaders
+--     (fx/ring.fx, fx/rounded.fx) with per-pixel anti-aliasing: no more
+--     pixelated dxDrawCircle edges
+--   * status icons keep their true aspect ratio and are placed with
+--     fractional coordinates so the glyph lands EXACTLY on the ring center
+--   * every shader path falls back to the old dxDraw calls automatically
+--------------------------------------------------------------------------------
+local ICON_GLYPH = {   -- visible glyph size (px) inside each 128px canvas
+        health = { 78, 94 },  sleep = { 86, 94 },   thirsty = { 74, 104 },
+        hungry = { 88, 96 },  toilet = { 70, 92 },  fatigue = { 74, 114 },
+        shower = { 66, 84 },  shield = { 90, 110 },
+}
+
+local function iconDrawSize(name, target)
+        local glyph = ICON_GLYPH[name]
+        if glyph then
+                local k = target / math.max(glyph[1], glyph[2])
+                return glyph[1] * k, glyph[2] * k
+        end
+        return target, target
+end
+
+local ringShader, discShader, roundedShader
+local shadersOK = false
+
+local function initShaders()
+        if ringShader or not fileExists("fx/ring.fx") or not fileExists("fx/rounded.fx") then return end
+        ringShader    = dxCreateShader("fx/ring.fx", 0, 0, false, "all")
+        discShader    = dxCreateShader("fx/ring.fx", 0, 0, false, "all")
+        roundedShader = dxCreateShader("fx/rounded.fx", 0, 0, false, "all")
+        if ringShader and discShader and roundedShader then
+                -- disc (filled dot): slightly softer edge than the ring band
+                dxSetShaderValue(discShader, "gRingAA", 0.05)
+                shadersOK = true
+        else
+                ringShader, discShader, roundedShader = nil, nil, nil
+        end
+end
+
+local function unpackColor(color)
+        local b = color % 256
+        local g = math.floor(color / 256) % 256
+        local r = math.floor(color / 65536) % 256
+        local a = math.floor(color / 16777216) % 256
+        return r, g, b, a
+end
+
+-- smooth progress ring: starts 12 o'clock, sweeps clockwise (old client)
+local function drawSmoothRing(cx, cy, size, radius, thickness, r, g, b, a, progress, postGUI)
+        progress = math.max(0, math.min(1, progress or 0))
+        if ringShader then
+                dxSetShaderValue(ringShader, "gProgress", progress)
+                dxSetShaderValue(ringShader, "gColor", r / 255, g / 255, b / 255, a / 255)
+                dxSetShaderValue(ringShader, "gBand",
+                        (radius - thickness / 2) / size, (radius + thickness / 2) / size)
+                dxDrawImage(cx - size / 2, cy - size / 2, size, size, ringShader,
+                        0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
+        else
+                local sweep = math.min(360 * progress, 359.5)
+                dxDrawCircle(cx, cy, radius, 270, 270 + sweep, tocolor(r, g, b, a), tocolor(r, g, b, a),
+                        math.max(10, math.ceil(sweep / 12)), thickness, postGUI)
+        end
+end
+
+-- smooth filled dot (money / coins)
+local function drawSmoothDisc(cx, cy, rad, r, g, b, a, postGUI)
+        if discShader then
+                local img = rad * 2 + 4
+                dxSetShaderValue(discShader, "gProgress", 1)
+                dxSetShaderValue(discShader, "gColor", r / 255, g / 255, b / 255, a / 255)
+                dxSetShaderValue(discShader, "gBand", 0, rad / img)
+                dxDrawImage(cx - img / 2, cy - img / 2, img, img, discShader,
+                        0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
+        else
+                dxDrawCircle(cx, cy, rad, 0, 360, tocolor(r, g, b, a), tocolor(r, g, b, a), 12, postGUI)
+        end
+end
 
 --------------------------------------------------------------------------------
 -- CONFIG — old client read these from exports.settings (settings resource
@@ -140,8 +232,17 @@ end
 
 function dxDrawRoundedRectangle(x, y, w, h, color, radius, postGUI)
         radius = radius or 8
-        if w < radius * 2 or h < radius * 2 then
+        if w < 2 or h < 2 or w < radius * 2 or h < radius * 2 then
                 dxDrawRectangle(x, y, w, h, color, postGUI)
+                return
+        end
+        -- Fix #20: analytic SDF corners — smooth at any radius
+        if roundedShader then
+                local r, g, b, a = unpackColor(color)
+                dxSetShaderValue(roundedShader, "gSize", w, h)
+                dxSetShaderValue(roundedShader, "gRadius", math.min(radius, w / 2, h / 2))
+                dxSetShaderValue(roundedShader, "gColor", r / 255, g / 255, b / 255, a / 255)
+                dxDrawImage(x, y, w, h, roundedShader, 0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
                 return
         end
         dxDrawRectangle(x + radius, y, w - radius * 2, h, color, postGUI)
@@ -471,7 +572,7 @@ local function drawMoneyBlock(rightX, y, postGUI)
         moneyFlex = moneyFlex + (tw - moneyFlex) * 0.12   -- flexible slot
         local cy = y + rowH / 2
         local iconCX = rightX - moneyFlex - 10 - 7.5
-        dxDrawCircle(iconCX, cy, 7.5, 0, 360, tocolor(0, 255, 133, 255), tocolor(0, 255, 133, 255), 12, postGUI)
+        drawSmoothDisc(iconCX, cy, 7.5, 0, 255, 133, 255, postGUI)
         dxDrawText("$", iconCX - 7.5, cy - 8, iconCX + 7.5, cy + 8,
                 tocolor(8, 40, 26, 255), 0.7, fontDefault(), "center", "center", false, false, postGUI)
         dxDrawText(text, iconCX + 10, y, rightX, y + rowH,
@@ -481,8 +582,7 @@ local function drawMoneyBlock(rightX, y, postGUI)
         -- row 2: coins (red dot) — only while the coins system exists
         if coins then
                 local r2y = y + rowH + 8
-                dxDrawCircle(iconCX, r2y + rowH / 2, 7.5, 0, 360,
-                        tocolor(255, 45, 45, 255), tocolor(255, 45, 45, 255), 12, postGUI)
+                drawSmoothDisc(iconCX, r2y + rowH / 2, 7.5, 255, 45, 45, 255, postGUI)
                 dxDrawText(tostring(coins), iconCX + 10, r2y, rightX, r2y + rowH,
                         tocolor(255, 255, 255, 200), 0.8, fontHud(), "right", "center", false, false, postGUI)
                 bottom = r2y + rowH
@@ -521,10 +621,8 @@ local function statusHudDrawImpl()
                 local cx, cy = x + S / 2, ringY + S / 2
                 -- progress arc: starts 12 o'clock, sweeps clockwise (old client)
                 if ring and ring.value > 0.25 then
-                        local sweep = math.min(360 * (ring.value / 100), 359.5)
-                        local arc = tocolor(def.tint[1], def.tint[2], def.tint[3], 255)
-                        dxDrawCircle(cx, cy, S / 2 - RING_STROKE / 2 - 0.5, 270, 270 + sweep,
-                                arc, arc, math.max(10, math.ceil(sweep / 12)), RING_STROKE, postGUI)
+                        drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
+                                def.tint[1], def.tint[2], def.tint[3], 255, ring.value / 100, postGUI)
                 end
                 local icon = tex[def.icon]
                 if icon then
@@ -545,11 +643,11 @@ local function statusHudDrawImpl()
                         elseif def.id == "shower" then
                                 a = getRingValue("cleanness") > 5 and 220 or pulse
                         end
-                        -- Fix #19: icon EXACTLY centered inside its circle
-                        local iconSize = S * 0.56
-                        local ix = x + (S - iconSize) / 2
-                        local iy = ringY + (S - iconSize) / 2
-                        dxDrawImage(ix, iy, iconSize, iconSize, icon, 0, 0, 0,
+                        -- Fix #20: aspect-correct icon, EXACTLY centered on the ring center
+                        local dw, dh = iconDrawSize(def.icon, S * 0.62)
+                        local ix = x + S / 2 - dw / 2
+                        local iy = ringY + S / 2 - dh / 2
+                        dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
                                 tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
                 end
         end
@@ -560,34 +658,33 @@ local function statusHudDrawImpl()
                 local y = ringY + 150 * SCALE
                 local cx, cy = x + S / 2, y + S / 2
                 if getRingValue("shield") > 0.25 then
-                        local sweep = math.min(360 * (getRingValue("shield") / 100), 359.5)
-                        dxDrawCircle(cx, cy, S / 2 - RING_STROKE / 2 - 0.5, 270, 270 + sweep,
-                                tocolor(255, 255, 255, 255), tocolor(255, 255, 255, 255),
-                                math.max(10, math.ceil(sweep / 12)), RING_STROKE, postGUI)
+                        drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
+                                255, 255, 255, 255, getRingValue("shield") / 100, postGUI)
                 end
                 if tex.shield then
                         local a = getRingValue("shield") > 5 and 220 or pulse
-                        local iconSize = S * 0.56
-                        local ix = x + (S - iconSize) / 2
-                        local iy = y + (S - iconSize) / 2
-                        dxDrawImage(ix, iy, iconSize, iconSize, tex.shield, 0, 0, 0,
+                        local dw, dh = iconDrawSize("shield", S * 0.62)
+                        local ix = x + S / 2 - dw / 2
+                        local iy = y + S / 2 - dh / 2
+                        dxDrawImage(ix, iy, dw, dh, tex.shield, 0, 0, 0,
                                 tocolor(255, 255, 255, a), postGUI)
                 end
         end
 
         -- clock + date (old formats, right aligned under the frame)
         if not CONFIG.hideClock then
-                local textY = panelY + PANEL_H + 6
+                -- Fix #20: breathing room restored (frame -> clock -> money)
+                local textY = panelY + PANEL_H + 14
                 outlineText(getCurrentTime(), sx - 140, textY, 128, 24,
                         tocolor(255, 255, 255, 255), 0.38, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 140, textY + 16, 128, 16,
+                outlineText(getCurrentDate(), sx - 140, textY + 18, 128, 16,
                         tocolor(255, 255, 255, 200), 0.3, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 8, textY + 38, postGUI)
-                moneyBlockBottom = textY + 38 + mh
+                local mh = drawMoneyBlock(sx - 8, textY + 46, postGUI)
+                moneyBlockBottom = textY + 46 + mh
         else
-                local mh = drawMoneyBlock(sx - 8, panelY + PANEL_H + 6, postGUI)
-                moneyBlockBottom = panelY + PANEL_H + 6 + mh
+                local mh = drawMoneyBlock(sx - 8, panelY + PANEL_H + 14, postGUI)
+                moneyBlockBottom = panelY + PANEL_H + 14 + mh
         end
 
         -- zone label, bottom-left above the radar (old client)
@@ -1015,6 +1112,7 @@ end
 local function activateHud()
         refreshConfig()
         loadTextures()
+        initShaders()
         updateHudItemsList()
         for _, def in ipairs(RING_DEFS) do
                 createRing(def.id, def.color)

@@ -507,7 +507,6 @@ end
 
 addEvent("rpadmin:requestPanel", true)
 addEventHandler("rpadmin:requestPanel", root, function()
-        outputDebugString("[STAFFS-DBG] requestPanel from " .. tostring(getPlayerName(source)) .. " rank:index=" .. tostring(getElementData(source, "rank:index")))
         sendPanel(source)
 end)
 

@@ -407,6 +407,7 @@ function UIKitReady()
         regHit(UI.rectangle.rank_color, "colorrect", PANEL_W - MENU_W - 15 - 60, 65, 50, 25, UI.container.ranks)
         regHit(UI.button.delete_rank, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.add_rank, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.button.rename_rank, "button", 330, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.save_rank_changes, "button", PANEL_W - MENU_W - 15 - 160, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.gridlist.daily_staff_report, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.daily_staff_report)
         -- floating add-staff window (root element -> own base origin)
@@ -534,7 +535,8 @@ local function dispatchPanelAction(el)
                 return
         end
         if not canEditRanks and (el == UI.button.delete_rank or el == UI.button.add_rank
-                or el == UI.button.save_rank_changes or el == UI.checkbox.permissions_select_all) then
+                or el == UI.button.rename_rank or el == UI.button.save_rank_changes
+                or el == UI.checkbox.permissions_select_all) then
                 outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
                 return
         end
@@ -602,6 +604,23 @@ local function dispatchPanelAction(el)
                                 eui:uiGetText(UI.edit.rank_name))
                         eui:uiSetText(UI.edit.rank_name, "")
                 end
+
+        elseif el == UI.button.rename_rank then
+                -- [Fix #20] rename the SELECTED rank to the text in the edit
+                -- box. Requires both a selection and a non-empty new name.
+                local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
+                if sel == -1 then
+                        outputChatBox("Select a rank from the list first.", 255, 80, 80)
+                        return
+                end
+                local newName = eui:uiGetText(UI.edit.rank_name)
+                if not newName or newName == "" then
+                        outputChatBox("Type the new rank name first.", 255, 80, 80)
+                        return
+                end
+                triggerServerEvent("rpadmin:changeAdminLevelName", localPlayer,
+                        eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1), newName)
+                eui:uiSetText(UI.edit.rank_name, "")
 
         elseif el == UI.button.save_rank_changes then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)

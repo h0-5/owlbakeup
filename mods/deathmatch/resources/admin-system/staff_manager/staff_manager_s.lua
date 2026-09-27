@@ -426,11 +426,9 @@ end
 
 local function sendPanel(player)
         if not canPlayerAccessStaffManager(player) then
-                outputDebugString("[STAFFS-DBG] DENIED for " .. tostring(getPlayerName(player)))
                 outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
                 return false
         end
-        outputDebugString("[STAFFS-DBG] allowed, building panel data")
         local editMembers = hasEditMembers(player)
         local editRanks = hasEditRanks(player)
         local levels = fetchLevels()
@@ -501,7 +499,6 @@ local function sendPanel(player)
                 editMembers, editRanks, editRanks,
                 { levels = levels, admins = admins, changelogs = changelogs,
                   role_members = roleMembers, staff_report = fetchStaffReport() })
-        outputDebugString("[STAFFS-DBG] showPanel sent to " .. tostring(getPlayerName(player)))
         return true
 end
 

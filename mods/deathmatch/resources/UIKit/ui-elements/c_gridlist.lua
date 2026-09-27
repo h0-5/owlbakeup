@@ -282,6 +282,8 @@ function uiGridListSetSelectedItem(arg0, arg1)
     assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetSelectedItem' [There's no such row index]")
   end
   UI.DB[arg0].data.selected_row = arg1
+  -- [Vortex fix #11] stamp the moment of selection so the draw can fade in
+  UI.DB[arg0].data.selection_tick = getTickCount()
   return true
 end
 UI.getDrawFunction["ui-gridlist"] = function(arg0)
@@ -306,7 +308,18 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
         for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
           if UI.DB[arg0].data.selected_row == forvar19 - 1 and not false then
-            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), 155), UI.postGUI)
+            -- [Vortex fix #11] selection fade-in restored (the decompiled draw
+            -- used a static highlight): alpha sweeps 40 -> 155 over ~260ms
+            -- from the moment the row was selected
+            local selTick = UI.DB[arg0].data.selection_tick
+            local selAlpha = 155
+            if selTick then
+              local selDT = getTickCount() - selTick
+              if selDT < 260 then
+                selAlpha = math.floor(40 + (155 - 40) * (selDT / 260))
+              end
+            end
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
             if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
               UI.DB[arg0].data.hovered_row = forvar19 - 1
             end

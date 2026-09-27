@@ -209,6 +209,7 @@ function UI.click(arg0, arg1, arg2, arg3)
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
             elseif UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
+              UI.DB[UI.HoveredElement].data.selection_tick = getTickCount()
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
             end
           elseif getElementType(UI.HoveredElement) == "ui-checklist" then

@@ -1080,7 +1080,6 @@ addEventHandler("rpadmin:sendSQLInformations", root, refreshPanel)
 
 -- /staffs (kept on the client as a request; the server decides access)
 addCommandHandler("staffs", function()
-        outputDebugString("[STAFFS-DBG] client /staffs typed, firing requestPanel")
         triggerServerEvent("rpadmin:requestPanel", localPlayer)
 end, false, false)
 

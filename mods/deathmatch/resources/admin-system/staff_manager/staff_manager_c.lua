@@ -288,6 +288,14 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "column_font_scale", 0.8)
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "row_height", 30)
 
+        -- version badge (created LAST so it draws on top of the section
+        -- containers): instant visual proof of which build the client is
+        -- actually running — guards against MTA client-cache staleness
+        -- (the "updated the server but the panel never changed" case)
+        UI.label.version_badge = eui:uiCreateLabel(PANEL_W - 55, 12, 45, 30, "V3",
+                themeColor("primary"), "right", "center", UI.window.admin_panel)
+        eui:uiSetFont(UI.label.version_badge, "default-large")
+
         --[[ ----------------------- sidebar menu -----------------------
              Vortex lab-style sidebar: compact top-aligned rows on a soft
              card, Vortex-blue accent bar on the selected row (fixes the

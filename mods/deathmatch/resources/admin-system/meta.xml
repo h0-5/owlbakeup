@@ -120,15 +120,15 @@
 	<script src="staff_manager/staff_manager_rights.lua" type="shared"/>
 	<script src="staff_manager/staff_manager_s.lua" type="server"/>
 	<script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
-	<script src="staff_manager/staff_manager_c.lua" type="client"/>
-	<script src="staff_manager/colorpicker_c.lua" type="client"/>
+	<script src="staff_manager/staff_manager_c.lua" type="client" cache="false"/>
+	<script src="staff_manager/colorpicker_c.lua" type="client" cache="false"/>
 	<script src="staff_manager/staff_manager_g.lua" type="server"/>
-	<script src="staff_manager/staff_manager_g.lua" type="client"/>
-	<file src="staff_manager/icons/menu_shield.png"/>
-	<file src="staff_manager/icons/menu_person.png"/>
-	<file src="staff_manager/icons/menu_chat.png"/>
-	<file src="staff_manager/icons/menu_trophy.png"/>
-	<file src="staff_manager/icons/menu_globe.png"/>
+	<script src="staff_manager/staff_manager_g.lua" type="client" cache="false"/>
+	<file src="staff_manager/icons/menu_shield.png" cache="false"/>
+	<file src="staff_manager/icons/menu_person.png" cache="false"/>
+	<file src="staff_manager/icons/menu_chat.png" cache="false"/>
+	<file src="staff_manager/icons/menu_trophy.png" cache="false"/>
+	<file src="staff_manager/icons/menu_globe.png" cache="false"/>
 
 	<export function="canPlayerAccessStaffManager" type="server"/>
 	<export function="refreshPlayerRank" type="server"/>

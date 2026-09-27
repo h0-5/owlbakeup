@@ -194,8 +194,39 @@ local function isHidden(p)
         return tonumber(getElementData(p, "hiddenadmin")) == 1
 end
 
+-- [Vortex duty/permission fixes] duty_admin / duty_supporter are server-set
+-- elementData (login panel + /adminduty), rank:index is the 21-rank ladder
+-- pushed by the staff bridge — these are the real authority, not cosmetic.
+
+local PLAIN_COLOR = tocolor(235, 240, 246, 255) -- off-duty / hidden rows
+
+local function isStaff(p)
+        return tonumber(getElementData(p, "rank:index")) ~= nil
+end
+
+local function isOnDuty(p)
+        return tonumber(getElementData(p, "duty_admin")) == 1
+           or tonumber(getElementData(p, "duty_supporter")) == 1
+end
+
+-- a staff member currently off duty (regular players are never "off duty",
+-- they simply hold no rank)
+local function isStaffOffDuty(p)
+        if not isStaff(p) then return false end
+        return not isOnDuty(p)
+end
+
+-- real permission gate: only Trial Administrator+ (rank:index >= 7) may see
+-- account names next to character names on the board
+local function canSeeAccounts()
+        local idx = tonumber(getElementData(localPlayer, "rank:index"))
+        return idx ~= nil and idx >= 7
+end
+
 -- the display name: "Charname (Username)" exactly like the reference shot;
 -- players still at the login/character screen read "Selecting character ..."
+-- [Vortex] the account part is a real permission: only Trial Administrator+
+-- viewers may see it, and off-duty staff read as plain players (no account)
 local function getDisplayName(p, id)
         if isHidden(p) then return "Hidden" end
         if tonumber(getElementData(p, "loggedin")) ~= 1 then
@@ -206,9 +237,11 @@ local function getDisplayName(p, id)
                 name = getPlayerName(p)
         end
         name = tostring(name):gsub("_", " ")
-        local user = getElementData(p, "account:username")
-        if user and user ~= "" then
-                return name .. " (" .. tostring(user) .. ")"
+        if canSeeAccounts() and not isStaffOffDuty(p) then
+                local user = getElementData(p, "account:username")
+                if user and user ~= "" then
+                        return name .. " (" .. tostring(user) .. ")"
+                end
         end
         return name
 end

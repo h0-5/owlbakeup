@@ -1,7 +1,8 @@
 --------------------------------------------------------------------------------
--- VORTEX nametags — client (Fix #18)
+-- VORTEX nametags — client (Fix #19)
 -- Ported from the old client source (backupm hud drawPlayersName):
---   * rank title above the name (rank:name / rank:color pushed by staff system)
+--   * Fix #19: NO rank title text above the head — rank is shown only by the
+--     admin badge icon (user spec)
 --   * name colored by rank, "Unknown Person" for masked players
 --   * ((TYPING...)) animated indicator while a player is writing
 --   * badge icons above heads (icons/): AFK, admin badge on duty, heart item
@@ -13,7 +14,7 @@ local localPlayer = getLocalPlayer()
 
 local NAMETAG_DISTANCE = 8
 
-local playersHud = {}   -- [player] = { name, title, titleColor, icons, hidden }
+local playersHud = {}   -- [player] = { name, color, icons, hidden }
 local typing = {}       -- [player] = true while chatting
 local localTyping = false
 
@@ -73,8 +74,7 @@ local function buildPlayerEntry(player)
         local name = masked and "Unknown Person"
                 or getPlayerName(player):gsub("_", " ")
 
-        -- staff rank pushed by the staff system
-        local title = getElementData(player, "rank:name")
+        -- staff rank color pushes the name color (Fix #19: no title text)
         local rgb = getElementData(player, "rank:color")
         if type(rgb) ~= "table" or #rgb < 3 then rgb = { 255, 255, 255 } end
 
@@ -110,8 +110,6 @@ local function buildPlayerEntry(player)
 
         return {
                 name = name,
-                title = (type(title) == "string" and title ~= "") and title or nil,
-                titleColor = tocolor(rgb[1], rgb[2], rgb[3], 255),
                 color = tocolor(rgb[1], rgb[2], rgb[3], 255),
                 icons = icons,
                 hidden = hidden and true or false,
@@ -129,7 +127,7 @@ local function updatePlayersHud()
 end
 
 local CACHE_KEYS = {
-        ["rank:name"] = true, ["rank:color"] = true, ["fakename"] = true,
+        ["rank:color"] = true, ["fakename"] = true,
         ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
         ["character:name"] = true, ["duty_admin"] = true, ["temp:heart"] = true,
         ["hud:badges"] = true,
@@ -217,11 +215,8 @@ addEventHandler("onClientRender", root, function()
                                                                         tocolor(255, 255, 255, 255), 0.8, fontHud(), "center", "top")
                                                         end
 
-                                                        -- rank title above the name
-                                                        if entry.title then
-                                                                outlineText(entry.title, sX - 120, baseY - 36, 240, 15,
-                                                                        entry.titleColor, 0.8, fontHud(), "center", "top")
-                                                        end
+                                                        -- Fix #19: rank title text removed —
+                                                        -- the admin badge below is the only rank marker
 
                                                         -- the name
                                                         outlineText(entry.name, sX - 120, baseY - 22, 240, 18,

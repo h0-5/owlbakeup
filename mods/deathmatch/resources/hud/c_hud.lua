@@ -1,15 +1,25 @@
 --------------------------------------------------------------------------------
--- VORTEX HUD — client (Fix #18)
+-- VORTEX HUD — client (Fix #19)
 -- 1:1 port of the old client hud resource (github.com/h0-5/backupm [rp]/hud).
 -- Layout, colors, sizes, animations and event names follow the decompiled
 -- source exactly; data sources are adapted to this server's stack.
 --
+-- Fix #19 refinements (user spec):
+--   * rings are pure dxDrawCircle arcs (NO SVG): the icon is now mathematically
+--     centered inside its circle — exact center, never outside
+--   * the black panel behind the rings is replaced by a light purple FRAME
+--     (thin purple border + barely-visible fill) so it never hides the states
+--   * the Vortex server logo sits inside the frame, left of all the states
+--   * money block: black pill removed completely, green $ dot hugs the amount,
+--     the slot is FLEXIBLE (smoothly expands as money grows, shrinks when it
+--     drops) and amounts use thousand separators like the old client
+--
 -- blocks (old client):
---   * statusHud      top-right: hud_bg panel + 7 SVG progress rings
+--   * statusHud      top-right: 7 progress rings
 --                    (health/sleepy/thirsty/hungry/toilet/fatigue/shower),
 --                    shield ring drops below the row while armor > 0,
---                    clock + date, money pill (+ coins row when bios coins
---                    data exists) — exact old colors:
+--                    clock + date, flexible money row (+ coins when bios
+--                    coins data exists) — exact old colors:
 --                    health #00ff85  sleepy #7dffea  thirsty #4de4ff
 --                    hungry #caff00   urine #f3ffb5  fatigue #71ffdd
 --                    cleanness/shield #ffffff
@@ -70,6 +80,8 @@ local STATUS_ICON_NAMES = {
 local function loadTextures()
         tex = {}
         tex.bg = fileExists("hud_bg.png") and dxCreateTexture("hud_bg.png", "argb", true, "clamp") or nil
+        tex.logo = fileExists("images/vortex_logo.png")
+                and dxCreateTexture("images/vortex_logo.png", "dxt5", true, "clamp") or nil
         for _, name in ipairs(ICON_NAMES) do
                 local path = "icons/" .. name .. ".png"
                 if fileExists(path) then
@@ -307,10 +319,14 @@ end)
 addEvent("onClientHudVisibilityChange", false)
 
 --------------------------------------------------------------------------------
--- STATUS RINGS — SVG progress circles, exact old-client geometry:
--- circle r=50, stroke-width 9, dasharray 315, dashoffset = 315 - value/100*315
+-- STATUS RINGS — pure dxDrawCircle progress arcs (old-client colors/order).
+-- Fix #19: SVG rendering proved unreliable in MTA (rings drew oversized and
+-- off-center from their icons), so the arcs are now drawn directly:
+-- perfectly centered on the icon at every ring size. Full state = full circle,
+-- depleting gradually until the line disappears (old client behaviour).
 --------------------------------------------------------------------------------
 local RING_SIZE, RING_GAP = 26, 8
+local RING_STROKE = 3            -- arc thickness (old client bold look)
 local RING_DEFS = {
         -- id        svg color    icon tint (exact old)   icon file
         { id = "health",    color = "#00ff85", tint = {0, 255, 132},   icon = "health"  },
@@ -323,23 +339,11 @@ local RING_DEFS = {
         { id = "shield",    color = "#ffffff", tint = {255, 255, 255}, icon = "shield"  },
 }
 
-local rings = {}       -- [id] = {value=0..100, template=xml, svg=element}
+local rings = {}       -- [id] = {value=0..100}
 local statusValues = {} -- [id] = number (what the old client kept in statusHud vars)
-
-local RING_XML = [[<svg width="100" height="100" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-<circle cx="50" cy="50" r="50" fill="none" stroke="%s" stroke-width="9"
- stroke-linecap="round" stroke-dasharray="315" stroke-dashoffset="315"
- transform="rotate(-90 50 50)"/>
-</svg>]]
-
-local svgSupported = type(svgCreate) == "function"
 
 local function createRing(id, colorHex)
         local ring = { value = 0 }
-        if svgSupported then
-                ring.template = string.format(RING_XML, colorHex)
-                ring.svg = svgCreate(100, 100, ring.template)
-        end
         rings[id] = ring
         return ring
 end
@@ -356,13 +360,6 @@ function setProgress(id, value)
         value = clampPercent(value)
         ring.value = value
         statusValues[id] = value
-        if ring.svg and ring.template then
-                -- old client: stroke-dashoffset = 315 - value / 100 * 315
-                local offset = string.format("%.1f", 315 - value / 100 * 315)
-                local updated = ring.template:gsub('stroke%-dashoffset="[%-%d%.]+"',
-                        'stroke-dashoffset="' .. offset .. '"')
-                pcall(svgSetDocumentXML, ring.svg, updated)
-        end
 end
 
 local function getRingValue(id)
@@ -380,17 +377,29 @@ local function healthPercent()
 end
 
 --------------------------------------------------------------------------------
--- STATUS HUD GEOMETRY (old client exact)
---   ring_x(i) = sx - (S+G)*7 - G*2 + (S+G)*i     (i = 0..6, health first)
---   ring_y    = panelY + 8.5*scale
+-- STATUS HUD GEOMETRY (old client row + Fix #19 frame/logo/money spec)
+--   ring_x(i) = PANEL_X + PAD_L + LOGO_SIZE + LOGO_GAP + (S+G)*i  (health first)
+--   ring_y    = vertically centered in the frame
 --   shield    = same column as cleanness, 150*scale below the ring row
 --------------------------------------------------------------------------------
-local PANEL_PAD_L = 16
-local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 230 @ 1080p
-local PANEL_W = ROW_W + PANEL_PAD_L + 2 * RING_GAP  -- 270
+local PANEL_PAD_L = 10
+local LOGO_SIZE  = 30
+local LOGO_GAP   = 12
+local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 230
+local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 14
 local PANEL_H = 42
 local PANEL_X = sx - PANEL_W
 local STRIP_H = 37
+
+-- Fix #19: light purple frame — thin Vortex-purple border + a barely-visible
+-- fill behind the states so the frame never hides the rings/icons
+local FRAME_BORDER = tocolor(149, 84, 255, 115)
+local FRAME_FILL   = tocolor(10, 6, 20, 55)
+
+local function drawStatusFrame(x, y, w, h, postGUI)
+        dxDrawRoundedRectangle(x, y, w, h, FRAME_BORDER, 9, postGUI)
+        dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 7, postGUI)
+end
 
 local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 25, current = -80 } }
 local statusHudDraw -- forward declaration
@@ -436,30 +445,49 @@ local function getCurrentDate()
         return string.format("%02d-%02d-%04d", t.monthday, t.month + 1, t.year + 1900)
 end
 
-local function drawMoneyBlock(x, y, w, postGUI)
+--------------------------------------------------------------------------------
+-- MONEY (Fix #19): no background rectangle at all. The green $ dot hugs the
+-- amount and the whole slot is FLEXIBLE — it smoothly widens as the money
+-- grows and tightens when it drops. Amounts carry thousand separators.
+--------------------------------------------------------------------------------
+local function formatMoney(n)
+        local s = tostring(math.floor(tonumber(n) or 0))
+        local k
+        repeat s, k = s:gsub("^(-?%d+)(%d%d%d)", "%1,%2") until k == 0
+        return s
+end
+
+local moneyFlex = nil   -- smoothed text width driving the icon position
+
+local function drawMoneyBlock(rightX, y, postGUI)
         local money = getPlayerMoney(localPlayer) or 0
         local coins = tonumber(getElementData(localPlayer, "bios:coins"))
-        local rows = coins and 2 or 1
-        local h = 30 * rows + 6
-        if tex.bg then
-                dxDrawImage(x, y, w, h, tex.bg, 180, 0, 0, tocolor(0, 8, 20, 180), postGUI)
-        else
-                dxDrawRoundedRectangle(x, y, w, h, tocolor(0, 8, 20, 180), 8, postGUI)
-        end
-        -- row 1: money (green dot, old client colors)
-        local r1y = y + 4
-        dxDrawCircle(x + 15, r1y + 11, 7.5, 0, 360, tocolor(0, 255, 133, 255), tocolor(0, 255, 133, 255), 12, postGUI)
-        dxDrawText("$", x + 8, r1y + 3, x + 22, r1y + 19, tocolor(8, 40, 26, 255), 0.7, fontDefault(), "center", "center", false, false, postGUI)
-        dxDrawText(string.format("%s", money and tostring(money) or "0"), x + 28, r1y, x + w - 8, r1y + 22,
+        local rowH = 22
+
+        -- row 1: money (green dot, old client colors, no background)
+        local text = formatMoney(money)
+        local tw = dxGetTextWidth(text, 1, fontDefault()) or 0
+        if not moneyFlex then moneyFlex = tw end
+        moneyFlex = moneyFlex + (tw - moneyFlex) * 0.12   -- flexible slot
+        local cy = y + rowH / 2
+        local iconCX = rightX - moneyFlex - 10 - 7.5
+        dxDrawCircle(iconCX, cy, 7.5, 0, 360, tocolor(0, 255, 133, 255), tocolor(0, 255, 133, 255), 12, postGUI)
+        dxDrawText("$", iconCX - 7.5, cy - 8, iconCX + 7.5, cy + 8,
+                tocolor(8, 40, 26, 255), 0.7, fontDefault(), "center", "center", false, false, postGUI)
+        dxDrawText(text, iconCX + 10, y, rightX, y + rowH,
                 tocolor(255, 255, 255, 255), 1, fontDefault(), "right", "center", false, false, postGUI)
+        local bottom = y + rowH
+
         -- row 2: coins (red dot) — only while the coins system exists
         if coins then
-                local r2y = y + 32
-                dxDrawCircle(x + 15, r2y + 11, 7.5, 0, 360, tocolor(255, 45, 45, 255), tocolor(255, 45, 45, 255), 12, postGUI)
-                dxDrawText(tostring(coins), x + 28, r2y, x + w - 8, r2y + 22,
+                local r2y = y + rowH + 8
+                dxDrawCircle(iconCX, r2y + rowH / 2, 7.5, 0, 360,
+                        tocolor(255, 45, 45, 255), tocolor(255, 45, 45, 255), 12, postGUI)
+                dxDrawText(tostring(coins), iconCX + 10, r2y, rightX, r2y + rowH,
                         tocolor(255, 255, 255, 200), 0.8, fontHud(), "right", "center", false, false, postGUI)
+                bottom = r2y + rowH
         end
-        return h
+        return bottom - y
 end
 
 local function statusHudDrawImpl()
@@ -472,35 +500,31 @@ local function statusHudDrawImpl()
         local panelY = animY + 25 - 20 * SCALE
         if panelY < -PANEL_H then return end
 
-        -- main panel + old 1px highlight lines
-        if tex.bg then
-                dxDrawImage(PANEL_X, panelY, PANEL_W, PANEL_H, tex.bg, 0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
-                dxDrawImage(PANEL_X, panelY, PANEL_W, 1, tex.bg, 0, 0, 0, tocolor(255, 255, 255, 150), postGUI)
-                dxDrawImage(sx - PANEL_W / 1.5, panelY + PANEL_H, PANEL_W / 1.5, 1, tex.bg, 0, 0, 0,
-                        tocolor(255, 255, 255, 150), postGUI)
-        else
-                dxDrawRoundedRectangle(PANEL_X, panelY, PANEL_W, PANEL_H, tocolor(0, 8, 20, 200), 8, postGUI)
+        -- Fix #19 light purple frame + Vortex logo (left of all the states)
+        drawStatusFrame(PANEL_X, panelY, PANEL_W, PANEL_H, postGUI)
+        if tex.logo then
+                dxDrawImage(PANEL_X + PANEL_PAD_L, panelY + (PANEL_H - LOGO_SIZE) / 2,
+                        LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235), postGUI)
         end
 
         -- pulse (old client): math.abs(sin(tick/300)) * 230 drives critical blink
         local pulse = math.abs(math.sin(getTickCount() / 300)) * 230
 
         -- ring row (7 rings, health leftmost — exact old order)
-        local ringY = panelY + 8.5 * SCALE
+        local ringY = panelY + (PANEL_H - RING_SIZE) / 2
         local S, G = RING_SIZE, RING_GAP
+        local firstX = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
         for i = 0, 6 do
                 local def = RING_DEFS[i + 1]
                 local ring = rings[def.id]
-                local x = sx - (S + G) * 7 - G * 2 + (S + G) * i
-                if ring and ring.svg then
-                        dxDrawImage(x, ringY, S, S, ring.svg, 0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
-                elseif ring then
-                        -- fallback arc (only when svgCreate unavailable)
-                        local sweep = 360 * (ring.value / 100)
-                        if sweep > 0.5 then
-                                dxDrawCircle(x + S / 2, ringY + S / 2, S / 2 - 2, 270, 270 + sweep,
-                                        tocolor(def.tint[1], def.tint[2], def.tint[3], 255), def.tint, 4, postGUI)
-                        end
+                local x = firstX + (S + G) * i
+                local cx, cy = x + S / 2, ringY + S / 2
+                -- progress arc: starts 12 o'clock, sweeps clockwise (old client)
+                if ring and ring.value > 0.25 then
+                        local sweep = math.min(360 * (ring.value / 100), 359.5)
+                        local arc = tocolor(def.tint[1], def.tint[2], def.tint[3], 255)
+                        dxDrawCircle(cx, cy, S / 2 - RING_STROKE / 2 - 0.5, 270, 270 + sweep,
+                                arc, arc, math.max(10, math.ceil(sweep / 12)), RING_STROKE, postGUI)
                 end
                 local icon = tex[def.icon]
                 if icon then
@@ -521,41 +545,48 @@ local function statusHudDrawImpl()
                         elseif def.id == "shower" then
                                 a = getRingValue("cleanness") > 5 and 220 or pulse
                         end
-                        local pad = S * 0.22
-                        dxDrawImage(x + pad, ringY + pad, S - pad * 2, S - pad * 2, icon, 0, 0, 0,
+                        -- Fix #19: icon EXACTLY centered inside its circle
+                        local iconSize = S * 0.56
+                        local ix = x + (S - iconSize) / 2
+                        local iy = ringY + (S - iconSize) / 2
+                        dxDrawImage(ix, iy, iconSize, iconSize, icon, 0, 0, 0,
                                 tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
                 end
         end
 
         -- shield ring: old client draws it under the last column while > 0
         if getRingValue("shield") > 0 then
-                local def = RING_DEFS[8]
-                local ring = rings["shield"]
-                local x = sx - (S + G) * 7 - G * 2 + (S + G) * 6
+                local x = firstX + (S + G) * 6
                 local y = ringY + 150 * SCALE
-                if ring and ring.svg then
-                        dxDrawImage(x, y, S, S, ring.svg, 0, 0, 0, tocolor(255, 255, 255, 255), postGUI)
+                local cx, cy = x + S / 2, y + S / 2
+                if getRingValue("shield") > 0.25 then
+                        local sweep = math.min(360 * (getRingValue("shield") / 100), 359.5)
+                        dxDrawCircle(cx, cy, S / 2 - RING_STROKE / 2 - 0.5, 270, 270 + sweep,
+                                tocolor(255, 255, 255, 255), tocolor(255, 255, 255, 255),
+                                math.max(10, math.ceil(sweep / 12)), RING_STROKE, postGUI)
                 end
                 if tex.shield then
                         local a = getRingValue("shield") > 5 and 220 or pulse
-                        local pad = S * 0.22
-                        dxDrawImage(x + pad, y + pad, S - pad * 2, S - pad * 2, tex.shield, 0, 0, 0,
+                        local iconSize = S * 0.56
+                        local ix = x + (S - iconSize) / 2
+                        local iy = y + (S - iconSize) / 2
+                        dxDrawImage(ix, iy, iconSize, iconSize, tex.shield, 0, 0, 0,
                                 tocolor(255, 255, 255, a), postGUI)
                 end
         end
 
-        -- clock + date (old formats, right aligned under the panel)
+        -- clock + date (old formats, right aligned under the frame)
         if not CONFIG.hideClock then
                 local textY = panelY + PANEL_H + 6
                 outlineText(getCurrentTime(), sx - 140, textY, 128, 24,
                         tocolor(255, 255, 255, 255), 0.38, fontHudLarge(), "right", "top", postGUI)
                 outlineText(getCurrentDate(), sx - 140, textY + 16, 128, 16,
                         tocolor(255, 255, 255, 200), 0.3, fontHudLarge(), "right", "top", postGUI)
-                -- money block
-                local mh = drawMoneyBlock(sx - 160, textY + 38, 160, postGUI)
+                -- flexible money block (no background)
+                local mh = drawMoneyBlock(sx - 8, textY + 38, postGUI)
                 moneyBlockBottom = textY + 38 + mh
         else
-                local mh = drawMoneyBlock(sx - 160, panelY + PANEL_H + 6, 160, postGUI)
+                local mh = drawMoneyBlock(sx - 8, panelY + PANEL_H + 6, postGUI)
                 moneyBlockBottom = panelY + PANEL_H + 6 + mh
         end
 
@@ -999,17 +1030,11 @@ end
 
 local function deactivateHud()
         showStatusHud(false)
-        for i = 1, #RING_DEFS do
-                local def = RING_DEFS[i]
-                if rings[def.id] then
-                        if isElement(rings[def.id].svg) then destroyElement(rings[def.id].svg) end
-                        rings[def.id] = nil
-                end
-        end
         for _, t in pairs(tex) do
                 if isElement(t) then destroyElement(t) end
         end
         tex = {}
+        moneyFlex = nil
 end
 
 addEventHandler("onClientResourceStart", resourceRoot, function()

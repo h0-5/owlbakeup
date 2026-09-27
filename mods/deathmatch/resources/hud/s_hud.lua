@@ -1,5 +1,5 @@
 --------------------------------------------------------------------------------
--- VORTEX HUD — server (Fix #18)
+-- VORTEX HUD — server (Fix #19)
 -- Old client event names preserved exactly (backupm hud + life-system flow):
 --   * typing:sync                 relay ((TYPING...)) to nearby players
 --   * hud:onHudItemClick          strip item router (old names -> this server)
@@ -9,6 +9,8 @@
 --     (sendToClient / update / request_sync) with the exact old decay rates:
 --     thirsty -1/min, hungry -0.5/min, urine +0.2/min, cleanness -0.05/min,
 --     sleepy +0.15/min, warnings + health penalties at the limits.
+--   * consume actions (Fix #19): /drink /eat /shower /sleep refill the needs
+--     and heal, /piss empties the bladder — server counts every value
 --   * hud:items default strip pushed on login (walkingstyle/head_turning/
 --     togpm/reportpanel/ads)
 --------------------------------------------------------------------------------
@@ -106,6 +108,82 @@ addCommandHandler("piss", function(player)
                 sendStatus(player)
                 notify(player, "You feel relieved", "شعرت بارتياح", 3000)
         end
+end)
+
+--------------------------------------------------------------------------------
+-- CONSUME ACTIONS (Fix #19 — full needs loop, server authoritative):
+-- the server owns every value; the rings mirror it 1:1 on the client
+-- (full state = full circle, depleting gradually until the line disappears).
+-- Consuming refills a need AND improves health (e.g. drinking heals).
+--   /drink   thirsty +40, urine +10 (what goes in must come out), health +5
+--   /eat     hungry +40, health +5
+--   /shower  cleanness back to 100
+--   /sleep   sleepy back to 0 (rested)
+--   /piss    urine back to 0 (old client)
+--------------------------------------------------------------------------------
+local CONSUME_COOLDOWN = 30000  -- ms between two uses of the same action
+local lastConsume = {}
+
+local function maxHealthOf(player)
+        return 0.232018558500192 * getPedStat(player, 24) - 32.018558511152
+end
+
+local function heal(player, amount)
+        if isPedDead(player) then return end
+        local maxhp = maxHealthOf(player)
+        local cur = getElementHealth(player)
+        if cur < maxhp then
+                setElementHealth(player, math.min(maxhp, cur + amount))
+        end
+end
+
+local function canConsume(player, action)
+        local now = getTickCount()
+        local last = lastConsume[player] and lastConsume[player][action]
+        if last and now - last < CONSUME_COOLDOWN then
+                local left = math.ceil((CONSUME_COOLDOWN - (now - last)) / 1000)
+                notify(player, "Wait " .. left .. " seconds before doing that again",
+                        "انتظر " .. left .. " ثانية قبل تكرارها", 3000)
+                return false
+        end
+        lastConsume[player] = lastConsume[player] or {}
+        lastConsume[player][action] = now
+        return true
+end
+
+addCommandHandler("drink", function(player)
+        local st = playerStatus[player]
+        if not st or isPedDead(player) or not canConsume(player, "drink") then return end
+        st.thirsty = clamp((st.thirsty or 0) + 40)
+        st.urine = clamp((st.urine or 0) + 10)
+        sendStatus(player)
+        heal(player, 5)
+        notify(player, "You drank some water and feel refreshed", "شربت ماء وشعرت بتحسن", 3000)
+end)
+
+addCommandHandler("eat", function(player)
+        local st = playerStatus[player]
+        if not st or isPedDead(player) or not canConsume(player, "eat") then return end
+        st.hungry = clamp((st.hungry or 0) + 40)
+        sendStatus(player)
+        heal(player, 5)
+        notify(player, "You ate some food and feel better", "أكلت شيئاً وشعرت بتحسن", 3000)
+end)
+
+addCommandHandler("shower", function(player)
+        local st = playerStatus[player]
+        if not st or isPedDead(player) or not canConsume(player, "shower") then return end
+        st.cleanness = 100
+        sendStatus(player)
+        notify(player, "You took a shower, you are clean again", "استحممت وأصبحت نظيفاً", 3000)
+end)
+
+addCommandHandler("sleep", function(player)
+        local st = playerStatus[player]
+        if not st or isPedDead(player) or not canConsume(player, "sleep") then return end
+        st.sleepy = 0
+        sendStatus(player)
+        notify(player, "You slept and feel rested", "نمت وشعرت بالنشاط", 3000)
 end)
 
 -- one global 60s tick, exact old-client decay table
@@ -215,6 +293,7 @@ end)
 addEventHandler("onPlayerQuit", root, function()
         saveStatus(source)
         playerStatus[source] = nil
+        lastConsume[source] = nil
 end)
 
 -- exported for other resources (old life-system server API shape)

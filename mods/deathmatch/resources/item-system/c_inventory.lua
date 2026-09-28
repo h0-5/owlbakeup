@@ -512,10 +512,18 @@ addEventHandler("onClientClick", getRootElement(), function(button, state, curso
                                 setElementCollisionsEnabled(clickWorldItem, true)
                                 local wItemID = tonumber(getElementData(clickWorldItem, "itemID"))
                                 local wDist = getDistanceBetweenPoints3D(getElementPosition(localPlayer), getElementPosition(clickWorldItem))
+                                local clickedItem = clickWorldItem
                                 clickWorldItem = false
                                 if wDist <= 5 and (wItemID == 54 or wItemID == 176) then
                                         -- ghettoblaster / speaker context menu (kept from the working flow)
                                         showItemMenu()
+                                -- [Fix #49 - user] FLOOR PICKUP FIX: the old UP path
+                                -- handled ONLY ghettoblasters and silently swallowed
+                                -- every other click, so "PICK UP" never fired. Any
+                                -- other world item now goes through the normal
+                                -- pickup flow (cooldown + full check + server event).
+                                elseif wDist <= 5 and wItemID then
+                                        pickupItem("left", "up", clickedItem)
                                 end
                                 return
                         end

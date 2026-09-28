@@ -43,7 +43,7 @@ g_shops = {
 			{ name = "Spray Can", description = "Hey, you better not tag with this punk!", price = 50, itemID = 115, itemValue = 41 },
 			{ name = "Parachute", description = "If you don't want to splat on the ground, you better buy one", price = 400, itemID = 115, itemValue = 46 },
 			-- { name = "City Guide", description = "A small city guide booklet.", price = 15, itemID = 18 },
-			{ name = "Backpack", description = "A reasonably sized backpack.", price = 30, itemID = 48 },
+			{ name = "Backpack", description = "A big backpack. Raises your item limit to 117 (+100 slots).", price = 500, itemID = 48 },
 			{ name = "Fishing Rod", description = "A 7 foot carbon steel fishing rod.", price = 300, itemID = 49 },
 			{ name = "Mask", description = "A ski mask.", price = 20, itemID = 56 },
 			{ name = "Fuel Can", description = "A small metal fuel canister.", price = 35, itemID = 57, itemValue = 0 },

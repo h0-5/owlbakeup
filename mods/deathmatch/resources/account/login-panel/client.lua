@@ -442,6 +442,7 @@ end)
 
 function hideLoginPanel()
 	visible = false
+	cancelAutoLogin()
 	stopLoginMusic()
 	if UI.window.login then eui:uiSetVisible(UI.window.login, false) end
 	if UI.image.Logo then eui:uiSetVisible(UI.image.Logo, false) end

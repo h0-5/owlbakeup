@@ -506,26 +506,32 @@ end
 
 --------------------------------------------------------------------------------
 -- STATUS HUD GEOMETRY (old client row + Fix #19 frame/logo/money spec)
---   ring_x(i) = PANEL_X + PAD_L + (S+G)*i  (health first)
---   ring_y    = 6 (top row); clock + date below, INSIDE the frame (Fix #33)
---   shield    = same column as cleanness, 150*scale below the panel
+--   ring_x(i) = PANEL_X + PAD_L + LOGO_SIZE + LOGO_GAP + (S+G)*i
+--   ring_y    = vertically centred in the frame
+-- [Fix #35 - user] "رجعه وافضل مستطيلين عن بعض": the LOGO IS BACK inside the
+--   status rectangle (Fix #33 removed it by misreading "clock rect without
+--   logo" as "remove the logo from the status rect") and the panel is back
+--   to a single ring row (PANEL_H 56). The clock + date live in their OWN
+--   slightly-black rectangle right below the panel, close together, date
+--   bigger than before and in the SAME font colour as the clock.
 --------------------------------------------------------------------------------
 local PANEL_PAD_L = 12
--- [Fix #33 - user] "حطهم بنفس مستطيل حق حلات فوق بس بدون اللوغو":
--- the logo is REMOVED from the panel; the clock + date now LIVE INSIDE the
--- status rectangle, right-aligned under the rings, pulled close together
--- (clock slightly lower, date slightly higher).
+local LOGO_SIZE  = 40
+local LOGO_GAP   = 14
 local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 318
-local PANEL_W = PANEL_PAD_L + ROW_W + 16            -- logo space reclaimed
+local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 16
+-- clock/date rectangle (its own panel, no logo inside it)
 local CLOCK_SCALE = 1.3
-local DATE_SCALE   = 0.85
-local CLOCK_LINE_H = 30
-local DATE_LINE_H  = 22
-local PANEL_H = 6 + RING_SIZE + 8 + CLOCK_LINE_H + 2 + DATE_LINE_H + 8
--- [Fix #32 - user] "ارفع مكانه باعلى الشاشة لكن مب لازق بحواف الشاشة":
--- rest at the top but with real margins - no longer glued to the edges
+local DATE_SCALE   = 1.05
+local CLOCK_LINE_H = 36
+local DATE_LINE_H  = 27
+local CLOCK_RECT_W = 152
+local CLOCK_RECT_H = 8 + CLOCK_LINE_H + 2 + DATE_LINE_H + 8
+local PANEL_H = 56
+-- [Fix #32 - user] rest at the top with real margins - not glued to the edges
 local PANEL_MARGIN_X = 14
 local PANEL_X = sx - PANEL_W - PANEL_MARGIN_X
+local CLOCK_RECT_X = sx - PANEL_MARGIN_X - CLOCK_RECT_W
 local STRIP_H = 37
 
 -- Fix #19: light purple frame — thin Vortex-purple border + a fill behind
@@ -590,13 +596,21 @@ local function pulseForPaint()
         return math.abs(math.sin(getTickCount() / 300)) * 230
 end
 
-local function drawStatusClock(x, y, w, postGUI)
-        -- clock + date INSIDE the panel (Fix #33), right-aligned, close
+local function drawStatusClock(panelY, postGUI)
+        -- [Fix #35 - user] clock + date in their OWN slightly-black rectangle
+        -- right below the status panel, pulled close together, right-aligned:
+        -- clock (bigger) on top, date smaller but the SAME font colour
         local clockText, dateText = statusTexts()
-        outlineText(clockText, x + 12, y + 6 + RING_SIZE + 8, w - 16, CLOCK_LINE_H,
+        local x, y = CLOCK_RECT_X, panelY + PANEL_H + 6
+        dxDrawRoundedRectangle(x, y, CLOCK_RECT_W, CLOCK_RECT_H,
+                FRAME_BORDER, 12, postGUI)
+        dxDrawRoundedRectangle(x + 2, y + 2, CLOCK_RECT_W - 4, CLOCK_RECT_H - 4,
+                tocolor(8, 6, 16, 175), 10, postGUI)
+        outlineText(clockText, x + 10, y + 7, CLOCK_RECT_W - 20, CLOCK_LINE_H,
                 tocolor(255, 255, 255, 255), CLOCK_SCALE, fontHudLarge(), "right", "top", postGUI)
-        outlineText(dateText, x + 12, y + 6 + RING_SIZE + 8 + CLOCK_LINE_H + 2, w - 16, DATE_LINE_H,
-                tocolor(255, 255, 255, 210), DATE_SCALE, fontHudLarge(), "right", "top", postGUI)
+        outlineText(dateText, x + 10, y + 7 + CLOCK_LINE_H + 2, CLOCK_RECT_W - 20, DATE_LINE_H,
+                tocolor(255, 255, 255, 255), DATE_SCALE, fontHudLarge(), "right", "top", postGUI)
+        return CLOCK_RECT_H + 6
 end
 
 local function repaintPanelRT()
@@ -604,9 +618,13 @@ local function repaintPanelRT()
         dxSetRenderTarget(panelRT, true)
         local ox, oy = PANEL_RT_PAD, PANEL_RT_PAD -- draw offset inside the RT
         drawStatusFrame(ox, oy, PANEL_W, PANEL_H, false)
-        local ringY = oy + 6
+        if tex.logo then
+                dxDrawImage(ox + PANEL_PAD_L, oy + (PANEL_H - LOGO_SIZE) / 2,
+                        LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235))
+        end
+        local ringY = oy + (PANEL_H - RING_SIZE) / 2
         local S, G = RING_SIZE, RING_GAP
-        local firstX = ox + PANEL_PAD_L
+        local firstX = ox + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
         for i = 0, 6 do
                 local def = RING_DEFS[i + 1]
                 local ring = rings[def.id]
@@ -644,7 +662,8 @@ local function repaintPanelRT()
                                 tocolor(def.tint[1], def.tint[2], def.tint[3], a))
                 end
         end
-        drawStatusClock(ox, oy, PANEL_W, false)
+        -- [Fix #35] the clock/date rect is NOT part of the RT anymore - it is
+        -- drawn live below the panel by statusHudDrawImpl (2 outline texts)
         dxSetRenderTarget()
         panelRTDirty = false
         return true
@@ -749,14 +768,11 @@ local function statusHudDrawImpl()
                 or (getRingValue("urine") >= 90) or (getRingValue("fatigue") >= 90)
                 or (getRingValue("cleanness") <= 5)
 
-        -- [Fix #30 - FPS] the frame + rings + icons + clock/date live in a
-        -- render target repainted ONLY on value changes / slide-in / blink
-        -- steps / minute flip. One dxDrawImage per frame instead of ~30 draws.
-        local clockText = getCurrentTime()
-        if clockText ~= lastClockText then
-                lastClockText = clockText
-                panelRTDirty = true
-        end
+        -- [Fix #30 - FPS] the frame + logo + rings + icons live in a render
+        -- target repainted ONLY on value changes / slide-in / blink steps.
+        -- One dxDrawImage per frame instead of ~30 draws.
+        -- [Fix #35] the clock flipped to its own rect below the panel, so the
+        -- minute flip no longer needs an RT repaint.
         local rtPainted = false
         if (panelRTDirty or animating or (anyCritical and nowTick - lastPulsePaint > 120)) then
                 lastPulsePaint = nowTick
@@ -769,9 +785,15 @@ local function statusHudDrawImpl()
         else
                 -- no render target (creation failed): direct draw fallback
                 drawStatusFrame(PANEL_X, panelY, PANEL_W, PANEL_H, postGUI)
-                local ringY = panelY + 6
+                if tex.logo then
+                        dxDrawImage(PANEL_X + PANEL_PAD_L,
+                                panelY + (PANEL_H - LOGO_SIZE) / 2,
+                                LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0,
+                                tocolor(255, 255, 255, 235), postGUI)
+                end
+                local ringY = panelY + (PANEL_H - RING_SIZE) / 2
                 local S, G = RING_SIZE, RING_GAP
-                local firstX = PANEL_X + PANEL_PAD_L
+                local firstX = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
                 for i = 0, 6 do
                         local def = RING_DEFS[i + 1]
                         local ring = rings[def.id]
@@ -809,13 +831,15 @@ local function statusHudDrawImpl()
                                         tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
                         end
                 end
-                drawStatusClock(PANEL_X, panelY, PANEL_W, postGUI)
         end
-
+        -- [Fix #35] the clock + date in their own black rect right below the
+        -- panel; the money block docks under THAT rect (bottom published for
+        -- the reports list so it never overlaps the stack)
+        local clockRectH = drawStatusClock(panelY, postGUI)
         -- shield ring: old client draws it under the last column while > 0
         if getRingValue("shield") > 0 then
                 local S, G = RING_SIZE, RING_GAP
-                local x = PANEL_X + PANEL_PAD_L + (S + G) * 6
+                local x = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + (S + G) * 6
                 local y = panelY + PANEL_H + 150 * SCALE
                 local cx, cy = x + S / 2, y + S / 2
                 drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
@@ -833,11 +857,11 @@ local function statusHudDrawImpl()
                 end
         end
 
-        -- [Fix #33] money sits right under the panel (clock+date live inside
-        -- the panel now); its bottom is published for the reports list so the
-        -- panel can dock UNDER the money instead of overlapping the stack
-        local mh = drawMoneyBlock(sx - 14, panelY + PANEL_H + 8, postGUI)
-        moneyBlockBottom = panelY + PANEL_H + 8 + mh
+        -- [Fix #33] money sits right under the clock/date rectangle; its
+        -- bottom is published for the reports list so the panel can dock
+        -- UNDER the money instead of overlapping the stack
+        local mh = drawMoneyBlock(sx - 14, panelY + PANEL_H + clockRectH + 4, postGUI)
+        moneyBlockBottom = panelY + PANEL_H + clockRectH + 4 + mh
         if math.abs((tonumber(lastTopRightBottom) or 0) - moneyBlockBottom) >= 1 then
                 lastTopRightBottom = moneyBlockBottom
                 setElementData(localPlayer, "hud:topRightBottom", moneyBlockBottom, false)
@@ -1094,7 +1118,8 @@ local function drawHUD()
         -- c_speedo.lua - same client VM, set at file scope)
         local veh = getPedOccupiedVehicle(localPlayer)
         if veh and getVehicleController(veh) == localPlayer then
-                local size, gap = 30, 7
+                -- [Fix #35] icons scaled up with the bigger dial ("خليه مناسبين")
+                local size, gap = 34, 8
                 local rowW = #VEH_ITEMS * size + (#VEH_ITEMS - 1) * gap
                 local scx = tonumber(SPEEDO_CX) or (sx - 104)
                 local scy = tonumber(SPEEDO_CY) or (sy - 138)
@@ -1360,4 +1385,42 @@ addEventHandler("onClientElementDataChange", localPlayer, function(key, _, newVa
                         deactivateHud()
                 end
         end
+end)
+
+--------------------------------------------------------------------------------
+-- [Fix #35] /fpsdiag — FIND THE LAG ON THE ACTUAL MACHINE. The user reports
+-- constant low FPS even with the HUD hidden; the code audit of every
+-- per-frame handler found them all gated, so measure it live instead of
+-- guessing: the client samples FPS while the SERVER temporarily stops each
+-- suspect resource one at a time and restarts it. The resource whose absence
+-- RAISES the FPS is the culprit. Owner/debug tool.
+--------------------------------------------------------------------------------
+addEvent("fpsdiag:phase", true)
+addEventHandler("fpsdiag:phase", localPlayer, function(phaseName, sampleMs)
+        local frames = 0
+        local t0 = getTickCount()
+        local function counter() frames = frames + 1 end
+        addEventHandler("onClientRender", root, counter, false, "high+100")
+        setTimer(function()
+                removeEventHandler("onClientRender", root, counter)
+                local dt = math.max(getTickCount() - t0, 1)
+                local fps = math.floor(frames / dt * 1000 + 0.5)
+                local st = {}
+                if dxGetStatus then
+                        local ok, s = pcall(dxGetStatus)
+                        if ok and type(s) == "table" then st = s end
+                end
+                triggerServerEvent("fpsdiag:result", localPlayer, phaseName, fps, {
+                        card = tostring(st.VideoCardName or "?"),
+                        freeVRAM = tonumber(st.VideoMemoryFreeForMTA) or -1,
+                        rtMB = tonumber(st.VideoMemoryUsedByRenderTargets) or -1,
+                        texMB = tonumber(st.VideoMemoryUsedByTextures) or -1,
+                        players = #getElementsByType("player"),
+                })
+        end, sampleMs, 1)
+end)
+
+addCommandHandler("fpsdiag", function()
+        triggerServerEvent("fpsdiag:start", localPlayer)
+        outputChatBox("[fpsdiag] measuring - stand still for ~25 seconds...", 255, 220, 120, false)
 end)

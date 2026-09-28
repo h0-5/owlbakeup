@@ -19,6 +19,15 @@ local lastLookAt = {}
 -- AND logged an error every frame (FPS). Wrap the draw, show it once.
 local pedNameErrorShown = false
 
+-- [Fix #35] one-time gate report: "NPC names never appear" was a silent
+-- early return - say WHY the first time it happens (once per session)
+local pedGateReported = {}
+local function pedGateReport(reason)
+        if pedGateReported[reason] then return end
+        pedGateReported[reason] = true
+        outputChatBox("[NPC names] hidden because: " .. reason, 255, 220, 120, false)
+end
+
 local function rebuildList()
         peds = {}
         for _, ped in ipairs(getElementsByType("ped", root, true)) do
@@ -85,8 +94,16 @@ end
 
 function drawPedsName()
         if getElementData(localPlayer, "loggedin") ~= 1
-                and not getElementData(localPlayer, "character:id") then return end
+                and not getElementData(localPlayer, "character:id") then
+                pedGateReport("waiting for character select (loggedin="
+                        .. tostring(getElementData(localPlayer, "loggedin")) .. ")")
+                return
+        end
         if isPlayerMapVisibleSafe() then return end
+        if #peds == 0 then
+                pedGateReport("no named NPC peds in range (nothing carries ped:name data)")
+                return
+        end
 
         local camX, camY, camZ = getCameraMatrix()
         local now = getTickCount()

@@ -244,12 +244,32 @@ local function isPlayerMapVisibleSafe()
         return false
 end
 
+-- [Fix #35] one-time-per-session gate reports: "names never appear" was
+-- un-diagnosable because every gate was a silent return. Now the FIRST time
+-- a gate blocks, the player is told exactly why (once, no spam).
+local gateReported = {}
+local function gateReport(reason)
+        if gateReported[reason] then return end
+        gateReported[reason] = true
+        outputChatBox("[Nametags] names are hidden because: " .. reason, 255, 220, 120, false)
+end
+
 function drawNametags()
         if isPlayerMapVisibleSafe() then return end
-        if not isHudShowing or not isHudShowing() then return end
-        if not getHudSetting or getHudSetting("tagmode") == false then return end
+        if not isHudShowing or not isHudShowing() then
+                gateReport("the HUD is hidden (F4 > showhud is off)")
+                return
+        end
+        if not getHudSetting or getHudSetting("tagmode") == false then
+                gateReport("tagmode is off")
+                return
+        end
         if getElementData(localPlayer, "loggedin") ~= 1
-                and not getElementData(localPlayer, "account:character:id") then return end
+                and not getElementData(localPlayer, "account:character:id") then
+                gateReport("waiting for character select (loggedin="
+                        .. tostring(getElementData(localPlayer, "loggedin")) .. ")")
+                return
+        end
 
         local camX, camY, camZ = getCameraMatrix()
         local lX, lY, lZ = getElementPosition(localPlayer)

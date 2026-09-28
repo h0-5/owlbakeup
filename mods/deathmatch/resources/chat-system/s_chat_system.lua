@@ -1114,8 +1114,12 @@ function pmPlayer(thePlayer, commandName, who, ...)
 			end
 
 			-- Send the message
-			local playerid = getElementData(thePlayer, "playerid")
-			local targetid = getElementData(targetPlayer, "playerid")
+			-- [Fix #35 - user] the mod id is the server-wide id: PM lines show
+			-- it (fallback to the session id) so what you see is what you dial
+			local playerid = tonumber(getElementData(thePlayer, "mod:id"))
+				or getElementData(thePlayer, "playerid")
+			local targetid = tonumber(getElementData(targetPlayer, "mod:id"))
+				or getElementData(targetPlayer, "playerid")
 			outputChatBox("PM From (" .. playerid .. ") " .. playerName ..username..": " .. message, targetPlayer, 255, 0, 213)
 			outputChatBox("PM Sent to (" .. targetid .. ") " .. targetPlayerName ..targetUsername.. ": " .. message, thePlayer, 34, 225, 222)
 

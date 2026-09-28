@@ -35,13 +35,18 @@ local function ensureEui()
 end
 
 local function destroyInput()
+        -- [Fix #35] if the focused edit dies with the window, UIKit's blur
+        -- never fires and the MTA chat input stays disarmed forever ("can't
+        -- type in chat after using checkid") — re-arm it explicitly
         if inputWin and isElement(inputWin) then destroyElement(inputWin) end
         inputWin, inputEdit, okBtn, cancelBtn = nil, nil, nil, nil
+        toggleControl("chatbox", true)
 end
 
 local function destroyInfo()
         if infoWin and isElement(infoWin) then destroyElement(infoWin) end
         infoWin, infoGrid, closeBtn = nil, nil, nil
+        toggleControl("chatbox", true)
 end
 
 local function submitQuery()

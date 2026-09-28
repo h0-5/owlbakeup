@@ -27,5 +27,6 @@
         <file src="icons/youtuber.png"/>
 
         <export function="isVisible" type="client" />
+        <export function="getPlayerFromModID" type="server" />
 
 </meta>

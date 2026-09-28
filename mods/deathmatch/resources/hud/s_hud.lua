@@ -609,3 +609,137 @@ addEventHandler("hud:remove_heart", root, function()
                 end
         end
 end)
+
+--------------------------------------------------------------------------------
+-- [Fix #35] /fpsdiag server driver — stops each suspect resource one at a
+-- time, lets the client sample FPS, restarts it, and finally prints the
+-- ranked verdict to the tester. Gated to ranks holding the "debug" right
+-- (see command_gates_s.lua). Explicit step state machine:
+--   step 1            = baseline sample
+--   step 2..N+1       = one suspect resource stopped per step
+--   step N+2          = everything restored, final sample, verdict
+--------------------------------------------------------------------------------
+local FPSDIAG_CANDIDATES = { "ped-system", "scoreboard", "map-system", "report-system", "main-menu" }
+local fpsdiagResults, fpsdiagBusy, fpsdiagStep, fpsdiagTester = {}, false, 0, nil
+
+local function fpsdiagPhaseCount()
+        return #FPSDIAG_CANDIDATES + 2 -- baseline + candidates + restored
+end
+
+addEvent("fpsdiag:phase", true)
+addEvent("fpsdiag:result", true)
+
+local function fpsdiagVerdict()
+        local tester = fpsdiagTester
+        fpsdiagBusy = false
+        if not tester then return end
+        outputChatBox("========= [fpsdiag] VERDICT =========", tester, 255, 220, 120, false)
+        local base
+        for _, row in ipairs(fpsdiagResults) do
+                if row[1] == "baseline" then base = row[2] end
+        end
+        local ranked = {}
+        for _, row in ipairs(fpsdiagResults) do ranked[#ranked + 1] = row end
+        table.sort(ranked, function(a, b)
+                if a[1] == "baseline" then return false end
+                if b[1] == "baseline" then return true end
+                return (tonumber(a[2]) or 0) > (tonumber(b[2]) or 0)
+        end)
+        for _, row in ipairs(ranked) do
+                local name, fps = tostring(row[1]), tonumber(row[2]) or 0
+                local delta = base and (fps - base) or 0
+                local mark = (delta > 6) and "   <<< THE CULPRIT" or ""
+                outputChatBox(("%-14s %3d FPS  (%+d vs baseline)%s")
+                        :format(name, fps, delta, mark), tester,
+                        delta > 6 and 0 or 180, delta > 6 and 255 or 220, delta > 6 and 120 or 255, false)
+        end
+        for _, row in ipairs(fpsdiagResults) do
+                if type(row[3]) == "table" and row[3].card then
+                        local s = row[3]
+                        outputChatBox(("GPU: %s | free VRAM: %s MB | RT: %s MB | textures: %s MB | players: %s")
+                                :format(s.card, tostring(s.freeVRAM), tostring(s.rtMB),
+                                        tostring(s.texMB), tostring(s.players)),
+                                tester, 200, 200, 200, false)
+                        break
+                end
+        end
+        outputChatBox("Send Keeler a screenshot of this list.", tester, 255, 220, 120, false)
+        fpsdiagResults = {}
+        fpsdiagStep = 0
+        fpsdiagTester = nil
+end
+
+addEventHandler("fpsdiag:result", root, function(phaseName, fps, stats)
+        if not fpsdiagBusy or client ~= fpsdiagTester then return end
+        fpsdiagResults[#fpsdiagResults + 1] = { tostring(phaseName), tonumber(fps) or 0, stats }
+        outputChatBox(("[fpsdiag] %-12s %d FPS"):format(tostring(phaseName), tonumber(fps) or 0),
+                fpsdiagTester, 180, 220, 255, false)
+        if phaseName == "restored" then
+                -- make sure the LAST candidate is running again before the verdict
+                local last = FPSDIAG_CANDIDATES[#FPSDIAG_CANDIDATES]
+                if last then
+                        local r = getResourceFromName(last)
+                        if r and getResourceState(r) ~= "running" then
+                                startResource(r)
+                                outputChatBox("[fpsdiag] restarted " .. last, fpsdiagTester, 150, 255, 150, false)
+                        end
+                end
+                setTimer(fpsdiagVerdict, 150, 1)
+                return
+        end
+        setTimer(fpsdiagAdvance, 600, 1)
+end)
+
+function fpsdiagAdvance()
+        local tester = fpsdiagTester
+        if not tester then return end
+        -- restart the resource stopped in the PREVIOUS candidate step
+        if fpsdiagStep >= 3 then
+                local prev = FPSDIAG_CANDIDATES[fpsdiagStep - 2]
+                if prev then
+                        local r = getResourceFromName(prev)
+                        if r and getResourceState(r) ~= "running" then
+                                startResource(r)
+                                outputChatBox("[fpsdiag] restarted " .. prev, tester, 150, 255, 150, false)
+                        end
+                end
+        end
+        fpsdiagStep = fpsdiagStep + 1
+        if fpsdiagStep > fpsdiagPhaseCount() then
+                fpsdiagVerdict()
+                return
+        end
+        local name
+        if fpsdiagStep == 1 then
+                name = "baseline"
+        elseif fpsdiagStep <= #FPSDIAG_CANDIDATES + 1 then
+                name = FPSDIAG_CANDIDATES[fpsdiagStep - 1]
+                local r = getResourceFromName(name)
+                if r and getResourceState(r) == "running" then
+                        stopResource(r)
+                        outputChatBox("[fpsdiag] stopped " .. name .. " ...", tester, 255, 200, 120, false)
+                else
+                        outputChatBox("[fpsdiag] " .. name .. " not running (measured anyway)", tester, 255, 200, 120, false)
+                end
+        else
+                name = "restored"
+        end
+        setTimer(function()
+                triggerClientEvent(tester, "fpsdiag:phase", tester, name, 2500)
+        end, 800, 1)
+end
+
+addEvent("fpsdiag:start", true)
+addEventHandler("fpsdiag:start", root, function()
+        if fpsdiagBusy then
+                outputChatBox("[fpsdiag] already running - wait for the verdict.", client, 255, 120, 120, false)
+                return
+        end
+        fpsdiagBusy = true
+        fpsdiagResults = {}
+        fpsdiagStep = 1
+        fpsdiagTester = client
+        setTimer(function()
+                triggerClientEvent(fpsdiagTester, "fpsdiag:phase", fpsdiagTester, "baseline", 2500)
+        end, 500, 1)
+end)

@@ -355,18 +355,31 @@ function cancelBindsEvent(key, press)
         end
 end
 
+local lastF1GateWarn = 0
 function MainMenuKey()
         -- original gate is character:id (wnash RP core, not restored yet);
         -- this server's account system sets SYNCED loggedin=1 on character
-        -- selection and 0 on quit — accept either so F1 works on both stacks
+        -- selection and 0 on quit — accept either so F1 works on both stacks.
+        -- [Fix #35] accept every shape the stack actually produces (string
+        -- "1", account:character:id) and REPORT the block instead of dying
+        -- silently - "F1 does nothing" was un-diagnosable from chat.
+        local loggedin = getElementData(localPlayer, "loggedin")
         if getElementData(localPlayer, "character:id")
-                or getElementData(localPlayer, "loggedin") == 1 then
+                or getElementData(localPlayer, "account:character:id")
+                or tonumber(loggedin) == 1 then
                 -- [Fix #33] a half-closed previous frame could leave state.state
                 -- stuck true with NO render handler running -> F1 then toggled
                 -- an invisible menu and looked dead. Trust the real draw state.
                 local reallyOpen = state.state
                         and isEventHandlerAdded("onClientRender", root, main_menu_draw)
                 showSideBar(not reallyOpen)
+        else
+                local now = getTickCount()
+                if now - lastF1GateWarn > 10000 then
+                        lastF1GateWarn = now
+                        outputChatBox("[F1] blocked until character select (loggedin="
+                                .. tostring(loggedin) .. ")", 255, 220, 120, false)
+                end
         end
 end
 bindKey("F1", "down", MainMenuKey)
@@ -1411,3 +1424,10 @@ addEventHandler("onClientClick", root, function(button, press)
                 pcall(function() eui:uiSetFocusedElement(UI.edit.report_target) end)
         end
 end)
+
+--------------------------------------------------------------------------------
+-- [Fix #35] load sentinel: if c_main.lua aborts at LOAD time (one bad line
+-- kills the whole file and F1 dies with NO trace), the ping below never
+-- fires and the server warns the player instead of leaving F1 dead silently.
+--------------------------------------------------------------------------------
+triggerServerEvent("mainmenu:clientLoaded", localPlayer)

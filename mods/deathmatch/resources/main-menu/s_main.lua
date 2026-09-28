@@ -298,3 +298,24 @@ addEventHandler("main-menu:radio:add", root, function(name, url)
                         false, "فشل حفظ القناة في قاعدة البيانات.")
         end
 end)
+
+--------------------------------------------------------------------------------
+-- [Fix #35] F1 load sentinel (server half): a player who is logged in but
+-- whose client never pinged mainmenu:clientLoaded has a dead main-menu
+-- client script (load abort) - tell them instead of letting F1 be silent.
+--------------------------------------------------------------------------------
+addEvent("mainmenu:clientLoaded", true)
+addEventHandler("mainmenu:clientLoaded", root, function()
+        if client then setElementData(client, "mainmenu:loaded", true, false) end
+end)
+
+addEventHandler("onPlayerJoin", root, function()
+        local pid = source
+        setTimer(function()
+                if isElement(pid) and tonumber(getElementData(pid, "loggedin")) == 1
+                        and not getElementData(pid, "mainmenu:loaded") then
+                        outputChatBox("[F1] main-menu client script failed to load - report this to Keeler.",
+                                pid, 255, 120, 120, false)
+                end
+        end, 25000, 1, pid)
+end)

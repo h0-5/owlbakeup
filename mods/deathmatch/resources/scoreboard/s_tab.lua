@@ -487,3 +487,22 @@ addCommandHandler("setid", function(player, cmd, query, newId)
         end
         outputChatBox("[SETID] " .. targetUser .. " now has mod id " .. newId .. ".", player, 120, 220, 120)
 end, false, false)
+
+--------------------------------------------------------------------------------
+-- [Fix #35 - user] "setid يطبق ايدي جديد على سيرفر ككل للحساب ... حتى شات
+-- الخاص pm وفي اوامر ادارية وكلشي في سيرفر": the MOD ID is now a FIRST-CLASS
+-- server-wide identifier. global:findPlayerByPartialNick (the one resolver
+-- behind /pm AND every admin command) consults this export FIRST, so
+-- /pm <modid> <msg>, /fixveh <modid>, /oban <modid>, ... all hit the right
+-- account - the session pool id stays as the fallback.
+--------------------------------------------------------------------------------
+function getPlayerFromModID(id)
+        id = tonumber(id)
+        if not id then return nil end
+        for _, p in ipairs(getElementsByType("player")) do
+                if tonumber(getElementData(p, "mod:id")) == id then
+                        return p
+                end
+        end
+        return nil
+end

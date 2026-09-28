@@ -534,6 +534,10 @@ function destroySearchEdit()
         searchUI = nil
         searchActive = false
         searchBuf = ""
+        -- [Fix #35] the search edit may die while it holds keyboard focus -
+        -- UIKit's blur never fires on destroy, so the MTA chat input would
+        -- stay disarmed ("can't type in chat after using the tab search")
+        toggleControl("chatbox", true)
 end
 
 function createSearchEdit()
@@ -761,6 +765,13 @@ local function drawBoard()
                         local cellX = BOARD.x + PAD_X
                         for _, col in ipairs(COLUMNS) do
                                 local cw = col.frac * CONTENT_W
+                                -- [Fix #35 - user] "مستطيلات لحول اسم الرمادية ذي حول كل
+                                -- معلومات مب بس اسم": the gray cell plate goes around
+                                -- EVERY column now (ID / badges / Name / Rank /
+                                -- Playtime / Ping), not just the name
+                                drawRoundRect(cellX + 2 * s, rowY + 2 * s,
+                                        cw - 5 * s, ROW_H - 7 * s,
+                                        tocolor(150, 156, 170, 26), true, 4 * s)
                                 local value, color, badges, noWhiten = cellData(col.name, p, c, pData.id)
                                 if badges then
                                         for b = 1, #badges do

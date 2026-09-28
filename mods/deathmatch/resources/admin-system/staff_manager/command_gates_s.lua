@@ -162,6 +162,7 @@ local COMMAND_RIGHTS = {
         ["charid"]       = "owner.checkid",
         ["playthenoise"] = "debug",
         ["devmode"]      = "debug",
+        ["fpsdiag"]      = "debug",
         ["seefar"]       = "admin.disappear",
         ["911"]          = "admin.ooc",
 }

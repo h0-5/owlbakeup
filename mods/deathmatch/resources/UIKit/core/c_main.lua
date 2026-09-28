@@ -597,6 +597,13 @@ end
 -- [Vortex fix #13] cross-resource keyboard focus: lets a host panel place
 -- focus on a ui-edit even when UIKit's own click pipeline is not alive
 -- (the raw-input fallback in staff_manager calls this on edit clicks).
+-- [Fix #35 - user] "في تاب البحث عبارة عن منظر لاتقدر تكتب ولا تحذف" (+ same
+-- for the checkid search): this helper set UI.FocusElement but never did
+-- what UIKit's own click path does (c_process 293/313/389/429) —
+-- toggleControl("chatbox", false). With the chat input still armed every
+-- typed key opened the MTA chat box and the edit never received a single
+-- character (and nothing could be deleted either). Disable it on edit focus;
+-- the onClientUIBlur handler re-arms it when focus leaves.
 function uiSetFocusedElement(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetFocusedElement' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   if UI.FocusElement and isElement(UI.FocusElement) and UI.FocusElement ~= arg0 then
@@ -606,5 +613,8 @@ function uiSetFocusedElement(arg0)
   UI.FocusElement = arg0
   UI.DB[arg0].state = "normal"
   triggerEvent("onClientUIFocus", arg0)
+  if getElementType(arg0) == "ui-edit" or getElementType(arg0) == "ui-memo" then
+    toggleControl("chatbox", false)
+  end
   return true
 end

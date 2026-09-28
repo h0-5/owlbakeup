@@ -474,6 +474,231 @@ end
 rawAddCommandHandler("staffver", staffVerCommand, false, false)
 
 -- ===========================================================================
+-- [Fix #41] FULL-SERVER COVERAGE — the map above was built in rounds and left
+-- whole admin families (vehicle-manager info/setters, shops, elevators, fuel,
+-- gates, roadblocks, speedcams, weather, reports, resource tools...) unmapped,
+-- and unmapped = allowed. The user's report: "the problem is with ALL server
+-- commands". The block below was generated from a full repo scan (1042
+-- distinct commands, scripts/scan_commands_fix41.py): EVERY command with
+-- admin power is now mapped to a right that exists in AllRights, so the
+-- staff panel can close it for any rank. Pure player/RP commands stay
+-- unmapped on purpose (chat, animations, phone, jobs, realism...).
+-- ===========================================================================
+
+local GATES_V4_EXTENSION = {
+        ------------------------------------------------ admin-system self ----
+        ["atp"] = "admin.goto", ["dtp"] = "admin.goto",
+        ["x"] = "admin.setpos", ["y"] = "admin.setpos", ["z"] = "admin.setpos",
+        ["setx"] = "admin.setpos", ["sety"] = "admin.setpos", ["setz"] = "admin.setpos",
+        ["setxy"] = "admin.setpos", ["setxz"] = "admin.setpos", ["setyz"] = "admin.setpos", ["setxyz"] = "admin.setpos",
+        ["fetchnews"] = "admin.getsettings",
+        ["showfeedbacks"] = "admin.check", ["staffs"] = "admin.check",
+        ["gunchart"] = "weapons.search", ["gunids"] = "weapons.search",
+        ["gunlist"] = "weapons.search", ["weaponchart"] = "weapons.search",
+        ["cleardebugscript"] = "debug",
+        ------------------------------------------------------ account ----
+        ["loginto"] = "admin.playas",
+        ["applications"] = "web.applications", ["apps"] = "web.applications",
+        ["changeaccountpassword"] = "accounts.changepass", ["setaccountpassword"] = "accounts.changepass",
+        ["fixmigration"] = "dev.fullstatus",
+        ["updateadminrules"] = "web.rules", ["updategmrules"] = "web.rules",
+        ["updatenews"] = "web.rules", ["updatepatchnotes"] = "web.rules", ["updaterules"] = "web.rules",
+        ------------------------------------------------------ weather ----
+        ["setfw"] = "admin.setweather", ["resetfw"] = "admin.setweather",
+        ["setsnowlevel"] = "admin.setrain",
+        ["sw"] = "admin.setweather", ["swb"] = "admin.setweather", ["swh"] = "admin.setweather",
+        ["swl"] = "admin.setweather", ["swr"] = "admin.setweather", ["swv"] = "admin.setweather",
+        ["sf"] = "admin.setweather", ["st"] = "admin.setweather", ["srl"] = "admin.setweather", ["shh"] = "admin.setweather",
+        ["setgametime"] = "admin.settime",
+        ------------------------------------------------- vehicle-manager ----
+        ["flip"] = "admin.flip", ["unflip"] = "admin.unflip",
+        ["nearbyvehicles"] = "admin.checkveh", ["nearbyvehs"] = "admin.checkveh",
+        ["veh"] = "admin.checkveh", ["vehicles"] = "admin.checkveh", ["vehs"] = "admin.checkveh", ["thiscar"] = "admin.checkveh",
+        ["reloadveh"] = "admin.restartres", ["reloadvehicle"] = "admin.restartres",
+        ["removeveh"] = "admin.destroyveh", ["removevehicle"] = "admin.destroyveh",
+        ["restoreveh"] = "vehicle.restore_destroyed", ["restorevehicle"] = "vehicle.restore_destroyed", ["oldcar"] = "vehicle.restore_destroyed",
+        ["respawnint"] = "vehicle.respawnallveh", ["respawnstop"] = "vehicle.respawnallveh",
+        ["sll"] = "editvehicle", ["sdt"] = "editvehicle", ["resetdt"] = "editvehicle", ["resetsll"] = "editvehicle",
+        ["sbp"] = "editvehicle", ["sdp"] = "editvehicle",
+        ["togplate"] = "editvehicle", ["togreg"] = "editvehicle", ["togvin"] = "editvehicle", ["spinout"] = "editvehicle",
+        ["gdt"] = "admin.checkveh", ["getdt"] = "admin.checkveh", ["getsdt"] = "admin.checkveh",
+        ["getsll"] = "admin.checkveh", ["gsll"] = "admin.checkveh",
+        ["getcolor"] = "admin.checkveh", ["getvehweight"] = "admin.checkveh",
+        ------------------------------------------------- vehicle-system ----
+        ["makecivveh"] = "makeveh",
+        ["apark"] = "vehicle.park", ["fpark"] = "vehicle.park", ["toggleautopark"] = "vehicle.park",
+        ["avehpos"] = "admin.pos", ["fvehpos"] = "admin.pos", ["vehpos"] = "admin.pos",
+        ["settraindirection"] = "editvehicle", ["settrainrailed"] = "editvehicle",
+        ["tempsell"] = "property.setowner",
+        --------------------------------------------------------- shops ----
+        ["makeshop"] = "shops.manager", ["delshop"] = "shops.manager", ["deleteshop"] = "shops.manager",
+        ["delnearbyshops"] = "shops.manager", ["delnearbynpcs"] = "shops.manager",
+        ["movenpc"] = "shops.manager", ["moveshop"] = "shops.manager",
+        ["reloadnpc"] = "shops.manager", ["reloadped"] = "shops.manager", ["reloadshop"] = "shops.manager",
+        ["removenpc"] = "shops.manager", ["removeped"] = "shops.manager", ["removeshop"] = "shops.manager",
+        ["renamenpc"] = "shops.manager", ["renameped"] = "shops.manager", ["renameshop"] = "shops.setname",
+        ["resetshopwage"] = "shops.manager", ["restorenpc"] = "shops.manager", ["restoreped"] = "shops.manager",
+        ["restoreshop"] = "shops.manager", ["saveshopconfigs"] = "shops.manager",
+        ["showallcustomshops"] = "shops.list", ["forceupdateshopwage"] = "shops.manager", ["checksupplies"] = "shops.manager",
+        ----------------------------------------------------- interiors ----
+        ["forcepickupspawn"] = "addint", ["movesafe"] = "addint",
+        ["nearbyinteriors"] = "admin.checkint", ["nearbyints"] = "admin.checkint",
+        ["setcamint"] = "addint", ["setfee"] = "setintprice",
+        ["debugme"] = "debug", ["stopfakerot"] = "debug", ["getloaded"] = "debug",
+        ---------------------------------------------------- elevators ----
+        ["adde"] = "elevator.addelev", ["adde2"] = "elevator.addelev",
+        ["addelevator"] = "elevator.addelev", ["addlift"] = "elevator.addelev",
+        ["dele"] = "elevator.delelev", ["delefromint"] = "elevator.delelev",
+        ["delelevator"] = "elevator.delelev", ["delelevatorsfrominterior"] = "elevator.delelev",
+        ["dellift"] = "elevator.delelev", ["delnearbye"] = "elevator.delelev", ["delnearbyelevators"] = "elevator.delelev",
+        ["fixnearbye"] = "elevator.addelev", ["fixnearbyelevators"] = "elevator.addelev",
+        ["togglee"] = "elevator.lock", ["toggleelevator"] = "elevator.lock", ["togglelift"] = "elevator.lock",
+        ["nearbye"] = "admin.checkint", ["nearbyelevators"] = "admin.checkint", ["nearbylifts"] = "admin.checkint",
+        -------------------------------------------------------- fuel ----
+        ["makefuel"] = "intlib.add", ["makefuelnpc"] = "intlib.add", ["makefuelped"] = "intlib.add",
+        ["setfuel"] = "intlib.add", ["setfuelpedlink"] = "intlib.add", ["fuelped"] = "intlib.add",
+        ["delfuel"] = "intlib.remove", ["deletefuel"] = "intlib.remove",
+        ["delfuelped"] = "intlib.remove", ["deletefuelped"] = "intlib.remove",
+        ["gotofuel"] = "admin.gotoplace", ["gotofuelnpc"] = "admin.gotoplace", ["gotofuelped"] = "admin.gotoplace",
+        ["nearbyfuels"] = "admin.checkint", ["nearbynpcs"] = "admin.checkint",
+        ------------------------------------------- gates / roadblocks / cams ----
+        ["newgate"] = "places.add", ["delgate"] = "places.remove",
+        ["gate"] = "places.access", ["gates"] = "places.access", ["nearbygates"] = "places.access",
+        ["gotogate"] = "admin.gotoplace",
+        ["delallrbs"] = "editor.removeRBS", ["delallroadblocks"] = "editor.removeRBS",
+        ["delrb"] = "editor.removeRBS", ["delroadblock"] = "editor.removeRBS",
+        ["rbs"] = "places.access", ["nearbyrb"] = "places.access", ["nearbyrbs"] = "places.access",
+        ["aremovespikes"] = "editor.removeRBS",
+        ["addspeedcam"] = "places.add", ["delspeedcam"] = "places.remove",
+        ["nearbyspeedcams"] = "places.access", ["setradius"] = "places.add", ["togglespeedcam"] = "places.access",
+        ----------------------------------------------------------- tow ----
+        ["addlane"] = "places.add", ["fixlanes"] = "places.add", ["resettowbackup"] = "places.add",
+        ["aunimpound"] = "vehicle.unhide", ["impoundbike"] = "vehicle.hide",
+        ["unimp"] = "vehicle.unhide", ["unimpound"] = "vehicle.unhide",
+        -------------------------------------------------------- payday ----
+        ["forcepayday"] = "admin.forcepayday", ["forcepaydayall"] = "admin.forcepayday",
+        --------------------------------------------------------- bank ----
+        ["addatm"] = "intlib.add", ["delatm"] = "intlib.remove",
+        ["nearbyatms"] = "bank.showaccounts", ["iamtester"] = "debug",
+        ------------------------------------------- icons / dancers / peds ----
+        ["addii"] = "blip.make", ["delii"] = "blip.remove", ["nearbyii"] = "places.access",
+        ["adddancer"] = "intlib.add", ["deldancer"] = "intlib.remove",
+        ["nearbydancers"] = "admin.checkint", ["updatedancers"] = "intlib.add",
+        ["makeped"] = "editor.editObjects", ["ped"] = "editor.editObjects",
+        ------------------------------------------------------- reports ----
+        ["acceptreport"] = "access.reports", ["ar"] = "access.reports", ["ara"] = "access.reports",
+        ["closeallreports"] = "access.reports", ["closereport"] = "access.reports",
+        ["cr"] = "access.reports", ["dr"] = "access.reports", ["dropreport"] = "access.reports",
+        ["endreport"] = "access.reports", ["er"] = "access.reports", ["falsereport"] = "access.reports",
+        ["fr"] = "access.reports", ["getsavedreports"] = "access.reports", ["reportinfo"] = "access.reports",
+        ["reportlazyfix"] = "access.reports", ["ri"] = "access.reports", ["setsavedreports"] = "access.reports",
+        ["showadminreports"] = "access.reports", ["togautocheck"] = "access.reports",
+        ["toggleautocheck"] = "access.reports", ["tr"] = "access.reports",
+        ["transferreport"] = "access.reports", ["ur"] = "access.reports", ["changereport"] = "access.reports",
+        ["reports"] = "access.reports", ["cp"] = "access.reports", ["cks"] = "access.reports",
+        ---------------------------------------------------- mdc / misc ----
+        ["giveziadadmin"] = "owner.giverole", ["refreshpilotlicenses"] = "givelicense",
+        ["dbrun"] = "debug",
+        ["debugres"] = "admin.restartres", ["debugresource"] = "admin.restartres",
+        ["countobjects"] = "dev.fullstatus", ["getresourcestate"] = "dev.fullstatus",
+        ["debugfakevideo"] = "debug", ["setdxtestmode"] = "debug", ["debugitemtexture"] = "debug",
+        ["debugmodeloutput"] = "debug",
+        ["rcs"] = "admin.resstate", ["rescheck"] = "admin.resstate",
+        ["resrestart"] = "admin.restartres", ["resstart"] = "admin.startres",
+        ["saveall"] = "dev.fullstatus",
+        ["ipb"] = "dev.fullstatus", ["perfbrowse"] = "dev.fullstatus",
+        ["electionvotes"] = "admin.check", ["astats"] = "admin.check",
+        ["setdrunklevel"] = "admin.check", ["resetdrunk"] = "admin.check",
+        ---------------------------------------------------- faction ----
+        ["setfaction"] = "setfaction", ["setbudget"] = "faction.setmoney",
+        ["settax"] = "faction.edit", ["setincometax"] = "faction.edit", ["setwelfare"] = "faction.edit",
+        ------------------------------------------ interior-manager / misc ----
+        ["checkint"] = "admin.checkint", ["checkinterior"] = "admin.checkint",
+        ["restock"] = "shops.manager",
+        ["setintfaction"] = "property.setowner", ["setinttomyfaction"] = "property.setowner",
+        ["createbusiness"] = "property.make",
+        ------------------------------------------------------ LSFD / PD ----
+        ["randomfire"] = "admin.makefire", ["cancelfire"] = "admin.removefire",
+        ------------------------------------------------- events / freecam ----
+        ["aaddclubpoi"] = "editor.editObjects", ["aclubrotstyle"] = "editor.editObjects",
+        ["adelclubrot"] = "editor.editObjects", ["aloadclubrot"] = "editor.editObjects",
+        ["astartclubrot"] = "editor.editObjects", ["astopclubrot"] = "editor.editObjects",
+        ["starttv"] = "admin.freecam", ["endtv"] = "admin.freecam",
+        ["movetv"] = "admin.freecam", ["watchers"] = "admin.freecam", ["tv"] = "admin.freecam",
+        ----------------------------------------------------- scoreboard ----
+        ["checkid"] = "owner.checkid", ["setid"] = "admin.check",
+        ----------------------------------------------------- clothing ----
+        ["gskin"] = "admin.skin", ["getskin"] = "admin.skin",
+        -------------------------------------------------- paynspray/toll ----
+        ["makepaynspray"] = "intlib.add", ["delpaynspray"] = "intlib.remove",
+        ["tolllock"] = "interior.lock",
+        -------------------------------------------------- chat staff tools ----
+        ["bigears"] = "admin.recon", ["bigearsf"] = "admin.recon", ["showdata"] = "admin.check",
+        ["issuebadge"] = "admin.badge",
+        ["superman"] = "admin.superman",
+        ["forcesetwalk"] = "admin.check", ["forcesetwalkingstyle"] = "admin.check", ["fsetwalkingstyle"] = "admin.check",
+        -------------------------------------------------- announcements ----
+        ["opm"] = "admin.ann", ["setserverip"] = "admin.setsettings",
+        ["guied"] = "editor.editObjects", ["hws"] = "editor.editObjects", ["redo"] = "editor.editObjects", ["undo"] = "editor.editObjects",
+        ["deltestinterior"] = "editor.editObjects", ["savetestinterior"] = "editor.editObjects",
+        ["processcustominterior"] = "editor.editObjects", ["testinterior"] = "editor.editObjects",
+        ["reposclock"] = "debug",
+        ------------------------------------------------- phone moderation ----
+        ["delad"] = "admin.ann", ["deletead"] = "admin.ann",
+        ["freezead"] = "admin.ann", ["unfreezead"] = "admin.ann",
+}
+
+for cmd, right in pairs(GATES_V4_EXTENSION) do
+        if COMMAND_RIGHTS[cmd] == nil then
+                COMMAND_RIGHTS[cmd] = right
+        end
+end
+GATES_VERSION = 4
+
+-- resources whose commands are admin tools by nature; /staffscan flags any
+-- command they register that the map above still does not cover
+local ADMIN_RESOURCES = {
+        ["admin-system"] = true, ["account"] = true, ["vehicle-manager"] = true,
+        ["vehicle-system"] = true, ["shop-system"] = true, ["interior-system"] = true,
+        ["interior-manager"] = true, ["elevator-system"] = true, ["fuel-system"] = true,
+        ["gate-manager"] = true, ["roadblock-system"] = true, ["camera-system"] = true,
+        ["weather-system"] = true, ["realtime-system"] = true, ["faction-system"] = true,
+        ["report-system"] = true, ["mdc-system"] = true, ["resource-keeper"] = true,
+        ["payday"] = true, ["bank"] = true, ["event-system"] = true, ["freecam-tv"] = true,
+        ["tow-system"] = true, ["paynspray-system"] = true, ["informationicon-system"] = true,
+        ["dancer-system"] = true, ["ped-system"] = true, ["toll"] = true, ["LSFD"] = true,
+        ["job-system-trucker"] = true, ["debug"] = true, ["dbrun"] = true, ["dev"] = true,
+}
+
+local function staffScanCommand(player)
+        outputChatBox("========== STAFF SCAN (gate v" .. GATES_VERSION .. ") ==========", player, 60, 200, 120)
+        local handlers = getCommandHandlers and getCommandHandlers() or {}
+        local total, suspects = 0, {}
+        for _, entry in ipairs(handlers) do
+                local cmd, res = tostring(entry[1] or entry.command or ""), tostring(entry[2] or entry.resource or "")
+                total = total + 1
+                if ADMIN_RESOURCES[res] and not COMMAND_RIGHTS[cmd:lower()] then
+                        table.insert(suspects, "/" .. cmd .. " (" .. res .. ")")
+                end
+        end
+        outputChatBox("registered commands: " .. total .. " | gated: " .. countMap(COMMAND_RIGHTS)
+                .. " | UNMAPPED admin-resource commands: " .. #suspects, player, 220, 220, 220)
+        if #suspects == 0 then
+                outputChatBox("full coverage - every admin-resource command is gated.", player, 80, 255, 120)
+        else
+                outputChatBox("suspects (need mapping):", player, 255, 170, 60)
+                for i = 1, math.min(#suspects, 40) do
+                        outputChatBox("  " .. suspects[i], player, 255, 170, 60)
+                end
+                if #suspects > 40 then
+                        outputChatBox("  ... and " .. (#suspects - 40) .. " more", player, 255, 170, 60)
+                end
+        end
+end
+rawAddCommandHandler("staffscan", staffScanCommand, false, false)
+
+
+-- ===========================================================================
 -- GLOBAL enforcement gate (Fix #25/#32/#34/#36). Fires before every typed
 -- command from ANY resource; cancelEvent() blocks it. pcall-wrapped: a gate
 -- error can never silently re-allow a closed command without a loud trace.

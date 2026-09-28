@@ -178,7 +178,7 @@ local function buildUI()
 	UI.image.Logo = eui:uiCreateImage((sx - 148) / 2, (sy - 150) / 2 - 148, 148, 148, ":main-menu/images/logo.png")
 	eui:uiSetVisible(UI.image.Logo, false)
 
-	UI.label.ModeScreen = eui:uiCreateLabel(sx * 0.6, 0, sx * 0.4, sy)
+	UI.label.ModeScreen = eui:uiCreateLabel(sx * 0.6, 0, sx * 0.4, sy, "")
 	eui:uiSetVisible(UI.label.ModeScreen, false)
 	UI.label.ModeMessage = eui:uiCreateLabel(0, 0, sx * 0.4, sy, "", tocolor(255, 255, 255, 255), "center", "center")
 	eui:uiSetFont(UI.label.ModeMessage, "default-large")

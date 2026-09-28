@@ -68,7 +68,24 @@ addEventHandler("accounts:login:request", getRootElement(),
 		--setElementPosition( getLocalPlayer(), -262, -1143, 24)
 		--setCameraMatrix(-262, -1143, 24, -97, -1167, 2)
 		setElementPosition( getLocalPlayer(), 1480, -1688, 13 )
-		setCameraMatrix (originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][3], originalStartCam[selectionScreenID][4], originalStartCam[selectionScreenID][5], originalStartCam[selectionScreenID][6])
+		-- [Fix #52] selectionScreenID was never assigned here: indexing nil aborted
+		-- this handler BEFORE triggerServerEvent("onJoin") below, so the server never
+		-- sent beginLogin and the login panel never opened. Resolve it (pcall: the
+		-- donators export may not be ready yet) with fallback 0, place the camera
+		-- pcalled so a bad spot can never block onJoin again. First coord was also
+		-- wrongly [2] instead of [1].
+		local okSid, sid = pcall(getSelectionScreenID)
+		selectionScreenID = (okSid and tonumber(sid)) or 0
+		if not originalStartCam[selectionScreenID] then
+			selectionScreenID = 0
+		end
+		local okCam = pcall(function()
+			local cam = originalStartCam[selectionScreenID]
+			setCameraMatrix(cam[1], cam[2], cam[3], cam[4], cam[5], cam[6])
+		end)
+		if not okCam then
+			setCameraMatrix(1309.4599609375, -2123.7509765625, 106.98361206055, 1309.53515625, -1818.5615234375, 76.211189270)
+		end
 		guiSetInputEnabled(true)
 		clearChat()
 		triggerServerEvent("onJoin", getLocalPlayer())

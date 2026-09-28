@@ -33,8 +33,13 @@ local s = sy / 1080
 local localPlayer = getLocalPlayer()
 local eui = exports.UIKit
 
-local REF_SX = select(1, eui:uiGetReferenceScreenSize()) or 1728
-local REF_SY = select(2, eui:uiGetReferenceScreenSize()) or 972
+local REF_SX, REF_SY = (function()
+        -- [Fix #52] top-level UIKit call died if UIKit had not started yet,
+        -- killing this whole script (selection screen never registered).
+        local ok, x, y = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if ok and tonumber(x) then return tonumber(x), tonumber(y) end
+        return 1728, 972
+end)()
 
 -- the four old-client lobby camera spots {x, y, z, rotation}
 local CAM_SPOTS = {

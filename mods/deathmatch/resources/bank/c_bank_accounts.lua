@@ -63,7 +63,11 @@ function bankUIKitReady()
 		local col = (i - 1) % 3
 		local row = math.floor((i - 1) / 3)
 		local btn = eui:uiCreateButton(20 + 42 * col, 120 + 42 * row, 40, 40, key, tocolor(10, 10, 10, 255), UI.window.Bank)
-		UI.isKey[btn] = true
+		-- [Fix #52] btn is nil when UIKit has not finished starting; indexing
+		-- nil killed the rest of the keypad build.
+		if btn then
+			UI.isKey[btn] = true
+		end
 	end
 
 	UI.button.Deposit = eui:uiCreateButton(170, 120, 260, 30, "Deposit", tocolor(10, 10, 10, 240), UI.window.Bank)

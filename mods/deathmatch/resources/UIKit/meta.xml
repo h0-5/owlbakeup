@@ -147,6 +147,7 @@
 	<export function="uiGetBrowser" type="client" />
 	<export function="uiGetColor" type="client" />
 	<export function="uiGetFont" type="client" />
+<export function="getUIFont" type="client" />
 	<export function="uiGetFontSize" type="client" />
 	<export function="uiGetParent" type="client" />
 	<export function="uiGetPosition" type="client" />

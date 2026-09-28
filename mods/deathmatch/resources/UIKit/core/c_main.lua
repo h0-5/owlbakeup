@@ -215,14 +215,19 @@ addEventHandler("onClientResourceStart", resourceRoot, function()
   triggerEvent("onClientUIKitReady", root)
 end)
 function UI.onElementDestroy()
-  if isUIElement(source, "combobox", "memo", "gridlist") then
-    if isUIElement(source, "memo", "gridlist") then
-    else
+  -- [Fix #52] the decompiled body indexed UI.DB[source].scrollbar twice: once
+  -- when .scrollbar was missing (old line 222) and again AFTER
+  -- UI.DB[source] had already been set to nil (old line 249) -- a guaranteed
+  -- error on every element destroy. Snapshot the record, guard every field,
+  -- and let the children loop below clean up child scrollbars.
+  local db = UI.DB[source]
+  if db and isUIElement(source, "combobox", "memo", "gridlist") then
+    local sb = db.scrollbar
+    if sb and type(sb.element) ~= "table" and isElement(sb.element) then
+      destroyElement(sb.element)
     end
-    if type(UI.DB[source].scrollbar.element) ~= "table" or not UI.DB[source].scrollbar.element then
-    end
-  elseif isUIElement(source, "browser") and isElement(UI.DB[source].data.browser) then
-    destroyElement(UI.DB[source].data.browser)
+  elseif db and isUIElement(source, "browser") and db.data and isElement(db.data.browser) then
+    destroyElement(db.data.browser)
   end
   UI.priority[source] = nil
   UI.DB[source] = nil
@@ -245,21 +250,6 @@ function UI.onElementDestroy()
   for forvar4, forvar5 in ipairs(getElementChildren(source)) do
     destroyElement(forvar5)
   end
-  if {
-    UI.DB[source].scrollbar.element
-  } then
-    for forvar4, forvar5 in pairs({
-      UI.DB[source].scrollbar.element
-    }) do
-      if isUIElement({
-        UI.DB[source].scrollbar.element
-      }, "scrollbar") then
-        destroyElement({
-          UI.DB[source].scrollbar.element
-        })
-      end
-    end
-  end
   for forvar4, forvar5 in ipairs(UI.Elements) do
     if forvar5 == source then
       table.remove(UI.Elements, forvar4)
@@ -271,6 +261,7 @@ function UI.onElementDestroy()
   end
   UI.isDraw[source] = nil
 end
+
 addEventHandler("onClientElementDestroy", resourceRoot, UI.onElementDestroy)
 -- [Vortex fix] an element may only draw if it AND every ancestor above it are
 -- visible. Without this chain check, hiding the top-level window left its

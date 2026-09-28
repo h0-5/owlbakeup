@@ -62,7 +62,9 @@
 	<export function="isPlayerMappingTeamMember" type="server"/>
 	<export function="isPlayerMappingTeamMember" type="client"/>
 
-	<export function="isPlayerStaff" type="shared"/>
+	<export function="isPlayerStaff" type="shared"/>
+<export function="isPlayerFMT" type="server"/>
+<export function="isPlayerFMT" type="client"/>
 	<export function="getSupporterNumber" type="shared"/>
 	<export function="getAuxiliaryStaffNumbers" type="shared"/>
 	<export function="getAdminStaffNumbers" type="shared"/>

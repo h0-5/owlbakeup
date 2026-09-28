@@ -43,8 +43,13 @@
 local localPlayer = getLocalPlayer()
 local eui = exports.UIKit
 
-local REF_SX = select(1, eui:uiGetReferenceScreenSize()) or 1728
-local REF_SY = select(2, eui:uiGetReferenceScreenSize()) or 972
+local REF_SX, REF_SY = (function()
+        -- [Fix #52] top-level UIKit call died if UIKit had not started yet,
+        -- killing this whole script (F3 handler never registered).
+        local ok, x, y = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if ok and tonumber(x) then return tonumber(x), tonumber(y) end
+        return 1728, 972
+end)()
 
 local WIN_W, WIN_H = 955, 625
 local PANEL_X, PANEL_W = 150 + 10, 955 - 150 - 15 -- 160 / 790

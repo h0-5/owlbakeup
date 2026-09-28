@@ -303,6 +303,11 @@ local visibleItems = {}        -- resolved strip list
 function isHudShowing() return hudSettings.showhud end
 function getHudSetting(key) return hudSettings[key] or false end
 
+-- [Fix #52] meta.xml exported isActive but no function ever existed, so every
+-- caller (chat icon, notifications, admin overlay, report box) raised
+-- "failed to call 'hud:isActive'" every frame.
+function isActive() return hudSettings.showhud end
+
 function setHudSetting(key, value)
         for _, item in ipairs(hudItems) do
                 if item[1] == key then

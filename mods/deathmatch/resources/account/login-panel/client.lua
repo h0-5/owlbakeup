@@ -354,6 +354,8 @@ addEventHandler("onClientUIClick", root, function()
 		showWarning(nil, "")
 	elseif source == UI.label.forgot then
 		outputChatBox("Password reset: contact the staff on Discord with your account name + email.", 255, 194, 14)
+	elseif source == UI.edit.Username or source == UI.edit.Password or source == UI.edit.Email then
+		cancelAutoLogin() -- the player wants to type, do not submit for them
 	end
 end)
 

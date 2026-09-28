@@ -768,7 +768,7 @@ local function updateRoleImpl(sender, levelID, rights, color)
         for _ in pairs(rights) do rightsCount = rightsCount + 1 end
         mysql:query_free("UPDATE staff_roles SET Rights='"
                 .. rightsToJSON(rights) .. "', Color='"
-                .. mysql:escape_string(toJSON(color)) .. "' WHERE ID=" .. levelID)
+                .. mysql:escape_string(toJSON(color[1]) .. "," .. toJSON(color[2]) .. "," .. toJSON(color[3])) .. "' WHERE ID=" .. levelID)
         addChangelog("Rank Edited", row.LevelName, "-",
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))
         -- [Fix #30] LOUD proof the backend fired: what was saved + that

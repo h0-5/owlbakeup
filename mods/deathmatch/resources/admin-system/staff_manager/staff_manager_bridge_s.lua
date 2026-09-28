@@ -148,6 +148,23 @@ end
 -- UI consumers (the scoreboard tab) must take rank colors from the STAFF
 -- SYSTEM ("ياخذ لون الرتبة من نظام الرتب ستاف سستم") - never from their own
 -- hardcoded ladders. Returns { [LevelName] = {r, g, b} }.
+local function decodeColor(raw)
+        local c = fromJSON(raw or "") or { 255, 255, 255, 255 }
+        if type(c) ~= "table" then
+                return { 255, 255, 255 }
+        end
+        -- toJSON({r,g,b,a}) produces a nested array "[ [ r, g, b, a ] ]";
+        -- unwrap one level so the numbers are where the callers expect them.
+        if type(c[1]) == "table" then
+                c = c[1]
+        end
+        return {
+                tonumber(c[1]) or 255,
+                tonumber(c[2]) or 255,
+                tonumber(c[3]) or 255,
+        }
+end
+
 function getAllRankColors()
         local out = {}
         local q = mysql:query("SELECT LevelName, Color FROM staff_roles")
@@ -155,12 +172,7 @@ function getAllRankColors()
                 while true do
                         local row = mysql:fetch_assoc(q)
                         if not row then break end
-                        local c = fromJSON(row.Color or "") or { 255, 255, 255, 255 }
-                        out[tostring(row.LevelName)] = {
-                                tonumber(c[1]) or 255,
-                                tonumber(c[2]) or 255,
-                                tonumber(c[3]) or 255,
-                        }
+                        out[tostring(row.LevelName)] = decodeColor(row.Color)
                 end
                 mysql:free_result(q)
         end

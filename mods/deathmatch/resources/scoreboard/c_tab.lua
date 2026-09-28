@@ -401,14 +401,18 @@ end
 local function refreshPlayer(p)
         if not isElement(p) then return end
         local rank = getRank(p)
+        local offDuty = isStaffOffDuty(p)
         cache[p] = {
                 rank = rank,
                 color = getRankColor(p, rank),
                 rankColor = getRankColorRaw(p, rank),
                 badges = getBadges(p),
+                -- [Fix #53 - user] "لما اداري يخرج من دوتي يرجع لونه للون بلاير":
+                -- the off-duty row must read EXACTLY like a plain player -
+                -- the old 0.55 dim turned the "white" into grey
+                offDuty = offDuty,
                 dim = (tonumber(getElementData(p, "loggedin")) ~= 1) and 0.42
-                        or (getElementData(p, "afk") == true and 0.62
-                        or (isStaffOffDuty(p) and 0.55 or 1)),
+                        or (getElementData(p, "afk") == true and 0.62 or 1),
         }
 end
 
@@ -590,7 +594,11 @@ local function cellData(colName, p, c, id)
         -- (the row cache invalidates on the watched element-data keys the
         -- moment anything flips). Rank-colored rows do not whiten on hover;
         -- plain rows keep the old hover whitening.
-        local colColor = c.rankColor or c.color
+        -- [Fix #53 - user] "لما اداري يخرج من دوتي يرجع لونه للون بلاير اي ابيض
+        -- بس يبقى اسم رتبته واضح": an OFF-DUTY staff row falls back to the
+        -- plain PLAYER color on every column - ONLY the Rank cell keeps the
+        -- rank color. The Fix #47 full-row tint stays for on-duty staff.
+        local colColor = c.offDuty and c.color or (c.rankColor or c.color)
         local isRankColored = (colColor ~= PLAIN_COLOR)
         if colName == "ID" then
                 return tostring(id), colColor, nil, isRankColored
@@ -766,7 +774,7 @@ local function drawBoard()
                                         accent(barAlpha), true, 1.5 * s)
                         end
 
-                        local c = cache[p] or { color = tocolor(235, 240, 246, 255), rankColor = tocolor(235, 240, 246, 255), badges = {}, rank = "-", dim = 1 }
+                        local c = cache[p] or { color = tocolor(235, 240, 246, 255), rankColor = tocolor(235, 240, 246, 255), badges = {}, rank = "-", dim = 1, offDuty = false }
                         local textShift = rowHover * 4 * s
                         local cellX = BOARD.x + PAD_X
                         for _, col in ipairs(COLUMNS) do
@@ -907,6 +915,9 @@ end
      reach the otherwise file-local rank/color helpers ]]
 function getScoreboardTestTable()
         return {
+                cellData = cellData,
+                refreshPlayer = refreshPlayer,
+                getRowCache = function() return cache end,
                 getRank = getRank,
                 getRankColor = getRankColor,
                 getBadges = getBadges,

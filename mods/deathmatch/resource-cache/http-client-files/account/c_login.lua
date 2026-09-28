@@ -68,7 +68,24 @@ addEventHandler("accounts:login:request", getRootElement(),
 		--setElementPosition( getLocalPlayer(), -262, -1143, 24)
 		--setCameraMatrix(-262, -1143, 24, -97, -1167, 2)
 		setElementPosition( getLocalPlayer(), 1480, -1688, 13 )
-		setCameraMatrix (originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][3], originalStartCam[selectionScreenID][4], originalStartCam[selectionScreenID][5], originalStartCam[selectionScreenID][6])
+		-- [Fix #52] selectionScreenID was never assigned here: indexing nil aborted
+		-- this handler BEFORE triggerServerEvent("onJoin") below, so the server never
+		-- sent beginLogin and the login panel never opened. Resolve it (pcall: the
+		-- donators export may not be ready yet) with fallback 0, place the camera
+		-- pcalled so a bad spot can never block onJoin again. First coord was also
+		-- wrongly [2] instead of [1].
+		local okSid, sid = pcall(getSelectionScreenID)
+		selectionScreenID = (okSid and tonumber(sid)) or 0
+		if not originalStartCam[selectionScreenID] then
+			selectionScreenID = 0
+		end
+		local okCam = pcall(function()
+			local cam = originalStartCam[selectionScreenID]
+			setCameraMatrix(cam[1], cam[2], cam[3], cam[4], cam[5], cam[6])
+		end)
+		if not okCam then
+			setCameraMatrix(1309.4599609375, -2123.7509765625, 106.98361206055, 1309.53515625, -1818.5615234375, 76.211189270)
+		end
 		guiSetInputEnabled(true)
 		clearChat()
 		triggerServerEvent("onJoin", getLocalPlayer())
@@ -79,7 +96,9 @@ addEventHandler("accounts:login:request", getRootElement(),
 --[[ LoginScreen_openLoginScreen( ) - Open the login screen ]]--
 local wLogin, lUsername, tUsername, lPassword, tPassword, chkRememberLogin, bLogin, bRegister--[[, updateTimer]] = nil
 function LoginScreen_openLoginScreen(title)
-	open_log_reg_pannel()
+	if type(open_log_reg_pannel) == "function" then
+		open_log_reg_pannel()
+	end
 	--[[
 	guiSetInputEnabled(true)
 	showCursor(true)
@@ -250,11 +269,14 @@ addEventHandler("accounts:login:attempt", getRootElement(),
 
 			local characterList = getElementData(getLocalPlayer(), "account:characters")
 
-			if #characterList == 0 then
+			-- [Fix #46] a nil list (reloadCharacters failed / anticheat down)
+			-- must not crash the transition into character selection
+			if not characterList or #characterList == 0 then
 				newCharacter_init()
 			else
 				Characters_showSelection()
-				fadeCamera ( false, 0, 0,0,0 )
+-- [Fix #40] stray black-out fade removed (the lobby fades itself in)
+
 			end
 		elseif (statusCode > 0) and (statusCode < 5) then
 			LoginScreen_showWarningMessage( additionalData )

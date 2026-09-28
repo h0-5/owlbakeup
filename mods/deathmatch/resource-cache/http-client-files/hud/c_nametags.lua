@@ -1,567 +1,417 @@
-local localPlayer = getLocalPlayer()
-local badges = {}
-masks = {}
-local font =  "default-bold" 
-local newfont = dxCreateFont ( "old_school_united_stencil.ttf" , 13)
-local moneyfont = dxCreateFont ( "nametags0.ttf" , 12)
-local moneyFloat = {}
-local maxIconsPerLine = 6
-function moneyUpdateFX(state, amount)
-	if amount and tonumber(amount) and tonumber(amount) > 0  then
-		if state then
-			triggerEvent("shop:playCollectMoneySound", localPlayer)
-			moneyFloat["mR"] = 20
-			moneyFloat["mG"] = 255
-			moneyFloat["mB"] = 20
-			moneyFloat["mAlpha"] = 255
-			moneyFloat["direction"] = 1
-			moneyFloat["moneyYOffset"] = 60
-			moneyFloat["text"] = "+$"..exports.global:formatMoney(amount)
-		else
-			triggerEvent("shop:playPayWageSound", localPlayer)
-			moneyFloat["mR"] = 255
-			moneyFloat["mG"] = 20
-			moneyFloat["mB"] = 20
-			moneyFloat["mAlpha"] = 255
-			moneyFloat["direction"] = -1
-			moneyFloat["moneyYOffset"] = 180
-			moneyFloat["text"] = "-$"..exports.global:formatMoney(amount)
-		end
-		local money = getElementData(localPlayer, "money") or 0
-		local bankmoney = getElementData(localPlayer, "bankmoney") or 0
-		local info = {{"Personal finance update"},{""}}
-		table.insert(info, {"   - Money: $"..exports.global:formatMoney(money).." ("..moneyFloat["text"]..")"})
-		table.insert(info, {"   - Bank money: $"..exports.global:formatMoney(bankmoney)})
-		triggerEvent("hudOverlay:drawOverlayTopRight", localPlayer, info ) 
-	end
-end
-addEvent("moneyUpdateFX", true)
-addEventHandler("moneyUpdateFX", root, moneyUpdateFX)
-
-function startRes()
-	for key, value in ipairs(getElementsByType("player")) do
-		setPlayerNametagShowing(value, false)
-	end
-end
-addEventHandler("onClientResourceStart", getResourceRootElement(), startRes)
-
-function initStuff(res)
-	if (res == getThisResource() and getResourceFromName("item-system")) or getResourceName(res) == "item-system" then
-		for key, value in pairs(exports['item-system']:getBadges()) do
-			badges[value[1]] = { value[4][1], value[4][2], value[4][3], value[5] }
-		end
-		
-		masks = exports['item-system']:getMasks()
-	end
-end
-addEventHandler("onClientResourceStart", getRootElement(), initStuff)
-
-local playerhp = { }
-local lasthp = { }
-
-local playerarmor = { }
-local lastarmor = { }
-
-function playerQuit()
-	if (getElementType(source)=="player") then
-		playerhp[source] = nil
-		lasthp[source] = nil
-		playerarmor[source] = nil
-		lastarmor[source] = nil
-	end
-end
-addEventHandler("onClientElementStreamOut", getRootElement(), playerQuit)
-addEventHandler("onClientPlayerQuit", getRootElement(), playerQuit)
-
-
-function setNametagOnJoin()
-	setPlayerNametagShowing(source, false)
-end
-addEventHandler("onClientPlayerJoin", getRootElement(), setNametagOnJoin)
-
-function streamIn()
-	if (getElementType(source)=="player") then
-		playerhp[source] = getElementHealth(source)
-		lasthp[source] = playerhp[source]
-		
-		playerarmor[source] = getPedArmor(source)
-		lastarmor[source] = playerarmor[source]
-	end
-end
-addEventHandler("onClientElementStreamIn", getRootElement(), streamIn)
-
-function isPlayerMoving(player)
-	return (not isPedInVehicle(player) and (getPedControlState(player, "forwards") or getPedControlState(player, "backwards") or getPedControlState(player, "left") or getPedControlState(player, "right") or getPedControlState(player, "accelerate") or getPedControlState(player, "brake_reverse") or getPedControlState(player, "enter_exit") or getPedControlState(player, "enter_passenger")))
-end
-
-local lastrot = nil
-
-function aimsSniper()
-	return getPedControlState(localPlayer, "aim_weapon") and getPedWeapon(localPlayer) == 34
-end
-
-function aimsAt(player)
-	return getPedTarget(localPlayer) == player and aimsSniper()
-end
-
-function getBadgeColor(player)
-	-- if (getElementType(player) == "ped") then
-		-- if (getElementData(player, "rpp.npc.type") == "astro.pay") then
-			-- return 223,215,27
-		-- end
-	-- else
-		for k, v in pairs(badges) do
-			if getElementData(player, k) then
-				return unpack(badges[k])
-			end
-		end
-	--end
-end
-
-function getPlayerIcons(name, player, forTopHUD, distance)
-	distance = distance or 0
-	local tinted, masked = false, false
-	local icons = {}
-
-	if not forTopHUD then
-		--ADMIN / GM TAGS
-		if getElementData(player,"hiddenadmin") ~= 1 then
-			if exports.integration:isPlayerScripter(player) then
-				if exports.integration:isPlayerScripter(player) and getElementData(player,"duty_dev") == 1 then
-					table.insert(icons, "scripter")
-				else
-					if getElementData(player,"admin_level") > 3 and exports.integration:isPlayerLeadAdmin(player) and getElementData(player,"duty_admin") == 1 then
-						table.insert(icons, "sm")
-					elseif exports.integration:isPlayerTrialAdmin(player) and getElementData(player,"duty_admin") == 1 then
-						if getElementData(player,"admin_level") > 0 then
-							table.insert(icons, "admin")
-						end
-					end
-				end
-			else
-				if getElementData(player,"admin_level") > 3 and exports.integration:isPlayerLeadAdmin(player) and getElementData(player,"duty_admin") == 1 then
-						table.insert(icons, "sm")
-				elseif exports.integration:isPlayerTrialAdmin(player) and getElementData(player,"duty_admin") == 1 then
-					if getElementData(player,"admin_level") > 0 then
-						table.insert(icons, "admin")
-					end
-				end
-			end
-			if exports.integration:isPlayerSupporter(player) and getElementData(player,"duty_supporter") == 1 then
-				table.insert(icons, 'gm')
-			end
-		end
-
-		-- DONATOR NAMETAGS
-		if getElementData(player, "donation:nametag") and getElementData(player, "nametag_on") then
-			table.insert(icons, 'donor')
-		elseif getElementData(player, "donation:lifeTimeNameTag") and getElementData(player, "lifeTimeNameTag_on") then
-			table.insert(icons, 'donor')
-		end
-		if getElementModel(player) == 75 then
-			table.insert(icons, 'k9')
-		end
-	end
-
-
-	for key, value in pairs(masks) do
-		if getElementData(player, value[1]) then
-			table.insert(icons, value[1])
-			if value[4] then
-				masked = true
-			end
-		end
-	end
-
-	local vehicle = getPedOccupiedVehicle(player)
-	local windowsDown = vehicle and getElementData(vehicle, "vehicle:windowstat") == 1
-
-	if vehicle and not windowsDown and vehicle ~= getPedOccupiedVehicle(localPlayer) and getElementData(vehicle, "tinted") then
-		local seat0 = getVehicleOccupant(vehicle, 0) == player
-		local seat1 = getVehicleOccupant(vehicle, 1) == player
-		--outputDebugString(toJSON(seat0, seat1))
-		if seat0 or seat1 then
-			if distance > 1.4 then
-				if (getElementModel(player) == 75) then
-					name = "Unknown Animal (Tint)"
-				else
-					name = "Unknown Person (Tint)"
-				end
-				tinted = true
-			end
-		else
-			if (getElementModel(player) == 75) then
-				name = "Unknown Animal (Tint)"
-			else
-				name = "Unknown Person (Tint)"
-			end
-			tinted = true
-		end
-	end
-
-	if not tinted then
-		-- pretty damn hard to see thru tint
-		if getElementData(player,"seatbelt") and getPedOccupiedVehicle(player) then
-			table.insert(icons, 'seatbelt')
-		end
-
-
-		if getElementData(player,"smoking") == true then
-			table.insert(icons, 'cigarette')
-		end
-
-		if masked then
-			name = "Unknown Person"
-		end
-		for k, v in pairs(badges) do
-			local title = getElementData(player, k)
-			if title then
-				if v[4] == 122 or v[4] == 123 or v[4] == 124 or v[4] == 125 or v[4] == 135 or v[4] == 136 or v[4] == 158 or v[4] == 168 then
-					table.insert(icons, 'bandana')
-					name = "Unknown Person (Bandana)"
-					badge = true
-				else
-					table.insert(icons, "badge" .. tostring(v[4] or 1))
-					name = title .. "\n" .. name
-					badge = true
-				end
-			end
-		end
-
-		if tonumber(getElementData(player, 'cellphoneGUIStateSynced') or 0) > 0 then
-			table.insert(icons, 'phone')
-		end
-	end
-
-	if not tinted then
-		if not forTopHUD then
-			local health = getElementHealth( player )
-			local tick = math.floor(getTickCount () / 1000) % 2
-			if health <= 10 and tick == 0 then
-				table.insert(icons, 'bleeding')
-			elseif (health <= 30) then
-				table.insert(icons, 'lowhp')
-			end
-
-			if getElementData(player, "restrain") == 1 then
-				table.insert(icons, "handcuffs")
-			end
-		end
-	end
-		
-	if not forTopHUD then
-		if windowsDown then
-			table.insert(icons, 'window2')
-		end
-	end
-
-	return name, icons, tinted
-end
-
-function renderNametags()
-	if (getElementData(localPlayer, "graphic_nametags") ~= "0") and not isPlayerMapVisible() and isActive() then
-		local players = { }
-		local distances = { }
-		--local lx, ly, lz = getCameraMatrix()
-		local lx, ly, lz = getElementPosition(localPlayer)
-		local dim = getElementDimension(localPlayer)
-		local isNewtyle = (getElementData(localPlayer, "settings_hud_style") ~= "0") 
-		if isNewtyle then
-			font = newfont
-		else
-			font = "default-bold"
-		end
-		
-		for key, player in ipairs(getElementsByType("player")) do
-			if (isElement(player)) and getElementDimension(player) == dim then
-				local logged = getElementData(player, "account:loggedin")
-				
-				if (logged == true) then
-					
-					local rx, ry, rz = getElementPosition(player)
-					local distance = getDistanceBetweenPoints3D(lx, ly, lz, rx, ry, rz)
-					local limitdistance = 20
-					local reconx = getElementData(localPlayer, "reconx") and exports.integration:isPlayerTrialAdmin(localPlayer)
-					
-					if isElementOnScreen(player) and (player~=localPlayer or isNewtyle) then
-						if (aimsAt(player) or distance<limitdistance or reconx) then
-							if not getElementData(player, "reconx") and not getElementData(player, "freecam:state") and not (getElementAlpha(player) < 255) then
-								--local lx, ly, lz = getPedBonePosition(localPlayer, 7)
-								local lx, ly, lz = getCameraMatrix()
-								local vehicle = getPedOccupiedVehicle(player) or nil
-								local collision, cx, cy, cz, element = processLineOfSight(lx, ly, lz, rx, ry, rz+1, true, true, true, true, false, false, true, false, vehicle)
-
-								if not (collision) or aimsSniper() or (reconx) then
-									local x, y, z = getElementPosition(player)
-									
-									if not (isPedDucked(player)) then
-										z = z + 1
-									else
-										z = z + 0.5
-									end
-									
-									if (getElementModel(player) == 75) then
-										z = z - 0.6
-									end
-									
-									local sx, sy = getScreenFromWorldPosition(x, y, z+0.30, 100, false)
-									local oldsy = nil
-									local badge = false
-									local tinted = false
-									-- HP
-									
-									local name = getElementData(player, "fakename") or getPlayerName(player):gsub("_", " ")
-
-									if (sx) and (sy) then
-										distance = distance / 5
-										
-										if (reconx or aimsAt(player)) then distance = 1
-										elseif (distance<1) then distance = 1
-										elseif (distance>2) then distance = 2 end
-										
-										--DRAW BG
-										--dxDrawRectangle(sx-offset-5, sy, 95 / distance, 20 / distance, tocolor(0, 0, 0, 100), false)
-										oldsy = sy
-
-										local picxsize = 64 / 1 --/distance
-										local picysize = 64 / 1 --/distance
-										local xpos, ypos = 0, 45
-
-										name, icons, tinted = getPlayerIcons(name, player, false, distance)
-										local expectedIcons = math.min(#icons, maxIconsPerLine)
-										local iconsThisLine = 0
-										local offset = 16 * expectedIcons
-										for k, v in ipairs(icons) do
-											dxDrawImage(sx-offset+xpos,oldsy+ypos,picxsize,picysize,"images/hud/" .. v .. ".png")
-
-											iconsThisLine = iconsThisLine + 1
-											if iconsThisLine == expectedIcons then
-												expectedIcons = math.min(#icons - k, maxIconsPerLine)
-												offset = 16 * expectedIcons
-												iconsThisLine = 0
-												xpos = 0
-												ypos = ypos + 32
-											else
-												xpos = xpos + 32
-											end
-										end
-										
-
-
-
-										if (distance<=2) then
-											sy = math.ceil( sy + ( 2 - distance ) * 20 )
-										end
-										sy = sy + 10
-										
-										
-										if (sx) and (sy) then
-
-											
-											if (6>5) then
-												local offset = 45 / distance
-											end
-										end
-																			
-										if (distance<=2) then
-											sy = math.ceil( sy - ( 2 - distance ) * 40 )
-										end
-										sy = sy - 20
-											
-										if (sx) and (sy) and oldsy then
-											if (distance < 1) then distance = 1 end
-											if (distance > 2) then distance = 2 end
-											local offset = 75 / distance
-											local scale = 1 --/ distance
-											local r, g, b = getBadgeColor(player)
-											if not r or tinted then
-												r, g, b = getPlayerNametagColor(player)
-											end
-											local id = getElementData(player, "playerid")
-											
-											if badge then
-												sy = sy - dxGetFontHeight(scale, font) * scale + 2.5
-											end
-											
-											if not isNewtyle then
-												name = name.." ("..id..")"
-											else
-												if getKeyState("lctrl") or getKeyState("rctrl") then
-													name = id
-												end
-											end
-																			
-											dxDrawText(name, sx-offset+2, sy+2, (sx-offset)+130 / distance, sy+120 / distance, tocolor(0, 0, 0, 255), scale, font, "center", "center", false, false, false, false, false)
-											dxDrawText(name, sx-offset, sy, (sx-offset)+130 / distance, sy+120 / distance, tocolor(r, g, b, 255), scale, font, "center", "center", false, false, false, false, false)
-											
-											
-											if moneyFloat and moneyFloat["mAlpha"] and moneyFloat["mAlpha"] > 1 and player == localPlayer then
-												if moneyFloat["mAlpha"] > 0 then
-													dxDrawText(moneyFloat["text"], sx-offset, sy+moneyFloat["moneyYOffset"], (sx-offset)+130 / distance, sy+120 / distance, tocolor(moneyFloat["mR"], moneyFloat["mG"], moneyFloat["mB"], moneyFloat["mAlpha"]), scale, moneyFont, "center", "center", false, false, false, false, false)
-													moneyFloat["moneyYOffset"] = moneyFloat["moneyYOffset"] + moneyFloat["direction"]
-													moneyFloat["mAlpha"] = moneyFloat["mAlpha"] - 2
-												end
-											end
-										end
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-		
-		for key, player in ipairs(getElementsByType("ped")) do
-			if (isElement(player) and  (player~=localPlayer) and (isElementOnScreen(player)))then
-				
-				if (getElementData(player,"talk") == 1) or (getElementData(player, "nametag")) then
-					local lx, ly, lz = getElementPosition(localPlayer)
-					local rx, ry, rz = getElementPosition(player)
-					local distance = getDistanceBetweenPoints3D(lx, ly, lz, rx, ry, rz)
-					local limitdistance = 8
-					local reconx = getElementData(localPlayer, "reconx")
-					
-					-- smoothing
-					playerhp[player] = getElementHealth(player)
-					
-					if (lasthp[player] == nil) then
-						lasthp[player] = playerhp[player]
-					end
-					
-					playerarmor[player] = getPedArmor(player)
-					
-					if (lastarmor[player] == nil) then
-						lastarmor[player] = playerarmor[player]
-					end
-				
-					if (aimsAt(player) or distance<limitdistance or reconx) then
-						if not getElementData(player, "reconx") and not getElementData(player, "freecam:state") then
-							local lx, ly, lz = getCameraMatrix()
-							local vehicle = getPedOccupiedVehicle(player) or nil
-							local collision, cx, cy, cz, element = processLineOfSight(lx, ly, lz, rx, ry, rz+1, true, true, true, true, false, false, true, false, vehicle)
-								if not (collision) or aimsSniper() or (reconx) then
-								local x, y, z = getElementPosition(player)
-								
-								if not (isPedDucked(player)) then
-									z = z + 1
-								else
-									z = z + 0.5
-								end
-								
-								local sx, sy = getScreenFromWorldPosition(x, y, z+0.1, 100, false)
-								local oldsy = nil
-								-- HP
-								if (sx) and (sy) then
-																		
-									if (1>0) then
-										distance = distance / 5
-										
-										if (reconx or aimsAt(player)) then distance = 1
-										elseif (distance<1) then distance = 1
-										elseif (distance>2) then distance = 2 end
-										
-										local offset = 45 / distance
-
-										oldsy = sy 
-									end
-								end
-								
-
-								if (sx) and (sy) then
-									if (distance<=2) then
-										sy = math.ceil( sy + ( 2 - distance ) * 20 )
-									end
-									sy = sy + 10
-									
-									
-									if (sx) and (sy) then
-										
-										if (4>5) then
-											local offset = 45 / distance
-											
-											-- DRAW BG
-											dxDrawRectangle(sx-offset-5, sy, 95 / distance, 20 / distance, tocolor(0, 0, 0, 100), false)
-											
-											-- DRAW HEALTH
-											local width = 85
-											local armorsize = (width / 100) * armor
-											local barsize = (width / 100) * (100-armor)
-											
-											
-											if (distance<1.2) then
-												dxDrawRectangle(sx-offset, sy+5, armorsize/distance, 10 / distance, tocolor(197, 197, 197, 130), false)
-												dxDrawRectangle((sx-offset)+(armorsize/distance), sy+5, barsize/distance, 10 / distance, tocolor(162, 162, 162, 100), false)
-											else
-												dxDrawRectangle(sx-offset, sy+5, armorsize/distance-5, 10 / distance-3, tocolor(197, 197, 197, 130), false)
-												dxDrawRectangle((sx-offset)+(armorsize/distance-5), sy+5, barsize/distance-2, 10 / distance-3, tocolor(162, 162, 162, 100), false)
-											end
-										end
-									end
-									
-									if (distance<=2) then
-										sy = math.ceil( sy - ( 2 - distance ) * 40 )
-									end
-									sy = sy - 20
-										
-									if (sx) and (sy) then
-										if (distance < 1) then distance = 1 end
-										if (distance > 2) then distance = 2 end
-										local offset = 75 / distance
-										local scale = 1
-										local r,g,b
-										r, g, b = getBadgeColor(player)
-										if not r or tinted then
-											r = 255
-											g = 255
-											b = 255--getPlayerNametagColor(player)
-										end
-										local pedName = getElementData(player,"name") and tostring(getElementData(player,"name")):gsub("_", " ") or "The Storekeeper"
-										dxDrawText(pedName, sx-offset+2, sy+2, (sx-offset)+130 / distance, sy+20 / distance, tocolor(0, 0, 0, 255), scale, font, "center", "center", false, false, false)
-										dxDrawText(pedName, sx-offset, sy, (sx-offset)+130 / distance, sy+20 / distance, tocolor(r, g, b, 255), scale, font, "center", "center", false, false, false)
-										local offset = 65 / distance
-										
-									end
-								end
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-end
-addEventHandler("onClientRender", getRootElement(), renderNametags)
-
-										-- DRAW BG
-											--[[sxs, sys = getScreenFromWorldPosition(x, y, z, 100, false)
-											dxDrawRectangle(sxs+15, sys+67, 95, 20, tocolor(0, 0, 0, 100), false)
-											local health = getElementHealth(player)
-											-- DRAW HEALTH
-											local width = 85
-											local healthsize = (width / 100) * health
-											local barsize = (width / 100) * (100-health)
-											local rh, gh, bh = 0, 0, 0
-											if tonumber(health) <= 30 then
-												rh, gh, bh = 255, 0, 0
-											else
-												rh, gh, bh = 0, 255, 0
-											end
-											dxDrawRectangle(sxs+20, sys+72, healthsize, 10, tocolor(rh, gh, bh, 255), false)]]
---[[
-
-function bindLeftControl()
-	bindKey ( "lctrl", "down", toggleOnID )
-	bindKey ( "lctrl", "up", toggleOffID )
-end
-addEventHandler ( "onClientResourceStart", resourceRoot, bindLeftControl )
-
-function toggleOnID()
-	showIDInstead = true
-end
-
-function toggleOffID()
-	showIDInstead = false
-end
-
-]]
+--------------------------------------------------------------------------------
+-- VORTEX nametags — client (Fix #19)
+-- Ported from the old client source (backupm hud drawPlayersName):
+--   * Fix #19: NO rank title text above the head — rank is shown only by the
+--     admin badge icon (user spec)
+--   * name colored by rank, "Unknown Person" for masked players
+--   * ((TYPING...)) animated indicator while a player is writing
+--   * badge icons above heads (icons/): AFK, admin badge on duty, heart item
+--   * 8-unit range + line of sight, tagmode setting respected
+--------------------------------------------------------------------------------
+
+local sx, sy = guiGetScreenSize()
+local localPlayer = getLocalPlayer()
+
+-- [Fix #33] 8u was follow-distance only - names were invisible in every
+-- normal situation (the user read that as "the feature does not exist").
+-- 20u matches how close you actually are when you expect to read a name.
+local NAMETAG_DISTANCE = 20
+
+-- [Fix #33] self-diagnostics: any error inside this handler used to kill the
+-- draw silently EVERY FRAME (and eat FPS with error logging). Wrap it and
+-- surface the first error in chat so it can never hide again.
+-- [Fix #47] the old one-time kill-switch was the real "names never show"
+-- bug: ONE transient error (e.g. a UIKit restart destroying the font element
+-- mid-frame) permanently disabled every player name for the whole session
+-- while NPC names (separate file) kept working - exactly the user's report.
+-- Errors are now reported at most once per 30s and the draw AUTOMATICALLY
+-- recovers on the next frame with fonts revalidated.
+local nametagErrorShown = false
+local nametagLastError = 0
+local nametagErrorCount = 0
+
+local playersHud = {}   -- [player] = { name, color, icons, hidden }
+local typing = {}       -- [player] = true while chatting
+local localTyping = false
+-- Fix #23 perf: throttled line-of-sight cache (declared early: cleanup
+-- handlers below reference it)
+local losCache = {}     -- [player] = { blocked = bool, t = tick }
+
+-- badge textures (old client icons/ set)
+local badgeTex = {}
+
+local function loadBadges()
+        badgeTex = {}
+        local names = { "AFK", "admin_badge", "admin2", "support_badge",
+                        "support_badge_2", "developer_badge", "developer_badge2",
+                        "heart", "verified", "youtuber", "pro", "booster",
+                        "police", "facbadge", "mask", "handcuffs" }
+        for _, name in ipairs(names) do
+                local path = "icons/" .. name .. ".png"
+                if fileExists(path) then
+                        badgeTex[name] = dxCreateTexture(path, "dxt5", true, "clamp")
+                end
+        end
+end
+
+-- UIKit fonts (same as old client), with stock fallbacks
+local dxFontDefault, dxFontHud
+
+local function UIKitReady()
+        local ok, eui = pcall(function() return exports.UIKit end)
+        if not ok or not eui then return end
+        local function f(name)
+                local ok2, v = pcall(function() return eui:getUIFont(name) end)
+                return ok2 and v or nil
+        end
+        dxFontDefault = f("ui-default")
+        dxFontHud = f("hud")
+end
+addEventHandler("onClientUIReady", resourceRoot, UIKitReady)
+addEventHandler("onClientUIKitReady", root, UIKitReady)
+
+local function fontDefault()
+        -- [Fix #47] UIKit restarts destroy the exported font elements; drawing
+        -- with a dead font element is a per-frame error. Revalidate on use.
+        if dxFontDefault and not isElement(dxFontDefault) then dxFontDefault = nil end
+        return dxFontDefault or "default-bold"
+end
+local function fontHud()
+        if dxFontHud and not isElement(dxFontHud) then dxFontHud = nil end
+        return dxFontHud or "default"
+end
+
+local function outlineText(text, x, y, w, h, color, scale, font, alignX, alignY)
+        -- [Fix #32] old client = 1 black offset shadow + 1 colored pass
+        -- (was 5 passes per text per player per frame)
+        local black = tocolor(0, 0, 0, 255)
+        dxDrawText(text, x + 2, y + 2, x + w + 2, y + h + 2, black, scale, font, alignX, alignY, false, false, true)
+        dxDrawText(text, x, y, x + w, y + h, color, scale, font, alignX, alignY, false, false, true)
+end
+
+--------------------------------------------------------------------------------
+-- cache rebuild (old client updatePlayersHud)
+--------------------------------------------------------------------------------
+local function isOne(v)
+        return v == true or v == "1" or tonumber(v) == 1
+end
+
+-- [Fix #47] the Nametag gate accepts every loggedin shape the stack produces
+-- (number 1, string "1", boolean true) and BOTH character id keys, matching
+-- the ped-system gate so players and NPCs can never disagree again.
+local function localIsLoggedIn()
+        return isOne(getElementData(localPlayer, "loggedin"))
+                or getElementData(localPlayer, "account:character:id") ~= nil
+                or getElementData(localPlayer, "character:id") ~= nil
+end
+
+local function localIsStaff()
+        local idx = tonumber(getElementData(localPlayer, "rank:index"))
+        if idx then return true end
+        return (tonumber(getElementData(localPlayer, "admin_level")) or 0) > 0
+                or (tonumber(getElementData(localPlayer, "account:gmlevel")) or 0) > 0
+end
+
+local function buildPlayerEntry(player)
+        -- [Fix #33] robust across every way the server stores these flags
+        -- (number 1, DB string "1", boolean true)
+        local hidden = isOne(getElementData(player, "hiddenadmin"))
+                or getElementData(player, "admin:hideadmin") == true
+                or getElementData(player, "admin:hideadmin") == "1"
+
+        local masked = getElementData(player, "fakename")
+        local name = masked and "Unknown Person"
+                or getPlayerName(player):gsub("_", " ")
+
+        -- staff rank color pushes the name color (Fix #19: no title text)
+        local rgb = getElementData(player, "rank:color")
+        if type(rgb) ~= "table" or #rgb < 3 then rgb = { 255, 255, 255 } end
+
+        -- friends were colored white in the old client (friend-system guarded)
+        local friend = player == localPlayer
+        local friendSys = getResourceFromName("friend-system")
+        if not friend and friendSys and getResourceState(friendSys) == "running" then
+                local ok, isFriend = pcall(function() return exports["friend-system"]:isFriend(player) end)
+                if ok then friend = isFriend and true or false end
+        end
+
+        -- badge icons above the head (old client icons row)
+        local icons = {}
+        if getElementData(player, "temp:AFK") then
+                table.insert(icons, "AFK")
+        end
+        if isOne(getElementData(player, "duty_admin"))
+                and not isOne(getElementData(player, "admin:hideadmin")) then
+                table.insert(icons, "admin_badge")
+        end
+        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+        if isOne(getElementData(player, "duty_supporter"))
+                and not isOne(getElementData(player, "admin:hideadmin")) then
+                table.insert(icons, "support_badge")
+        end
+        if getElementData(player, "temp:heart") then
+                table.insert(icons, "heart")
+        end
+        -- external resources may push extra badges via hud:badges element data
+        local extra = getElementData(player, "hud:badges")
+        if type(extra) == "table" then
+                for _, badgeName in ipairs(extra) do
+                        if badgeTex[badgeName] then
+                                table.insert(icons, badgeName)
+                        end
+                end
+        end
+
+        return {
+                name = name,
+                color = tocolor(rgb[1], rgb[2], rgb[3], 255),
+                icons = icons,
+                hidden = hidden and true or false,
+                friend = friend,
+        }
+end
+
+local function updatePlayersHud()
+        playersHud = {}
+        for _, player in ipairs(getElementsByType("player")) do
+                if isElement(player) and isElementStreamedIn(player) then
+                        playersHud[player] = buildPlayerEntry(player)
+                end
+        end
+end
+
+local CACHE_KEYS = {
+        ["rank:color"] = true, ["fakename"] = true,
+        ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
+        ["character:name"] = true, ["duty_admin"] = true, ["temp:heart"] = true,
+        ["hud:badges"] = true,
+}
+addEventHandler("onClientElementDataChange", root, function(key, _, _value)
+        if CACHE_KEYS[key] and isElement(source) and getElementType(source) == "player" then
+                if isElementStreamedIn(source) then
+                        playersHud[source] = buildPlayerEntry(source)
+                end
+        end
+end)
+addEventHandler("onClientElementStreamIn", root, function()
+        if getElementType(source) == "player" then
+                playersHud[source] = buildPlayerEntry(source)
+        end
+end)
+addEventHandler("onClientElementStreamOut", root, function()
+        typing[source] = nil
+        playersHud[source] = nil
+        losCache[source] = nil
+end)
+addEventHandler("onClientPlayerQuit", root, function()
+        typing[source] = nil
+        playersHud[source] = nil
+        losCache[source] = nil
+end)
+
+--------------------------------------------------------------------------------
+-- typing sync (old client: latent server event, server relays to nearby)
+--------------------------------------------------------------------------------
+local function checkLocalTyping()
+        local active = isChatBoxInputActive()
+        if active and not localTyping then
+                localTyping = true
+                triggerLatentServerEvent("typing:sync", 20000, localPlayer, true)
+        elseif not active and localTyping then
+                localTyping = false
+                triggerLatentServerEvent("typing:sync", 20000, localPlayer, false)
+        end
+end
+setTimer(checkLocalTyping, 200, 0)
+
+addEvent("typing:sync", true)
+addEventHandler("typing:sync", root, function(state)
+        typing[source] = state and true or nil
+end)
+
+--------------------------------------------------------------------------------
+-- ALT = show IDs (old client: lalt hold / ralt toggle -> local element data
+-- "describtion:show"; the name then draws with the player ID in parentheses)
+--------------------------------------------------------------------------------
+local altSticky = false
+bindKey("lalt", "both", function(_, press)
+        if not altSticky then
+                setElementData(localPlayer, "describtion:show", press == "down", false)
+        end
+end)
+bindKey("ralt", "down", function()
+        altSticky = not getElementData(localPlayer, "describtion:show")
+        setElementData(localPlayer, "describtion:show", altSticky, false)
+end)
+addEventHandler("onClientPlayerSpawn", localPlayer, function()
+        altSticky = false
+        setElementData(localPlayer, "describtion:show", false, false)
+end)
+
+--------------------------------------------------------------------------------
+-- draw (old client drawPlayersName)
+--------------------------------------------------------------------------------
+local WaitTyping = 0
+
+-- [Fix #47] instant self-heal: if the entry cache is empty while other
+-- players ARE streamed in, rebuild it right now instead of waiting for the
+-- 2s timer (missed stream events used to leave names blank for seconds)
+local function cacheLooksBroken()
+        if next(playersHud) ~= nil then return false end
+        for _, p in ipairs(getElementsByType("player", root, true)) do
+                if p ~= localPlayer then return true end
+        end
+        return false
+end
+
+addEventHandler("onClientRender", root, function()
+        local ok, err = pcall(drawNametags)
+        if not ok then
+                -- [Fix #47] report once per 30s, keep drawing (auto-recover)
+                local now = getTickCount()
+                nametagErrorCount = nametagErrorCount + 1
+                if now - nametagLastError > 30000 then
+                        nametagLastError = now
+                        outputChatBox("[Nametags] " .. tostring(err)
+                                .. " (recovered, errors so far: " .. nametagErrorCount .. ")", 255, 100, 100, false)
+                end
+        end
+end, false, "high-2")
+
+local function isPlayerMapVisibleSafe()
+        -- old-client global; guarded so a missing implementation can never
+        -- abort the whole draw loop (nil-safe regardless of load order)
+        if isPlayerMapVisible and isPlayerMapVisible() then return true end
+        return false
+end
+
+-- [Fix #35] one-time-per-session gate reports: "names never appear" was
+-- un-diagnosable because every gate was a silent return. Now the FIRST time
+-- a gate blocks, the player is told exactly why (once, no spam).
+local gateReported = {}
+local function gateReport(reason)
+        if gateReported[reason] then return end
+        gateReported[reason] = true
+        outputChatBox("[Nametags] names are hidden because: " .. reason, 255, 220, 120, false)
+end
+
+function drawNametags()
+        if isPlayerMapVisibleSafe() then return end
+        if not isHudShowing or not isHudShowing() then
+                gateReport("the HUD is hidden (F4 > showhud is off)")
+                return
+        end
+        if not getHudSetting or getHudSetting("tagmode") == false then
+                gateReport("tagmode is off")
+                return
+        end
+        -- [Fix #47] robust gate (1 / "1" / true, both id keys) - was
+        -- `loggedin ~= 1 and not account:character:id` which dead-ended on
+        -- every non-number loggedin shape and never accepted character:id
+        if not localIsLoggedIn() then
+                gateReport("waiting for character select (loggedin="
+                        .. tostring(getElementData(localPlayer, "loggedin")) .. ")")
+                return
+        end
+
+        local camX, camY, camZ = getCameraMatrix()
+        local lX, lY, lZ = getElementPosition(localPlayer)
+        local recon = getElementData(localPlayer, "reconx")  -- hoisted out of the loop
+        local now = getTickCount()
+
+        -- [Fix #47] self-heal: empty cache while other players are streamed in
+        if cacheLooksBroken() then updatePlayersHud() end
+
+        for player, entry in pairs(playersHud) do
+                if player ~= localPlayer and isElement(player) and entry
+                        and (not entry.hidden or localIsStaff()) then
+                        local pX, pY, pZ = getElementPosition(player)
+                        local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
+                        if distance <= NAMETAG_DISTANCE then
+                                local hx, hy, hz = getPedBonePosition(player, 6)
+                                if hx then
+                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.42)
+                                        if sX then
+                                                -- line of sight (skip when blocked), recon ignores it
+                                                -- Fix #23: throttled to once per 250ms per player
+                                                local c = losCache[player]
+                                                if not c or now - c.t > 250 then
+                                                        c = { blocked = processLineOfSight(camX, camY, camZ,
+                                                                        hx, hy, hz + 0.4,
+                                                                        true, true, false, true, false, false, false, false),
+                                                              t = now }
+                                                        losCache[player] = c
+                                                end
+                                                if not c.blocked or recon then
+                                                        local baseY = sY
+
+                                                        -- ((TYPING...)) animated dots (above the title)
+                                                        if typing[player] then
+                                                                local now = getTickCount()
+                                                                if now - WaitTyping > 4000 then
+                                                                        WaitTyping = now
+                                                                end
+                                                                local dots = string.rep(".", math.floor((now - WaitTyping) / 1000) % 4)
+                                                                outlineText("((TYPING" .. dots .. "))", sX - 120, baseY - 54, 240, 15,
+                                                                        tocolor(255, 255, 255, 255), 0.8, fontHud(), "center", "top")
+                                                        end
+
+                                                        -- Fix #19: rank title text removed —
+                                                        -- the admin badge below is the only rank marker
+
+                                                        -- the name (Alt = ID in parentheses, old client describtion:show)
+                                                        local nameText = entry.name
+                                                        if getElementData(localPlayer, "describtion:show") then
+                                                                local pid = getElementData(player, "playerid")
+                                                                        or getElementData(player, "character:id")
+                                                                        or getElementData(player, "account:character:id")
+                                                                if pid then
+                                                                        nameText = nameText .. " (" .. tostring(pid) .. ")"
+                                                                end
+                                                        end
+                                                        -- [Fix #33] staff viewers keep seeing hidden admins
+                                                        -- (with a suffix) exactly like the old client's
+                                                        -- admintag view; regular players see nothing
+                                                        if entry.hidden then
+                                                                nameText = nameText .. " (Hidden)"
+                                                        end
+                                                        outlineText(nameText, sX - 120, baseY - 22, 240, 18,
+                                                                entry.color, 1, fontDefault(), "center", "top")
+
+                                                        -- badge icons under the name (old client icons row)
+                                                        if #entry.icons > 0 then
+                                                                local iconSize, iconGap = 18, 3
+                                                                local rowW = #entry.icons * iconSize + (#entry.icons - 1) * iconGap
+                                                                local iconX = sX - rowW / 2
+                                                                local iconY = baseY + 4
+                                                                for _, icon in ipairs(entry.icons) do
+                                                                        local t = badgeTex[icon]
+                                                                        if t then
+                                                                                dxDrawImage(iconX, iconY, iconSize, iconSize, t, 0, 0, 0,
+                                                                                        tocolor(255, 255, 255, 230), true)
+                                                                                iconX = iconX + iconSize + iconGap
+                                                                        end
+                                                                end
+                                                        end
+                                                end
+                                        end
+                                end
+                        end
+                end
+        end
+end
+-- drawNametags ends here; the pcall'd onClientRender handler above is the
+-- only registration (Fix #33: one-time error report instead of a silent
+-- every-frame abort that also ate FPS)
+
+--------------------------------------------------------------------------------
+-- startup
+--------------------------------------------------------------------------------
+addEventHandler("onClientResourceStart", resourceRoot, function()
+        loadBadges()
+        updatePlayersHud()
+        -- Fix #23: safety rebuild every 2s — entries built from data-change
+        -- events alone could go stale (names/badges never showing after a
+        -- restart or a missed stream event). Cheap: only streamed players.
+        setTimer(updatePlayersHud, 2000, 0)
+end)

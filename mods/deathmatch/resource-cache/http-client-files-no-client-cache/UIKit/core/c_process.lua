@@ -8,20 +8,25 @@ moveTemp = {}
 local repeatTimer, repeatCount = false, 0
 local clickTimer1, clickTimer2 = false, false
 local cancelKeys = {
-	backspace = true, delete = true, enter = true, num_enter = true,
-	arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
+        backspace = true, delete = true, enter = true, num_enter = true,
+        arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
 }
 local function isTypableCharacter(ch)
-	return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
+        return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
 end
 function updateLabelScroll(label)
-	if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
-		uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
-	end
-	return true
+        if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
+                uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
+        end
+        return true
 end
 function UI.updateDrawingList()
   UI.DrawElements = {}
+  -- [Fix #30 - FPS] resolve each element's draw function + type ONCE here
+  -- (this runs on visibility changes) instead of calling getElementType
+  -- several times per element per frame inside UI.drawing
+  UI.DrawFn = {}
+  UI.EType = {}
   for i = 1, #UI.Elements do
     local el = UI.Elements[i]
     if UI.DB[el] and UI.DB[el].visible and UI.isInDrawingList[el] and UI.isHierarchyVisible(el) then
@@ -45,10 +50,14 @@ function UI.updateDrawingList()
         if owningTabpanel and isElement(owningTabpanel) and UI.DB[owningTabpanel]
                 and UI.DB[owningTabpanel].data and UI.DB[owningTabpanel].data.selected_tab == owningTab then
           UI.DrawElements[#UI.DrawElements + 1] = el
+          UI.DrawFn[el] = UI.getDrawFunction[getElementType(el)]
+          UI.EType[el] = getElementType(el)
           UI.isDraw[el] = true
         end
       else
         UI.DrawElements[#UI.DrawElements + 1] = el
+        UI.DrawFn[el] = UI.getDrawFunction[getElementType(el)]
+        UI.EType[el] = getElementType(el)
         -- [Vortex fix] ui-tab elements themselves are armed per-frame by
         -- their tabpanel draw (selected tab only)
         if getElementType(el) ~= "ui-tab" then
@@ -62,24 +71,34 @@ function UI.drawing()
   UI.HoveredElement = false
   local hoverCandidate = false
   local anyDrawn = false
+  -- [Fix #30 - FPS] ONE cursor read per frame (was: two natives per element
+  -- per frame - isCursorShowing + getCursorPosition inside the loop)
+  local cursorShowing = isCursorShowing()
+  local ccx, ccy = getCursorPosition()
   for forvar3 = 1, #UI.DrawElements do
     local el = UI.DrawElements[forvar3]
     if isUIElement(el) then
       if UI.DB[el].visible then
         if UI.isDraw[el] then
-          if getElementType(el) ~= "ui-tab" then
+          local elType = UI.EType[el] or getElementType(el)
+          UI.EType[el] = elType
+          if elType ~= "ui-tab" then
             hoverCandidate = isMouseInPosition(UI.DB[el].dimensions.x, UI.DB[el].dimensions.y, UI.DB[el].dimensions.width, UI.DB[el].dimensions.height) and el or hoverCandidate
           end
-          local cx, cy = getCursorPosition()
-          if isCursorShowing() and ((cx or -1) >= 1 or (cy or -1) >= 1 or (cx or -1) <= 0 or (cy or -1) <= 0) and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
+          if elType ~= "ui-button" and cursorShowing and UI.DB[el].state == "clicked" and UI.DB[el].state ~= "normal" then
             UI.DB[el].state = "normal"
             if isEventHandlerAdded("onClientCursorMove", root, moveElement) then
               removeEventHandler("onClientCursorMove", root, moveElement)
               moveTemp = {}
             end
           end
-          if type(UI.getDrawFunction[getElementType(el)]) == "function" then
-            UI.getDrawFunction[getElementType(el)](el)
+          local drawFn = (UI.DrawFn and UI.DrawFn[el]) or UI.getDrawFunction[elType]
+          if not drawFn then
+            drawFn = UI.getDrawFunction[elType]
+            if UI.DrawFn then UI.DrawFn[el] = drawFn end
+          end
+          if type(drawFn) == "function" then
+            drawFn(el)
             UI.isDraw[el] = true
             anyDrawn = true
           end
@@ -127,7 +146,113 @@ function UI.drawing()
   end
 end
 addEventHandler("onClientRender", root, UI.drawing)
+-- [Vortex fix #12] hover state is inherently one frame stale (it is
+-- recomputed inside onClientRender); a click processed in that gap used
+-- the PREVIOUS cursor position and was dropped entirely. Recompute the
+-- topmost element under the cursor at the moment of the click itself.
+-- [Vortex fix #15] the tab BAR is drawn ABOVE the tabpanel rect
+-- (y - tab_height - 2), so a click landing on a tab never hit-tested the
+-- tabpanel after #12 made hover click-time -- switching tabs (F1 personal
+-- info / vehicles / interiors, leaderboard) became impossible. Two parts:
+--   1. refreshHover extends the hit rect of ui-tabpanel upwards into the bar
+--   2. hovered_tab is recomputed at click time (it is a DRAWN state, one
+--      frame stale otherwise)
+function UI.refreshTabpanelHoverTab(arg0, ax, ay)
+  local db = UI.DB[arg0]
+  if not db or not db.data then return end
+  db.data.hovered_tab = nil
+  local n = #db.data.visible_tabs
+  if n == 0 then return end
+  local slotW = (db.dimensions.width - 5 * (n + 1) * SCALE_Y) / n
+  local slotY = db.dimensions.y - db.properties.tab_height.value * SCALE_Y - 2 * SCALE_Y
+  local slotH = db.properties.tab_height.value * SCALE_Y
+  for i = 1, n do
+    local slotX = db.dimensions.x + 5 * SCALE_Y + (slotW + 5 * SCALE_Y) * (i - 1)
+    if ax >= slotX and ax <= slotX + slotW and ay >= slotY and ay <= slotY + slotH then
+      db.data.hovered_tab = db.data.visible_tabs[i]
+      return
+    end
+  end
+end
+function UI.refreshHover()
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  local ax, ay = cx * sx, cy * sy
+  for i = #UI.DrawElements, 1, -1 do
+    local el = UI.DrawElements[i]
+    if isUIElement(el) and getElementType(el) ~= "ui-tab" and UI.DB[el] and UI.DB[el].visible and UI.isDraw[el] and UI.DB[el].dimensions then
+      local d = UI.DB[el].dimensions
+      local hitTop = d.y
+      if getElementType(el) == "ui-tabpanel" then
+        hitTop = d.y - UI.DB[el].properties.tab_height.value * SCALE_Y - 2 * SCALE_Y
+          - (UI.DB[el].properties.title_shown.value and UI.DB[el].properties.title_height.value * SCALE_Y or 0)
+        UI.refreshTabpanelHoverTab(el, ax, ay)
+      end
+      if ax >= d.x and ay >= hitTop and ax <= d.x + d.width and ay <= d.y + d.height and not isUIDisabled(el) then
+        return el
+      end
+    end
+  end
+  return false
+end
+-- [Vortex fix #12] hovered_row / hovered rows are DRAWN state: they are
+-- recomputed inside the element draw, so a click landing in the frame gap
+-- used the previous cursor position. Refresh them at click time.
+function UI.refreshGridlistHoverRow(arg0)
+  local db = UI.DB[arg0]
+  if not db or not db.data or not db.data.rows then
+    return
+  end
+  local cx, cy = getCursorPosition()
+  if not cx then
+    db.data.hovered_row = false
+    return
+  end
+  local ax, ay = cx * sx, cy * sy
+  local d = db.dimensions
+  local ch = db.properties.column_height.value
+  local rw = db.data.scrollbar and d.width - 10 or d.width
+  db.data.hovered_row = false
+  for i = db.data.row_i, db.data.row_f do
+    local cell = db.data.rows[i] and db.data.rows[i][1]
+    if cell then
+      local ry = d.y + 2 + ch + cell.height * (i - db.data.row_i)
+      if ax >= d.x and ay >= ry and ax <= d.x + rw and ay <= ry + cell.height then
+        db.data.hovered_row = i - 1
+      end
+    end
+  end
+end
+function UI.refreshMenuHoverRow(arg0)
+  local db = UI.DB[arg0]
+  if not db or not db.data or not db.data.rows then
+    return
+  end
+  local cx, cy = getCursorPosition()
+  if not cx then
+    db.data.hovered_row = false
+    return
+  end
+  local ax, ay = cx * sx, cy * sy
+  local d = db.dimensions
+  local rw = db.data.scrollbar and d.width - 10 or d.width
+  db.data.hovered_row = false
+  for i = db.data.row_i, db.data.row_f do
+    local row = db.data.rows[i]
+    if row then
+      local ry = d.y + 5 + (row.height * SCALE_Y + 4) * (i - db.data.row_i)
+      local rh = row.height * SCALE_Y
+      if ax >= d.x + 5 and ay >= ry and ax <= d.x + 5 + rw and ay <= ry + rh then
+        db.data.hovered_row = i
+      end
+    end
+  end
+end
 function UI.click(arg0, arg1, arg2, arg3)
+  -- [Vortex fix #12] fresh hover at click time (kills the stale-frame gap)
+  UI.HoveredElement = UI.refreshHover() or false
   if arg0 == "left" then
     if UI.HoveredElement then
       if clickTimer1 and isTimer(clickTimer1) then
@@ -204,11 +329,14 @@ function UI.click(arg0, arg1, arg2, arg3)
           end
         else
           if getElementType(UI.HoveredElement) == "ui-gridlist" then
+            -- [Vortex fix #12] drawn hovered_row is stale in the click gap
+            UI.refreshGridlistHoverRow(UI.HoveredElement)
             if not UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = -1
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
             elseif UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
               UI.DB[UI.HoveredElement].data.selected_row = UI.DB[UI.HoveredElement].data.hovered_row
+              UI.DB[UI.HoveredElement].data.selection_tick = getTickCount()
               triggerEvent("onClientUIGridlistItemSelected", UI.HoveredElement, UI.DB[UI.HoveredElement].data.selected_row)
             end
           elseif getElementType(UI.HoveredElement) == "ui-checklist" then
@@ -217,6 +345,8 @@ function UI.click(arg0, arg1, arg2, arg3)
               UI.DB[UI.HoveredElement].data.rows[UI.DB[UI.HoveredElement].data.hovered_row].animation[1] = getTickCount()
             end
           elseif getElementType(UI.HoveredElement) == "ui-menu" then
+            -- [Vortex fix #12] drawn hovered_row is stale in the click gap
+            UI.refreshMenuHoverRow(UI.HoveredElement)
             if UI.DB[UI.HoveredElement].data.hovered_row and UI.DB[UI.HoveredElement].data.selected_row ~= UI.DB[UI.HoveredElement].data.hovered_row then
               -- [Vortex fix] decompiler moved the selected_row assignment above
               -- the hide block, so the OLD row was never hidden (sections stacked
@@ -310,10 +440,22 @@ function UI.click(arg0, arg1, arg2, arg3)
           end
         end
       end
+      -- [Vortex fix #12+#14] audible + visual acknowledgement: the flash is
+      -- driven by press_tick stamped here and drawn by the button
+      if arg1 == "down" and getElementType(UI.HoveredElement) == "ui-button" then
+        playSound(":UIKit/sounds/click.wav")
+        UI.DB[UI.HoveredElement].press_tick = getTickCount()
+      end
       if arg1 == "down" and UI.DB[UI.HoveredElement].properties.DisableFocus.value ~= "False" then
         uiBringToFront(UI.HoveredElement)
       end
       UI.DB[UI.HoveredElement].state = arg1 == "down" and "clicked" or UI.DB[UI.HoveredElement].state
+      -- [Vortex fix #14] release the pressed look on mouse-up (it used to stay
+      -- "clicked" forever until the next click - and the decompiled edge-case
+      -- reset in the draw loop killed the feedback after a single frame)
+      if arg1 == "up" and getElementType(UI.HoveredElement) == "ui-button" then
+        UI.DB[UI.HoveredElement].state = "normal"
+      end
       triggerEvent(arg1 == "up" and "onClientUIClick" or "onClientUIStartClick", UI.HoveredElement, arg2, arg3)
     else
       if UI.FocusElement then
@@ -331,7 +473,24 @@ function UI.click(arg0, arg1, arg2, arg3)
   end
 end
 addEventHandler("onClientClick", root, UI.click)
+
+-- [Fix #14] cross-resource press feedback: resources that dispatch clicks
+-- themselves (the raw hit-registry layer) call this to flash a button
+function uiFlashPress(el)
+        if not (el and isElement(el) and UI.DB[el]) then return false end
+        if getElementType(el) ~= "ui-button" then return false end
+        UI.DB[el].state = "clicked"
+        UI.DB[el].press_tick = getTickCount()
+        setTimer(function(e)
+                if isElement(e) and UI.DB[e] then
+                        UI.DB[e].state = "normal"
+                end
+        end, 130, 1, el)
+        return true
+end
 function UI.doubleclick(arg0, arg1, arg2)
+  -- [Vortex fix #12] fresh hover here too
+  UI.HoveredElement = UI.refreshHover() or false
   if arg0 == "left" and UI.HoveredElement then
     if isUIDisabled(UI.HoveredElement) then
       return
@@ -828,12 +987,18 @@ addEventHandler("onClientUIBlur", resourceRoot, function()
   end
 end)
 function cancelBindsOnTyping(arg0, arg1)
-  if not UI.FocusElement then
-    return
-  end
-  if arg1 and cancelKeys[string.lower(arg0)] and (getElementType(UI.FocusElement) == "ui-edit" or getElementType(UI.FocusElement) == "ui-memo") then
-    cancelEvent()
-  end
+  -- [Fix #53 - user] This used to cancelEvent() for backspace/delete/enter/
+  -- arrows while an edit was focused. Since MTA 1.4 cancelling onClientKey
+  -- suppresses ALL binds bound to that key ("all GTA and MTA binds, bound to
+  -- the canceled key, won't be triggered") — which silenced UIKit's OWN
+  -- bindKey handlers: removeText (backspace/delete), moveCaret (arrows) and
+  -- acceptedEvent (enter). onClientCharacter is a separate event, so typing
+  -- kept working while deleting never did: exactly the user's report
+  -- ("can type but cannot delete a wrong character" in login, staff rank
+  -- name, TAB search). Only key PRESSED is cancellable anyway (release is
+  -- not), so the old guard could never behave symmetrically. Cancelling is
+  -- intentionally disabled; the cancelKeys table is kept for reference.
+  return
 end
 addEventHandler("onClientKey", root, cancelBindsOnTyping)
 addEventHandler("onClientUITextChange", resourceRoot, function()

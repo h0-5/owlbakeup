@@ -43,8 +43,8 @@ UI = {
 newLinePrefix = "@@@@@@@@@@@@@@@NEWS_LINE@@@@@@@@@@@@@@@@"
 dxFont = dxCreateFont("fonts/Font2.ttf", 11.5 * SCALE_Y)
 dxFontLarge = dxCreateFont("fonts/Font2.ttf", 15 * SCALE_Y)
-dxFontHUD = dxCreateFont("fonts/Akrobat-Regular.otf", 15 * SCALE_Y, false) or "default"
-dxFontHUDLarge = dxCreateFont("fonts/Akrobat-SemiBold.otf", 35 * SCALE_Y) or "default"
+dxFontHUD = dxCreateFont("fonts/PFDinDisplayPro-Regular.ttf", 15 * SCALE_Y, false) or "default"
+dxFontHUDLarge = dxCreateFont("fonts/PFDinDisplayPro-Bold.ttf", 35 * SCALE_Y) or "default"
 function restartUIKit()
   removeEventHandler("onClientElementDestroy", resourceRoot, UI.onElementDestroy)
   for forvar3, forvar4 in ipairs(UI.Elements) do
@@ -101,6 +101,24 @@ addEventHandler("onClientSettingChange", localPlayer, function(arg0, arg1, arg2)
   end
 end)
 floor = math.floor
+-- [Vortex fix #10] the decompiler dropped the original global text helpers
+-- (it only kept 'floor = math.floor'). They are used 155x across
+-- c_edit/c_memo/c_process INCLUDING the ui-edit and ui-memo draw handlers;
+-- as undefined globals they raised 'attempt to call nil' EVERY frame a
+-- visible edit/memo drew, and UI.drawing() has no pcall, so everything
+-- below the first visible edit/memo never rendered (empty changelogs/
+-- add-staff/ranks sections). Restored, UTF-8 aware with safe fallbacks.
+utfLen = utfLen or function(s)
+    s = tostring(s or "")
+    local ok, n = pcall(utf8.len, s)
+    if ok and n then return n end
+    return #s
+end
+utfSub = utfSub or function(s, i, j)
+    local ok, r = pcall(utf8.sub, tostring(s or ""), i, j)
+    if ok and r then return r end
+    return string.sub(tostring(s or ""), i, j)
+end
 tocolor = tocolor
 addEvent("onClientUIClick", false)
 addEvent("onClientUIStartClick", false)
@@ -169,12 +187,22 @@ addEventHandler("onClientResourceStop", root, function(arg0)
         destroyElement(forvar5)
       end
     end
-    for forvar5, forvar6 in ipairs(UI.Elements) do
-      if isElement(forvar6) then
-        table.insert({}, forvar6)
+    -- [Fix #32 - F1 DEAD] the decompiled rebuild here was destroyed
+    -- (table.insert({}, ...) into a discarded table) and then
+    -- UI.Elements was wiped to {}: stopping ANY resource that owns
+    -- UIKit elements (the scoreboard owns its search edit since
+    -- Fix #31) dropped EVERY other resource's windows from the
+    -- drawing list FOREVER - the F1 menu stopped opening right after
+    -- the last deploy restarts. Keep every element that survived.
+    local kept = {}
+    for i = 1, #UI.Elements do
+      local el = UI.Elements[i]
+      if isElement(el) then
+        kept[#kept + 1] = el
       end
     end
-    UI.Elements = {}
+    UI.Elements = kept
+    UI.updateDrawingList()
   end
   if arg0 then
     UI.ResourceElements[arg0] = nil
@@ -187,14 +215,19 @@ addEventHandler("onClientResourceStart", resourceRoot, function()
   triggerEvent("onClientUIKitReady", root)
 end)
 function UI.onElementDestroy()
-  if isUIElement(source, "combobox", "memo", "gridlist") then
-    if isUIElement(source, "memo", "gridlist") then
-    else
+  -- [Fix #52] the decompiled body indexed UI.DB[source].scrollbar twice: once
+  -- when .scrollbar was missing (old line 222) and again AFTER
+  -- UI.DB[source] had already been set to nil (old line 249) -- a guaranteed
+  -- error on every element destroy. Snapshot the record, guard every field,
+  -- and let the children loop below clean up child scrollbars.
+  local db = UI.DB[source]
+  if db and isUIElement(source, "combobox", "memo", "gridlist") then
+    local sb = db.scrollbar
+    if sb and type(sb.element) ~= "table" and isElement(sb.element) then
+      destroyElement(sb.element)
     end
-    if type(UI.DB[source].scrollbar.element) ~= "table" or not UI.DB[source].scrollbar.element then
-    end
-  elseif isUIElement(source, "browser") and isElement(UI.DB[source].data.browser) then
-    destroyElement(UI.DB[source].data.browser)
+  elseif db and isUIElement(source, "browser") and db.data and isElement(db.data.browser) then
+    destroyElement(db.data.browser)
   end
   UI.priority[source] = nil
   UI.DB[source] = nil
@@ -217,21 +250,6 @@ function UI.onElementDestroy()
   for forvar4, forvar5 in ipairs(getElementChildren(source)) do
     destroyElement(forvar5)
   end
-  if {
-    UI.DB[source].scrollbar.element
-  } then
-    for forvar4, forvar5 in pairs({
-      UI.DB[source].scrollbar.element
-    }) do
-      if isUIElement({
-        UI.DB[source].scrollbar.element
-      }, "scrollbar") then
-        destroyElement({
-          UI.DB[source].scrollbar.element
-        })
-      end
-    end
-  end
   for forvar4, forvar5 in ipairs(UI.Elements) do
     if forvar5 == source then
       table.remove(UI.Elements, forvar4)
@@ -243,6 +261,7 @@ function UI.onElementDestroy()
   end
   UI.isDraw[source] = nil
 end
+
 addEventHandler("onClientElementDestroy", resourceRoot, UI.onElementDestroy)
 -- [Vortex fix] an element may only draw if it AND every ancestor above it are
 -- visible. Without this chain check, hiding the top-level window left its
@@ -303,9 +322,16 @@ function uiGetVisible(arg0)
 end
 function uiGetText(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetText' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
-  if type(UI.DB[arg0].text) ~= "table" or not UI.DB[arg0].text.en then
+  -- [Vortex fix #13] the decompiler emptied the bilingual branch: every
+  -- label stores {en=,ar=} and the old body returned tostring(table) --
+  -- the delete-staff dialog then sent "table: 0x..." as the username!
+  local t = UI.DB[arg0].text
+  if type(t) == "table" then
+    local pick = language and t[language] or nil
+    if pick then return tostring(pick) end
+    return tostring(t.en or t.ar or "")
   end
-  return (tostring(UI.DB[arg0].text))
+  return tostring(t or "")
 end
 function uiSetText(arg0, arg1)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetText' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -427,6 +453,15 @@ function uiGetPosition(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetPosition' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   return UI.DB[arg0].related_dimensions.x, UI.DB[arg0].related_dimensions.y
 end
+-- [Fix #32] ABSOLUTE on-screen rect (what the draw loop actually paints).
+-- external hit-tests (staff panel / color picker) must use this instead of
+-- re-deriving UIKit geometry by hand - the hand-rolled math drifted and
+-- clicks landed one palette row below the swatch.
+function uiGetAbsoluteBounds(arg0)
+  assert(isUIElement(arg0), "Bad argument @ 'uiGetAbsoluteBounds' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  local d = UI.DB[arg0].dimensions
+  return d.x, d.y, d.width, d.height
+end
 function uiSetSize(arg0, arg1, arg2)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetSize' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   UI.DB[arg0].related_dimensions_org.width = arg1
@@ -547,5 +582,30 @@ end
 function uiCenterElement(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiCenterElement' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   uiSetPosition(arg0, (sx - uiGetSize(arg0)) / 2, (sy - uiGetSize(arg0)) / 2)
+  return true
+end
+
+-- [Vortex fix #13] cross-resource keyboard focus: lets a host panel place
+-- focus on a ui-edit even when UIKit's own click pipeline is not alive
+-- (the raw-input fallback in staff_manager calls this on edit clicks).
+-- [Fix #35 - user] "في تاب البحث عبارة عن منظر لاتقدر تكتب ولا تحذف" (+ same
+-- for the checkid search): this helper set UI.FocusElement but never did
+-- what UIKit's own click path does (c_process 293/313/389/429) —
+-- toggleControl("chatbox", false). With the chat input still armed every
+-- typed key opened the MTA chat box and the edit never received a single
+-- character (and nothing could be deleted either). Disable it on edit focus;
+-- the onClientUIBlur handler re-arms it when focus leaves.
+function uiSetFocusedElement(arg0)
+  assert(isUIElement(arg0), "Bad argument @ 'uiSetFocusedElement' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  if UI.FocusElement and isElement(UI.FocusElement) and UI.FocusElement ~= arg0 then
+    UI.DB[UI.FocusElement].state = "normal"
+    triggerEvent("onClientUIBlur", UI.FocusElement)
+  end
+  UI.FocusElement = arg0
+  UI.DB[arg0].state = "normal"
+  triggerEvent("onClientUIFocus", arg0)
+  if getElementType(arg0) == "ui-edit" or getElementType(arg0) == "ui-memo" then
+    toggleControl("chatbox", false)
+  end
   return true
 end

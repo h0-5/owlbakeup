@@ -82,7 +82,10 @@ addEventHandler("onClientRender",getRootElement(), function ()
 			
 			if isCursorShowing() then
 				local cursorX, cursorY, cwX, cwY, cwZ = getCursorPosition()
-				cursorX, cursorY = cursorX * screenWidth, cursorY * screenHeight
+				-- [Fix #53] screenWidth/screenHeight were lost by the decompiler
+				-- (nil globals -> arithmetic error every frame with the cursor
+				-- showing); the screen size locals are sx/sy from the top of file.
+				cursorX, cursorY = cursorX * sx, cursorY * sy
 			end
 			
 			local newOverlayHeight = 16*(#content)+30+5

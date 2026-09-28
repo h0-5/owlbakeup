@@ -87,9 +87,12 @@ UI.getDrawFunction["ui-window"] = function(arg0)
     dxDrawImage(UI.DB[arg0].dimensions.x + 20, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + (UI.DB[arg0].properties.top_bar_height.value * SCALE_Y - UI.DB[arg0].properties.top_bar_height.value * SCALE_Y * 0.7) / 2, UI.DB[arg0].properties.top_bar_height.value * SCALE_Y * 0.7, UI.DB[arg0].properties.top_bar_height.value * SCALE_Y * 0.7, UI.DB[arg0].data.icon, 0, 0, 0, tocolor(255, 255, 255, 150), UI.postGUI)
   end
   dxDrawText(UI.DB[arg0].text[language], UI.DB[arg0].dimensions.x + 20 + UI.DB[arg0].properties.top_bar_height.value * SCALE_Y * 0.7 + 15, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y, UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 15, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + UI.DB[arg0].properties.top_bar_height.value * SCALE_Y, tocolor(255, 255, 255, 255), UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI)
-  if not isMouseInPosition(UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 28 * SCALE_Y - 8 * SCALE_Y, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + 10 * SCALE_Y - 8 * SCALE_Y, 8 * SCALE_Y * 2, 8 * SCALE_Y * 2) or not tocolor(255, 0, 0) then
-  end
-  dxDrawCircle(UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 28 * SCALE_Y, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + 10 * SCALE_Y, 8 * SCALE_Y, 0, 360, tocolor(20, 20, 20), _, 32, 1, UI.postGUI)
+  -- [Vortex fix #11] decompiler emptied the hover branch and lost the X icon;
+  -- restored: dot turns red on hover + images/close.png glyph on top
+  local closeCX, closeCY = UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 28 * SCALE_Y, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + 10 * SCALE_Y
+  local closeHover = isMouseInPosition(closeCX - 8 * SCALE_Y, closeCY - 8 * SCALE_Y, 16 * SCALE_Y, 16 * SCALE_Y)
+  dxDrawCircle(closeCX, closeCY, 8 * SCALE_Y, 0, 360, closeHover and tocolor(235, 55, 55) or tocolor(20, 20, 20), _, 32, 1, UI.postGUI)
+  dxDrawImage(closeCX - 4 * SCALE_Y, closeCY - 4 * SCALE_Y, 8 * SCALE_Y, 8 * SCALE_Y, "images/close.png", 0, 0, 0, tocolor(255, 255, 255, 210), UI.postGUI)
   if isMouseInPosition(UI.DB[arg0].dimensions.x + UI.DB[arg0].dimensions.width - 28 * SCALE_Y - 8 * SCALE_Y, UI.DB[arg0].dimensions.y + 8 * SCALE_Y + 5 * SCALE_Y + 10 * SCALE_Y - 8 * SCALE_Y, 8 * SCALE_Y * 2, 8 * SCALE_Y * 2) and getKeyState("mouse1") then
     uiSetVisible(arg0, false)
   end

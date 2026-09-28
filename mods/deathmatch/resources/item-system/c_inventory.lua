@@ -600,7 +600,16 @@ addEventHandler("onClientRender", root, function()
         hoverWorldItem = false
         if cursorOverPanel then return end
         local cx, cy, wx, wy, wz = getCursorPosition()
-        local hit, a, b, c, element = processLineOfSight(getWorldFromScreenPosition(cx, cy, 0.1), wx, wy, wz)
+        -- [Fix #53] processLineOfSight needs SIX numbers, but a multi-return
+        -- call in NON-final position keeps only its first value in Lua:
+        -- getWorldFromScreenPosition() collapsed to one number, argument 5
+        -- was always missing ("Bad argument ... argument 5, got none"), the
+        -- ray never ran, hoverWorldItem could never be set and floor pickup
+        -- never fired (user: "dropped an item, cannot pick it up"). Split the
+        -- call; also hitElement is the 4th return value (the 5th is normalX).
+        local wx2, wy2, wz2 = getWorldFromScreenPosition(cx, cy, 0.1)
+        if not (wx2 and wy2 and wz2 and wx and wy and wz) then return end
+        local hitX, hitY, hitZ, element = processLineOfSight(wx2, wy2, wz2, wx, wy, wz)
         if element and getElementParent(getElementParent(element)) == getResourceRootElement(getResourceFromName("item-world")) then
                 local x, y, z = getElementPosition(localPlayer)
                 local eX, eY, eZ = getElementPosition(element)

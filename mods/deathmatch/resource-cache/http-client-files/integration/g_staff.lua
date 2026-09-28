@@ -225,3 +225,16 @@ end
 function getAdminStaffNumbers()
 	return table.concat(ADMIN_GROUPS, ",")
 end
+
+
+-- [Fix #52] isPlayerFMT was referenced by g_admin_globals / g_chat_globals /
+-- chat-system title chains but never existed anywhere, so the call raised and
+-- aborted the whole title lookup. No FMT element-data exists on this server,
+-- so answer false gracefully (title chain falls through).
+function isPlayerFMT(player)
+	if not isPlayerElement(player) then
+		return false
+	end
+	local fmt_level = getElementData(player, "fmt_level") or 0
+	return (fmt_level >= 1)
+end

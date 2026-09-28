@@ -987,12 +987,18 @@ addEventHandler("onClientUIBlur", resourceRoot, function()
   end
 end)
 function cancelBindsOnTyping(arg0, arg1)
-  if not UI.FocusElement then
-    return
-  end
-  if arg1 and cancelKeys[string.lower(arg0)] and (getElementType(UI.FocusElement) == "ui-edit" or getElementType(UI.FocusElement) == "ui-memo") then
-    cancelEvent()
-  end
+  -- [Fix #53 - user] This used to cancelEvent() for backspace/delete/enter/
+  -- arrows while an edit was focused. Since MTA 1.4 cancelling onClientKey
+  -- suppresses ALL binds bound to that key ("all GTA and MTA binds, bound to
+  -- the canceled key, won't be triggered") — which silenced UIKit's OWN
+  -- bindKey handlers: removeText (backspace/delete), moveCaret (arrows) and
+  -- acceptedEvent (enter). onClientCharacter is a separate event, so typing
+  -- kept working while deleting never did: exactly the user's report
+  -- ("can type but cannot delete a wrong character" in login, staff rank
+  -- name, TAB search). Only key PRESSED is cancellable anyway (release is
+  -- not), so the old guard could never behave symmetrically. Cancelling is
+  -- intentionally disabled; the cancelKeys table is kept for reference.
+  return
 end
 addEventHandler("onClientKey", root, cancelBindsOnTyping)
 addEventHandler("onClientUITextChange", resourceRoot, function()

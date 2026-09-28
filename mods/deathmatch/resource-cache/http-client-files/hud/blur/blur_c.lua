@@ -42,7 +42,7 @@ local function render()
     if blurShader then
         if duration and getTickCount() - last >= duration then
             state = 'off'
-            force = false
+            forced = false
         end
         dxUpdateScreenSource( ss )
         dxSetShaderValue( blurShader, 'ScreenSource', ss )
@@ -75,7 +75,7 @@ addEventHandler( 'hud:blur', root, function( maxStrength_, forced_, fadeSpeed_, 
             maxStrength = maxStrength_
             fadeSpeed = fadeSpeed_ or 0.1
             forced = forced_
-            duration = duration_
+            duration = duration_ or 15000
             last = getTickCount()
             state = 'on'
             strength = 0

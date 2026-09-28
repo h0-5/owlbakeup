@@ -1,480 +1,664 @@
-local pedTable = { }
-local characterSelected, characterElementSelected, newCharacterButton, bLogout = nil
-selectionScreenID = 0
-function Characters_showSelection()
-	characters_destroyDetailScreen()
-	triggerEvent("onSapphireXMBShow", getLocalPlayer())
-	showPlayerHudComponent("radar", false)
-
-	guiSetInputEnabled(false)
-
-	showCursor(true)
-
-	setElementDimension ( getLocalPlayer(), 1 )
-	setElementInterior( getLocalPlayer(), 0 )
-
-	for _, thePed in ipairs(pedTable) do
-		if isElement(thePed) then
-			destroyElement(thePed)
-		end
-	end
-
-	selectionScreenID = getSelectionScreenID()
-
-	startCam[selectionScreenID] = originalStartCam[selectionScreenID]
-
-	local x, y, z, rot =  pedPos[selectionScreenID][1], pedPos[selectionScreenID][2], pedPos[selectionScreenID][3], pedPos[selectionScreenID][4]
-	local characterList = getElementData(getLocalPlayer(), "account:characters")
-	if (characterList) then
-		-- Prepare the peds
-		local count = 0
-		local oldPos = y
-		for _, v in ipairs(characterList) do
-			local thePed = createPed( tonumber( v[9]), x, y, z)
-			setPedRotation(thePed, rot)
-			setElementDimension(thePed, 1)
-			setElementInterior(thePed, 0)
-			setElementData(thePed,"account:charselect:id", v[1], false)
-			setElementData(thePed,"account:charselect:name", v[2]:gsub("_", " "), false)
-			setElementData(thePed,"account:charselect:cked", v[3], false)
-			setElementData(thePed,"account:charselect:lastarea", v[4], false)
-			setElementData(thePed,"account:charselect:lastseen", v[10], false)
-			setElementData(thePed,"account:charselect:age", v[5], false)
-			setElementData(thePed,"account:charselect:weight", v[11], false)
-			setElementData(thePed,"account:charselect:height", v[12], false)
-			--setElementData(thePed,"account:charselect:desc", v[13], false)
-			setElementData(thePed,"account:charselect:age", v[5], false)
-			setElementData(thePed,"account:charselect:gender", v[6], false)
-			setElementData(thePed,"account:charselect:faction", v[7] or "", false)
-			setElementData(thePed,"account:charselect:factionrank", v[8] or "", false)
-			setElementData(thePed,"clothing:id", v[15] or "", false)
-
-			setElementData(thePed,"account:charselect:month", v[13], false)
-			setElementData(thePed,"account:charselect:day", v[14], false)
-
-			local randomAnimation = getRandomAnim( v[3] == 1 and 4 or 2 )
-			setPedAnimation ( thePed , randomAnimation[1], randomAnimation[2], -1, true, false, false, false )
-
-
-            if selectionScreenID == 0 then
-                y = y - 3
-                count = count + 1
-                if count >= 4 then
-                    count = 0
-                    y = oldPos
-                	x = x - 3
-                end
-			elseif selectionScreenID == 1 then
-				y = y + 3
-				count = count + 1
-				if count >= 6 then
-					count = 0
-					y = oldPos
-					x = x - 3
-				end
-			elseif selectionScreenID == 2 then
-				y = y + 3
-				count = count + 1
-				if count >= 6 then
-					count = 0
-					y = oldPos
-					x = x - 3
-				end
-			elseif selectionScreenID == 3 then
-				y = y - 3
-				count = count + 1
-				if count >= 6 then
-					count = 0
-					y = oldPos
-					x = x - 3
-				end
-			end
-
-			table.insert(pedTable, thePed)
-		end
-
-		-- Cam magic
-		fadeCamera ( false, 0, 0,0,0 )
-		setCameraMatrix (originalStartCam[selectionScreenID][1], originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][3], originalStartCam[selectionScreenID][4], originalStartCam[selectionScreenID][5], originalStartCam[selectionScreenID][6])
-		setTimer(function ()
-			fadeCamera ( true, 1, 0,0,0 )
-		end, 1000, 1)
-
-		setTimer(function ()
-			showCursor(true)
-			addEventHandler("onClientRender", getRootElement(), Characters_updateSelectionCamera)
-			addEventHandler("onClientRender", getRootElement(), renderNametags)
-			
-			local bgMusic = getElementData(localPlayer, "bgMusic")
-			if not bgMusic or not isElement(bgMusic) then
-				local bgMusic = playSound ("http://e.top4top.net/m_2202iax1.mp3", true)
-				setSoundVolume(bgMusic, 1)
-				setElementData(localPlayer, "bgMusic", bgMusic)				
-			end
-			--[[
-			local selectionSound = playSound ( "selection_screen.mp3")
-			setSoundVolume(selectionSound, 0.3)
-			setElementData(localPlayer, "selectionSound", selectionSound)
-			--]]
-		end, 2000, 1)
-
-
-	end
-end
-
-function Characters_characterSelectionVisisble()
-	addEventHandler("onClientClick", getRootElement(), Characters_onClientClick)
-
-	local swidth, sheight = guiGetScreenSize()
-	local width, height = 300, 50
-
-
-	bLogout = guiCreateStaticImage(swidth-width, 0, width, height, ":resources/window_body.png" , false, nil)
-	local text1= guiCreateLabel (0,0,1,1, "تسجيل الخروج", true, bLogout)
-	guiLabelSetHorizontalAlign(text1, "center", true)
-	guiLabelSetVerticalAlign(text1, "center", true)
-
-	addEventHandler("onClientGUIClick", bLogout, function ()
-		removeEventHandler("onClientRender", getRootElement(), renderNametags)
-		fadeCamera ( false, 2, 0,0,0 )
-		setTimer(function()
-			triggerServerEvent("accounts:reconnectMe", localPlayer)
-		end, 2000,1)
-
-	end)
-
-	newCharacterButton = guiCreateStaticImage(swidth-width, 53, width, height, ":resources/window_body.png" , false, nil)
-	local text2= guiCreateLabel (0,0,1,1, "اضافة شخصية جديدة !", true, newCharacterButton)
-	guiLabelSetHorizontalAlign(text2, "center", true)
-	guiLabelSetVerticalAlign(text2, "center", true)
-	addEventHandler("onClientGUIClick", newCharacterButton, Characters_newCharacter)
-end
-
-function getCamSpeed( index1, startCam1, endCam1, globalspeed1)
-	return (math.abs(startCam1[index1]-endCam1[index1])/globalspeed1)
-end
-
---Check c_login.lua for settings block
-function Characters_updateSelectionCamera ()
-	for var = 1, 6, 1 do
-		if not doneCam[selectionScreenID][var] then
-			--outputDebugString("if not doneCam[selectionScreenID][var] then")
-			if (math.abs(startCam[selectionScreenID][var] - endCam[selectionScreenID][var]) > 0.2) then
-				if startCam[selectionScreenID][var] > endCam[selectionScreenID][var] then
-					startCam[selectionScreenID][var] = startCam[selectionScreenID][var] - getCamSpeed( var, startCam[selectionScreenID], endCam[selectionScreenID], globalspeed)
-				else
-					startCam[selectionScreenID][var] = startCam[selectionScreenID][var] + getCamSpeed( var, startCam[selectionScreenID], endCam[selectionScreenID], globalspeed)
-				end
-			else
-				doneCam[selectionScreenID][var] = true
-			end
-		end
-	end
-
-	setCameraMatrix (startCam[selectionScreenID][1], startCam[selectionScreenID][2], startCam[selectionScreenID][3], startCam[selectionScreenID][4], startCam[selectionScreenID][5], startCam[selectionScreenID][6])
-	if doneCam[selectionScreenID][1] and doneCam[selectionScreenID][2] and doneCam[selectionScreenID][3] and doneCam[selectionScreenID][4] and doneCam[selectionScreenID][5] and doneCam[selectionScreenID][6] then
-		stopMovingCam()
-	end
-end
-
-function stopMovingCam()
-	--playSound ( "WindowsMillenniumEdition.mp3")
-	removeEventHandler("onClientRender",getRootElement(),Characters_updateSelectionCamera)
-	Characters_characterSelectionVisisble()
-end
-
-function renderNametags()
-	for key, player in ipairs(getElementsByType("ped")) do
-		if (isElement(player))then
-			if (getElementData(player,"account:charselect:id")) then
-				local lx, ly, lz = getElementPosition( getLocalPlayer() )
-				local rx, ry, rz = getElementPosition(player)
-				local distance = getDistanceBetweenPoints3D(lx, ly, lz, rx, ry, rz)
-				if  (isElementOnScreen(player)) then
-					local lx, ly, lz = getCameraMatrix()
-					local collision, cx, cy, cz, element = processLineOfSight(lx, ly, lz, rx, ry, rz+1, true, true, true, true, false, false, true, false, nil)
-					if not (collision) then
-						local x, y, z = getElementPosition(player)
-						local sx, sy = getScreenFromWorldPosition(x, y, z+0.45, 100, false)
-						if (sx) and (sy) then
-							if (distance<=2) then
-								sy = math.ceil( sy - ( 2 - distance ) * 40 )
-							end
-							sy = sy - 20
-							if (sx) and (sy) then
-								distance = 1.5
-								local offset = 75 / distance
-								dxDrawText(getElementData(player,"account:charselect:name"), sx-offset+2, sy+2, (sx-offset)+130 / distance, sy+20 / distance, tocolor(0, 0, 0, 220), 0.6 / distance, "bankgothic", "center", "center", false, false, false)
-								dxDrawText(getElementData(player,"account:charselect:name"), sx-offset, sy, (sx-offset)+130 / distance, sy+20 / distance, tocolor(255, 255, 255, 220), 0.6 / distance, "bankgothic", "center", "center", false, false, false)
-							end
-						end
-					end
-				end
-			end
-		end
-	end
-end
-
-function Characters_onClientClick(mouseButton, buttonState, alsoluteX, alsoluteY, worldX, worldY, worldZ, theElement)
-	if (theElement) and (buttonState == "down") then
-		if (getElementData(theElement,"account:charselect:id")) then
-			characterSelected = getElementData(theElement,"account:charselect:id")
-			characterElementSelected = theElement
-
-			Characters_updateDetailScreen(theElement)
-
-			local randomAnimation = nil
-			for _, thePed in ipairs(pedTable) do
-				if isElement(thePed) then
-					local deceased = getElementData(thePed,"account:charselect:cked")
-					if deceased ~= 1 then
-						if thePed == theElement then
-							randomAnimation = getRandomAnim( 1 )
-						else
-							randomAnimation = getRandomAnim( 2 )
-						end
-					else
-						randomAnimation = getRandomAnim( 4 )
-					end
-					if randomAnimation then
-						local anim1, anim2 = getPedAnimation(thePed)
-						if randomAnimation[1] ~= anim1 or randomAnimation[2] ~= anim2 then
-							setPedAnimation ( thePed , randomAnimation[1], randomAnimation[2], -1, true, false, false, false )
-						end
-					end
-				end
-			end
-		end
-	end
-end
-
---- Character detail screen
-local wDetailScreen, lDetailScreen, iCharacterImage, bPlayAs,cFadeOutTime = nil
-function Characters_createDetailScreen()
-	if wDetailScreen  then
-		return true
-	end
-
-	local swidth, sheight = guiGetScreenSize()
-	local width, height = 300, 250
-	wDetailScreen = guiCreateStaticImage(swidth-width, 53*2, width, height, ":resources/window_body.png", false)
-	--guiWindowSetSizable(wDetailScreen, false)
-	--guiSetProperty(wDetailScreen,"TitlebarEnabled","false")
-	local offsetx, offety, offsetyy= 0.05, 0, 1.5
-	lDetailScreen = {
-
-		[1] = guiCreateLabel(0.03+offsetx,0.07+offety,0.95,0.0887,"Name: N/A",true,wDetailScreen),
-		[2] = guiCreateLabel(0.03+offsetx,0.11*offsetyy+offety,0.96,0.0887,"Gender: N/A",true,wDetailScreen),
-		[3] = guiCreateLabel(0.03+offsetx,0.15*offsetyy+offety,0.96,0.0887,"Status: N/A",true,wDetailScreen),
-		[4] = guiCreateLabel(0.03+offsetx,0.19*offsetyy+offety,0.96,0.0887,"Age: N/A",true,wDetailScreen),
-		[7] = guiCreateLabel(0.03+offsetx,0.19*offsetyy+offety+0.06,0.96,0.0887,"Date of birth: N/A",true,wDetailScreen),
-		[5] = guiCreateLabel(0.03+offsetx,0.23*offsetyy+offety+0.06,0.96,0.0887,"Faction: N/A",true,wDetailScreen),
-		[6] = guiCreateLabel(0.03+offsetx,0.30*offsetyy+offety+0.07,0.96,0.0887,"Last seen: N/A",true,wDetailScreen),
-	}
-	bPlayAs = guiCreateButton(0.36, 0.65, 0.6, 0.3, "Play as N/A", true, wDetailScreen)
-	addEventHandler("onClientGUIClick", bPlayAs, Characters_selectCharacter, false)
-
-	guiSetEnabled(bPlayAs, true)
-	guiSetEnabled(wDetailScreen, true)
-	guiSetEnabled( newCharacterButton, true )
-	guiSetEnabled( bLogout, true )
-
-	return true
-end
-
-function Characters_updateDetailScreen(thePed)
-	if Characters_createDetailScreen() then
-		if (iCharacterImage ~= nil) then
-			destroyElement(iCharacterImage)
-		end
-
-
-
-
-		local skin = getElementModel(thePed)
-		iCharacterImage = guiCreateStaticImage ( 0.025 , 0.65 , 0.3, 0.3, "img/" .. ("%03d"):format(skin) .. ".png", true, wDetailScreen)
-
-		guiSetText ( lDetailScreen[1], "الأسم: " .. getElementData(thePed,"account:charselect:name") )
-		local characterGender = getElementData(thePed, "account:charselect:gender")
-		local characterGenderStr = "انثى"
-		if (characterGender == 0) then
-			characterGenderStr = "ذكر"
-		end
-		guiSetText ( lDetailScreen[2], "الجنس: " .. characterGenderStr )
-
-		local characterStatus = getElementData(thePed, "account:charselect:cked")
-		local characterStatusStr = "ميت"
-		if (characterStatus ~= 1) then
-			characterStatusStr = "على قيد الحياة"
-		end
-
-		guiSetText ( lDetailScreen[3], "الحالة: " .. characterStatusStr )
-		guiSetText ( lDetailScreen[4], "العمر: " .. tostring(getElementData(thePed, "account:charselect:age")) )
-		guiSetText ( lDetailScreen[5], "الوظيفة: " .. getElementData(thePed, "account:charselect:factionrank") .. " - " .. getElementData(thePed, "account:charselect:faction") )
-		guiSetText ( lDetailScreen[6], "اخر مكان كنت فيه " .. getElementData(thePed, "account:charselect:lastarea") )
-		guiSetText ( lDetailScreen[7], "تاريخ الميلاد: "..monthNumberToName(getElementData(thePed, "account:charselect:month")).." "..getBetterDay(getElementData(thePed, "account:charselect:day"))..", "..getBirthday(getElementData(thePed, "account:charselect:age")))
-
-		guiSetText ( bPlayAs, "اللعب بـ "..getElementData(thePed,"account:charselect:name") )
-		if getElementData(thePed, "account:charselect:cked") == 1 then
-			guiSetEnabled(bPlayAs, false)
-		else
-			guiSetEnabled(bPlayAs, true)
-		end
-	end
-end
-
-function Characters_deactivateGUI()
-	if isElement(bPlayAs) then
-		guiSetEnabled(bPlayAs, false)
-		guiSetEnabled(wDetailScreen, false)
-		guiSetEnabled( newCharacterButton, false )
-		guiSetEnabled( bLogout, false )
-
-	end
-	removeEventHandler("onClientRender", getRootElement(), renderNametags)
-	removeEventHandler("onClientClick", getRootElement(), Characters_onClientClick)
-end
-
-function Characters_selectCharacter()
-	if (characterSelected ~= nil) then
-		Characters_deactivateGUI()
-		local randomAnimation = getRandomAnim(3)
-		setPedAnimation ( characterElementSelected, randomAnimation[1], randomAnimation[2], -1, true, false, false, false )
-		guiSetText ( bPlayAs, "الرجاء الإنتظار ...." )
-		cFadeOutTime = 254
-		addEventHandler("onClientRender", getRootElement(), Characters_FadeOut)
-		fadeCamera ( false, 1, 0,0,0 )
-		setTimer(function()
-			triggerServerEvent("accounts:characters:spawn", getLocalPlayer(), characterSelected)
-		end, 1000,1)
-
-	end
-end
-
-function Characters_FadeOut()
-	cFadeOutTime = cFadeOutTime -3
-	if (cFadeOutTime <= 0) then
-		removeEventHandler("onClientRender", getRootElement(), Characters_FadeOut)
-	else
-		for _, thePed in ipairs(pedTable) do
-			if isElement(thePed) and (thePed ~= characterElementSelected) then
-				setElementAlpha(thePed, cFadeOutTime)
-			end
-		end
-	end
-end
-
-function characters_destroyDetailScreen()
-	lDetailScreen = { }
-	if isElement(wDetailScreen) then
-		destroyElement(iCharacterImage)
-		destroyElement(bPlayAs)
-		destroyElement(wDetailScreen)
-		iCharacterImage = nil
-		iPlayAs = nil
-		wDetailScreen = nil
-
-	end
-	for _, thePed in ipairs(pedTable) do
-		if isElement(thePed) then
-			destroyElement(thePed)
-		end
-	end
-	pedTable = { }
-	cFadeOutTime = 0
-	if isElement(newCharacterButton) then
-		destroyElement( newCharacterButton )
-	end
-	if isElement(bLogout) then
-		destroyElement( bLogout )
-	end
-end
---- End character detail screen
-
-function characters_onSpawn(fixedName, adminLevel, gmLevel, factionID, factionRank)
-	clearChat()
-	showChat(true)
-	guiSetInputEnabled(false)
-	showCursor(false)
-	--outputChatBox("You are now playing as '" .. fixedName .. "'.", 0, 255, 0)
-	outputChatBox("تم صنع السيرفر من قبل استضافة دايركت هوستينج", 255, 194, 14)
-	outputChatBox("شكرا لك لاختيارك دايركت هوستينج", 255, 194, 15)
-	outputChatBox("يمكنك شراء سيرفر عبر التوجه الى الديسكورد الخاص بنا https://discord.gg/eCzbr5JwKP")
-	characters_destroyDetailScreen()
-	setElementData(getLocalPlayer(), "admin_level", adminLevel, false)
-	setElementData(getLocalPlayer(), "account:gmlevel", gmLevel, false)
-	setElementData(getLocalPlayer(), "faction", factionID, false)
-	setElementData(getLocalPlayer(), "factionrank", factionrank, false)
-
-	-- Adams
-	local dbid = getElementDimension(localPlayer)
-	triggerServerEvent("frames:loadInteriorTextures", getLocalPlayer(), dbid)
-	options_enable()
-	--Stop bgMusic + spawning sound fx / maxime
-	local bgMusic = getElementData(localPlayer, "bgMusic")
-	if bgMusic and isElement(bgMusic) then
-		setTimer(startSoundFadeOut, 2000, 1, bgMusic, 100, 30, 0.04, "bgMusic")
-	end
-	local selectionSound = getElementData(localPlayer, "selectionSound")
-	if selectionSound and isElement(selectionSound) then
-		destroyElement(selectionSound)
-		bgMusic = nil
-	end
-	--[[
-	setTimer(function ()
-		local spawnCharSound = playSound("spawn_char.mp3")
-		setSoundVolume(spawnCharSound, 0.3)
-	end, 2000, 1)
-	--]]
-end
-addEventHandler("accounts:characters:spawn", getRootElement(), characters_onSpawn)
-
-function soundFadeOut(sound, decrease, dataKey)
-	if sound and isElement(sound) then
-		local oldVol = getSoundVolume(sound)
-		if oldVol <= 0 then
-			if soundFadeTimer and isElement(soundFadeTimer) then
-				killTimer(soundFadeTimer)
-				soundFadeTimer = nil
-			end
-			destroyElement(sound)
-			if dataKey then
-				setElementData(localPlayer, dataKey, false)
-			end
-		else
-			if not decrease then decrease = 0.05 end
-			local newVol = oldVol - decrease
-			setSoundVolume(sound, newVol)
-		end
-	end
-end
-function startSoundFadeOut(sound, timeInterval, timesToExecute, decrease, dataKey)
-	if not sound or not isElement(sound) then return false end
-	if not tonumber(timeInterval) then timeInterval = 100 end
-	if not tonumber(timesToExecute) then timesToExecute = 30 end
-	if not tonumber(decrease) then decrease = 0.05 end
-	soundFadeTimer = setTimer(soundFadeOut, timeInterval, timesToExecute, sound, decrease, dataKey)
-	setTimer(forceStopSound, 4000, 1, sound, dataKey)
-end
-function forceStopSound(sound, dataKey)
-	if sound and isElement(sound) then
-		destroyElement(sound)
-		if dataKey then
-			setElementData(localPlayer, dataKey, false)
-		end		
-	end
-end
-
-function Characters_newCharacter()
-	Characters_deactivateGUI()
-	characters_destroyDetailScreen()
-	newCharacter_init()
-end
-
-function playerLogout()
-	Characters_deactivateGUI()
-	characters_destroyDetailScreen()
-	for _, thePed in ipairs(pedTable) do
-		destroyElement(thePed, 0)
-	end
-end
+--[[ =========================================================================
+        c_characters.lua — Vortex CHARACTER LOBBY (Fix #40, MOD 3 part 2)
+
+        1:1 UIKit port of the OLD CLIENT character selection
+        (backupm roleplay character_c_decompiled.lua):
+
+          * midnight lobby scene on 4 random camera matrices (dim 65499,
+            localPlayer hidden), dark bg_gradient + Vortex logo alpha 200
+          * top tab row with animated circle indicator:
+            CHARACTERS / CREATE CHARACTER / LATEST NEWS / HISTORY /
+            RESET PASSWORD (hover = select.wav like the old client)
+          * horizontal character name list under the tabs; the selected name
+            is white with an animated underline; "N/max" top-right
+          * the selected character stands in front of the camera with a random
+            idle animation (dead characters get the graveyard loop)
+          * right-side 250x500 info window (#ID / name + details) with
+            "Remove Character" (dead characters only -> soft delete)
+          * big PLAY button bottom-centre (HoverGlow -> primary text)
+          * LATEST NEWS reads the account resourceRoot news:* element data
+          * local toasts (notifications resource does not exist here)
+          * account username drawn top-right
+
+        SERVER CONTRACT UNCHANGED:
+          reads   elementData "account:characters" (array v1..v15, s_characters)
+          events  accounts:characters:spawn (existing flow, c_login triggers)
+                  updateCharacters (refresh list)
+          NEW (safe, opt-in): accounts:characters:remove -> soft delete
+                  (only allowed for cked=1 characters, s_characters.lua)
+========================================================================= ]]
+
+local sx, sy = guiGetScreenSize()
+local s = sy / 1080
+local localPlayer = getLocalPlayer()
+local eui = exports.UIKit
+
+local REF_SX, REF_SY = (function()
+        -- [Fix #52] top-level UIKit call died if UIKit had not started yet,
+        -- killing this whole script (selection screen never registered).
+        local ok, x, y = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if ok and tonumber(x) then return tonumber(x), tonumber(y) end
+        return 1728, 972
+end)()
+
+-- the four old-client lobby camera spots {x, y, z, rotation}
+local CAM_SPOTS = {
+        { 706.1298, -1690.823, 3.4375, 180 },
+        { 1096.57, -2238.263, 49.3593, 226.21467590332 },
+        { 1025.306, -2195.153, 39.1406, 112.47149658203 },
+        { 2531.5, -1666.171, 15.1677, 117.15173339844 },
+}
+local CAMERA_DISTANCE = 4.4
+
+lobby = {
+        character = false,
+        section = false,
+        selection_status = false,
+        selectedCharacter = 1,
+        selectedID = false,
+        maxCharacters = 3,
+        account = "None",
+        currentCharacters = {},
+        showPed = false,
+        tabs = {
+                { id = 1, text = "CHARACTERS" },
+                { id = 2, text = "CREATE CHARACTER" },
+                { id = 3, text = "LATEST NEWS" },
+                { id = 4, text = "HISTORY" },
+                { id = 5, text = "RESET PASSWORD" },
+        },
+        tab_width = {},
+        topBarHeight = 50,
+        cam = { pos = false, target = false, from = false, to = false, count = 0 },
+        selectAnim = { tick = 0, fromX = 0, fromW = 0 },
+        hoverTab = false,
+        nameRects = {},
+        tabRects = {},
+        profilePic = false,
+}
+
+for i, tab in ipairs(lobby.tabs) do
+        lobby.tab_width[i] = dxGetTextWidth(tab.text, 1.2 * s, "default-bold") + 50 * s
+end
+
+local UI = { window = {}, label = {}, button = {}, memo = {} }
+local built = false
+local music = nil
+local fadeTimer = nil
+local toastData = { text = false, r = 255, g = 255, b = 255, tick = 0, life = 0 }
+local directiveText = false
+local BG_TEXTURE = ":assets/images/bg_gradient.png"
+
+-- ===========================================================================
+-- small local helpers
+-- ===========================================================================
+
+local function isMouseInPosition(x, y, w, h)
+        if not isCursorShowing() then return false end
+        local cx, cy = getCursorPosition()
+        if not cx then return false end
+        cx, cy = cx * sx, cy * sy
+        return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+end
+
+local function anim(tick, duration, fromX, fromW, toX, toW)
+        local elapsed = getTickCount() - tick
+        if elapsed >= duration then return toX, toW end
+        return interpolateBetween(fromX, fromW, 0, toX, toW, 0, elapsed / duration, "Linear")
+end
+
+function lobbyToast(text, kind)
+        local r, g, b = 255, 255, 255
+        if kind == "error" then
+                r, g, b = 255, 82, 110
+        elseif kind == "success" then
+                r, g, b = 90, 220, 140
+        elseif kind == "info" then
+                r, g, b = 120, 190, 255
+        end
+        toastData = { text = tostring(text), r = r, g = g, b = b, tick = getTickCount(), life = 5000 }
+end
+
+function showDirective(text)
+        directiveText = text
+end
+
+local function startLobbyMusic()
+        if isElement(music) then return end
+        music = playSound("menu.mp3", true)
+        if isElement(music) then
+                setSoundVolume(music, 0.45)
+                setElementData(localPlayer, "bgMusic", music, false)
+        end
+end
+
+function stopLobbyMusic()
+        if isElement(music) then
+                if isTimer(fadeTimer) then killTimer(fadeTimer) end
+                local theMusic = music
+                fadeTimer = setTimer(function()
+                        if not isElement(theMusic) then return end
+                        local v = getSoundVolume(theMusic)
+                        setSoundVolume(theMusic, v - 0.1)
+                        if v - 0.1 <= 0 then destroyElement(theMusic) end
+                end, 400, 10)
+        end
+        if getElementData(localPlayer, "bgMusic") then
+                setElementData(localPlayer, "bgMusic", nil, false)
+        end
+        music = nil
+end
+
+local function getCamPoint(spot)
+        -- camera floats in FRONT of the ped so the face is visible (old client)
+        local rad = math.rad(spot[4])
+        local px = spot[1] + math.sin(rad) * CAMERA_DISTANCE
+        local py = spot[2] + math.cos(rad) * CAMERA_DISTANCE
+        return px, py, spot[3] + 0.6
+end
+
+-- ===========================================================================
+-- UIKit build
+-- ===========================================================================
+
+local function buildUI()
+        if built then return end
+        -- [Fix #48] the flag moves to the END of the function: a mid-build
+        -- error must leave built=false so Characters_showSelection can retry
+
+        -- character info window (right side, 250x500)
+        UI.window.CharacterInfo = eui:uiCreateRectangle(REF_SX - 300, false, 250, 500, "bg_default", true, true, true, true)
+        eui:uiSetVisible(UI.window.CharacterInfo, false)
+        eui:uiCreateRectangle(62.5, 0, 125, 5, "primary", false, false, false, false, UI.window.CharacterInfo)
+        eui:uiCreateRectangle(62.5, 495, 125, 5, "primary", false, false, false, false, UI.window.CharacterInfo)
+        UI.label.CharacterInfo_1 = eui:uiCreateLabel(10, 15, 230, 60, "", tocolor(255, 255, 255, 240), "left", "top", UI.window.CharacterInfo)
+        eui:uiSetFont(UI.label.CharacterInfo_1, "default-large")
+        UI.label.CharacterInfo_2 = eui:uiCreateLabel(10, 85, 230, 340, "", tocolor(255, 255, 255, 240), "left", "top", UI.window.CharacterInfo)
+        eui:uiSetProperty(UI.label.CharacterInfo_2, "word_break", true)
+        UI.button.RemoveCharacter = eui:uiCreateButton(10, 450, 230, 35, { en = "Remove Character", ar = "حذف الشخصية" }, _, UI.window.CharacterInfo)
+
+        -- play button (bottom-centre)
+        UI.button.Play = eui:uiCreateButton((REF_SX - 200) / 2, REF_SY - 60, 200, 50, "Play", "primary")
+        eui:uiSetFont(UI.button.Play, "hud-large")
+        eui:uiSetProperty(UI.button.Play, "HoverGlow", true)
+        eui:uiSetProperty(UI.button.Play, "HoverTextColor", eui:uiGetThemeColor("primary"))
+        eui:uiSetVisible(UI.button.Play, false)
+
+        -- latest news window
+        UI.window.News = eui:uiCreateRectangle((REF_SX - 500) / 2, (REF_SY - 360) / 2, 500, 360, tocolor(20, 20, 20, 230), true, true, true, true)
+        eui:uiSetVisible(UI.window.News, false)
+        UI.label.NewsTitle = eui:uiCreateLabel(15, 10, 470, 30, "Latest News", tocolor(255, 255, 255, 255), "left", "top", UI.window.News)
+        eui:uiSetFont(UI.label.NewsTitle, "default-large")
+        UI.label.NewsText = eui:uiCreateLabel(15, 50, 470, 250, "", tocolor(255, 255, 255, 220), "left", "top", UI.window.News)
+        eui:uiSetProperty(UI.label.NewsText, "word_break", true)
+        UI.label.NewsSub = eui:uiCreateLabel(15, 310, 470, 20, "", tocolor(255, 255, 255, 140), "left", "top", UI.window.News)
+        UI.button.CloseNews = eui:uiCreateButton(15, 320, 470, 30, { en = "Hide", ar = "إخفاء" }, tocolor(0, 0, 0, 255), UI.window.News)
+
+        -- history window
+        UI.window.History = eui:uiCreateRectangle((REF_SX - 500) / 2, (REF_SY - 360) / 2, 500, 360, tocolor(20, 20, 20, 230), true, true, true, true)
+        eui:uiSetVisible(UI.window.History, false)
+        UI.label.HistoryTitle = eui:uiCreateLabel(15, 10, 470, 30, "History", tocolor(255, 255, 255, 255), "left", "top", UI.window.History)
+        eui:uiSetFont(UI.label.HistoryTitle, "default-large")
+        UI.label.HistoryText = eui:uiCreateLabel(15, 50, 470, 250, "", tocolor(255, 255, 255, 220), "left", "top", UI.window.History)
+        eui:uiSetProperty(UI.label.HistoryText, "word_break", true)
+        UI.button.CloseHistory = eui:uiCreateButton(15, 320, 470, 30, { en = "Hide", ar = "إخفاء" }, tocolor(0, 0, 0, 255), UI.window.History)
+        -- [Fix #48] built flips true only AFTER the whole build succeeds, so a
+        -- mid-build error (UIKit restart race) leaves it false and the retry
+        -- in Characters_showSelection can actually rebuild
+        built = true
+end
+
+-- ===========================================================================
+-- info window content (old-client layout: bullets + primary color)
+-- ===========================================================================
+
+local PRIMARY_HEX = "#ff375f"
+
+local function genderText(gender)
+        return gender == 1 and "انثى" or "ذكر"
+end
+
+local function monthName(month)
+        local names = { "January", "February", "March", "April", "May", "June",
+                "July", "August", "September", "October", "November", "December" }
+        return names[tonumber(month) or 1] or "January"
+end
+
+local function lastSeenText(days)
+        days = tonumber(days) or 0
+        if days <= 0 then return "اليوم" end
+        return "قبل " .. days .. (days == 1 and " يوم" or " يوم")
+end
+
+local function refreshCharacterDetails()
+        local char = lobby.currentCharacters[lobby.selectedCharacter]
+        if not char then return end
+        local info = "#" .. tostring(char[1]) .. "\n" .. tostring(char[2] or ""):gsub("_", " ")
+
+        local status = (tonumber(char[3]) == 1) and "#FF0000ميت" or "#00FF00على قيد الحياة"
+        local details = ""
+                .. PRIMARY_HEX .. " • الجنس » #FFFFFF" .. genderText(char[6]) .. "\n"
+                .. PRIMARY_HEX .. " • العمر » #FFFFFF" .. tostring(char[5] or "?") .. "\n"
+                .. PRIMARY_HEX .. " • تاريخ الميلاد » #FFFFFF" .. monthName(char[13]) .. " " .. tostring(char[14] or "?") .. "\n"
+                .. PRIMARY_HEX .. " • الوزن » #FFFFFF" .. tostring(char[11] or "?") .. " kg\n"
+                .. PRIMARY_HEX .. " • الطول » #FFFFFF" .. tostring(char[12] or "?") .. " cm\n"
+                .. "\n"
+                .. PRIMARY_HEX .. " • الوظيفة » #FFFFFF" .. (char[7] and (tostring(char[8] or "") .. " - " .. tostring(char[7])) or "مواطن") .. "\n"
+                .. "\n"
+                .. PRIMARY_HEX .. " • الحالة » " .. status .. "\n"
+                .. PRIMARY_HEX .. " • آخر ظهور » #FFFFFF" .. lastSeenText(char[10]) .. "\n"
+                .. "     " .. tostring(char[4] or "?")
+
+        eui:uiSetText(UI.label.CharacterInfo_1, info)
+        eui:uiSetText(UI.label.CharacterInfo_2, details)
+        eui:uiSetProperty(UI.label.CharacterInfo_2, "color_coded", true)
+end
+
+local function applyPedForCharacter()
+        local char = lobby.currentCharacters[lobby.selectedCharacter]
+        if not char then return end
+        local model = tonumber(char[9]) or 0
+        if not isElement(lobby.showPed) then
+                local spot = CAM_SPOTS[lobby.cam.index]
+                lobby.showPed = createPed(model, spot[1], spot[2], spot[3])
+                setElementDimension(lobby.showPed, 65499)
+                setElementInterior(lobby.showPed, 0)
+                setPedRotation(lobby.showPed, spot[4])
+        end
+        if isElement(lobby.showPed) then
+                setElementModel(lobby.showPed, model)
+                local animType = (tonumber(char[3]) == 1) and 4 or (lobby.justSwitched and 1 or 2)
+                local anim = getRandomAnim(animType or 2)
+                if anim then
+                        setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false)
+                end
+        end
+end
+
+-- ===========================================================================
+-- show / hide
+-- ===========================================================================
+
+function Characters_showSelection()
+        -- [Fix #48] a failed buildUI (UIKit restart race) used to abort the
+        -- whole transition and leave the camera wherever the login screen
+        -- ended - frozen with no UI. Build is pcall'd with one retry; a total
+        -- failure is reported in chat instead of dying silently.
+        if not built then
+                local okBuild, buildErr = pcall(buildUI)
+                if not okBuild then
+                        built = false
+                        outputChatBox("[Characters] UI build failed: " .. tostring(buildErr), 255, 100, 100, false)
+                        local okRetry, retryErr = pcall(buildUI)
+                        if not okRetry then
+                                built = false
+                                outputChatBox("[Characters] UI build retry failed: " .. tostring(retryErr), 255, 100, 100, false)
+                        end
+                end
+        end
+        triggerEvent("onSapphireXMBShow", localPlayer)
+        showPlayerHudComponent("radar", false)
+
+        lobby.selection_status = true
+        showCursor(true)
+        showChat(false)
+        guiSetInputEnabled(false)
+
+        if isElement(lobby.showPed) then destroyElement(lobby.showPed) end
+        lobby.showPed = false
+
+        local characterList = getElementData(localPlayer, "account:characters") or {}
+        lobby.currentCharacters = characterList
+        if #characterList == 0 then
+                lobby.selectedCharacter = 0
+                lobby.selectedID = false
+        else
+                if not characterList[lobby.selectedCharacter] then lobby.selectedCharacter = 1 end
+                lobby.selectedID = characterList[lobby.selectedCharacter][1]
+        end
+
+        lobby.account = getElementData(localPlayer, "account:username")
+                or getElementData(localPlayer, "account")
+                or "None"
+        lobby.cam.index = math.random(1, #CAM_SPOTS)
+        local spot = CAM_SPOTS[lobby.cam.index]
+        lobby.cam.spot = spot
+        local cx, cy, cz = getCamPoint(spot)
+        lobby.cam.pos = { cx, cy, cz }
+        lobby.cam.target = { spot[1], spot[2], spot[3] + 0.45 }
+
+        setTime(0, 0)
+        setElementInterior(localPlayer, 0)
+        setCameraInterior(0)
+        setElementDimension(localPlayer, 65499)
+        setElementAlpha(localPlayer, 0)
+        fadeCamera(true)
+        setCameraMatrix(cx, cy, cz, spot[1], spot[2], spot[3] + 0.45)
+
+
+
+        if #characterList == 0 then
+                eui:uiSetVisible(UI.window.CharacterInfo, false)
+                eui:uiSetVisible(UI.button.Play, false)
+                selectTab(2)
+        else
+                applyPedForCharacter()
+                refreshCharacterDetails()
+                eui:uiSetVisible(UI.window.CharacterInfo, true)
+                eui:uiSetVisible(UI.button.Play, true)
+                lobby.section = 1
+        end
+
+        removeEventHandler("onClientRender", root, lobby.draw)
+        addEventHandler("onClientRender", root, lobby.draw)
+        removeEventHandler("onClientClick", root, lobby.click)
+        addEventHandler("onClientClick", root, lobby.click)
+
+        startLobbyMusic()
+end
+
+function lobbyHide()
+        lobby.selection_status = false
+        stopLobbyMusic()
+        showCursor(false)
+        showChat(true)
+        showPlayerHudComponent("radar", true)
+        setElementAlpha(localPlayer, 255)
+        setCameraTarget(localPlayer)
+        removeEventHandler("onClientRender", root, lobby.draw)
+        removeEventHandler("onClientClick", root, lobby.click)
+        if isElement(lobby.showPed) then destroyElement(lobby.showPed) end
+        lobby.showPed = false
+        if built then
+                eui:uiSetVisible(UI.window.CharacterInfo, false)
+                eui:uiSetVisible(UI.button.Play, false)
+                eui:uiSetVisible(UI.window.News, false)
+                eui:uiSetVisible(UI.window.History, false)
+        end
+        showDirective(false)
+        lobby.section = false
+end
+
+function characters_destroyDetailScreen()
+        -- legacy name kept: clears everything the lobby owns
+        lobbyHide()
+end
+
+-- ===========================================================================
+-- tab switching
+-- ===========================================================================
+
+function selectTab(id)
+        if lobby.section then
+                if lobby.section == 1 then
+                        eui:uiSetVisible(UI.window.CharacterInfo, #lobby.currentCharacters > 0)
+                        eui:uiSetVisible(UI.button.Play, #lobby.currentCharacters > 0)
+                elseif lobby.section == 2 and type(lobbyCreation) == "function" then
+                        lobbyCreation(false)
+                elseif lobby.section == 3 then
+                        eui:uiSetVisible(UI.window.News, false)
+                elseif lobby.section == 4 then
+                        eui:uiSetVisible(UI.window.History, false)
+                end
+        end
+
+        lobby.section = id
+        if not id then return end
+        playSound(":UIKit/sounds/click2.wav")
+
+        if id == 1 then
+                if isElement(lobby.showPed) then
+                        local char = lobby.currentCharacters[lobby.selectedCharacter]
+                        if char then
+                                local anim = getRandomAnim(tonumber(char[3]) == 1 and 4 or 2)
+                                if anim then setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false) end
+                        end
+                end
+                refreshCharacterDetails()
+                eui:uiSetVisible(UI.window.CharacterInfo, #lobby.currentCharacters > 0)
+                eui:uiSetVisible(UI.button.Play, #lobby.currentCharacters > 0)
+        elseif id == 2 then
+                eui:uiSetVisible(UI.window.CharacterInfo, false)
+                eui:uiSetVisible(UI.button.Play, false)
+                if type(lobbyCreation) == "function" then lobbyCreation(true) end
+        elseif id == 3 then
+                local title = getElementData(resourceRoot, "news:title")
+                local text = getElementData(resourceRoot, "news:text")
+                local sub = getElementData(resourceRoot, "news:sub")
+                eui:uiSetText(UI.label.NewsTitle, tostring(title or "Latest News"))
+                eui:uiSetText(UI.label.NewsText, tostring(text or "لا يوجد خبر متاح حالياً."))
+                eui:uiSetText(UI.label.NewsSub, tostring(sub or ""))
+                eui:uiSetVisible(UI.window.News, true)
+        elseif id == 4 then
+                eui:uiSetText(UI.label.HistoryTitle, "History")
+                eui:uiSetText(UI.label.HistoryText, "سجل الحساب غير متوفر حالياً.\n\nAccount history is not available yet.")
+                eui:uiSetVisible(UI.window.History, true)
+        elseif id == 5 then
+                lobbyToast("لتغيير كلمة المرور تواصل مع الإدارة عبر الديسكورد مع اسم الحساب + الإيميل", "info")
+                outputChatBox("Password reset: contact the staff on Discord with your account name + email.", 255, 194, 14)
+                lobby.section = false
+        end
+end
+
+-- ===========================================================================
+-- draw loop
+-- ===========================================================================
+
+function lobby.draw()
+        if not lobby.selection_status then return end
+
+        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 180), true)
+        dxDrawImage(0, 0, sx, sy, BG_TEXTURE, 0, 0, 0, tocolor(0, 3, 8, 255), true)
+
+        -- logo (left, vertically centered) + account name (top-right)
+        local logoSize = 100 * s
+        dxDrawImage(70 * s, (sy - logoSize) / 2, logoSize, logoSize, ":main-menu/images/logo.png", 0, 0, 0, tocolor(255, 255, 255, 200), true)
+        dxDrawText(tostring(lobby.account), 0, 10 * s, sx - 80 * s, 60 * s, tocolor(255, 255, 255, 180), 1.1 * s, "default-bold", "right", "center")
+
+        -- tab row (circle indicator + labels) ------------------------------------
+        local tabH = 40 * s
+        local tabY = 45 * s
+        local radius = (lobby.section and 12 * s) or 6 * s
+        dxDrawCircle(50 * s, tabY + tabH / 2, radius, 0, 360, 0, 0, tocolor(255, 55, 95, 255), nil, 3 * s)
+
+        local cursorX = 100 * s
+        lobby.tabRects = {}
+        for i, tab in ipairs(lobby.tabs) do
+                local w = lobby.tab_width[i]
+                local hovered = isMouseInPosition(cursorX, tabY, w, tabH)
+                if hovered and lobby.hoverTab ~= i then
+                        lobby.hoverTab = i
+                        playSound(":assets/sounds/select.wav")
+                elseif not hovered and lobby.hoverTab == i then
+                        lobby.hoverTab = false
+                end
+                local alpha = (lobby.section == i) and 255 or (hovered and 200 or 120)
+                dxDrawText(tab.text, cursorX, tabY, cursorX + w, tabY + tabH, tocolor(255, 255, 255, alpha), 1.2 * s, "default-bold", "center", "center")
+                lobby.tabRects[i] = { x = cursorX, y = tabY, w = w, h = tabH }
+                cursorX = cursorX + w
+        end
+
+        -- characters name list -----------------------------------------------------
+        local nameY = 120 * s
+        local nameH = 30 * s
+        lobby.nameRects = {}
+        if lobby.section == 1 or lobby.section == 2 then
+                local countLabel = tostring(#lobby.currentCharacters)
+                if #lobby.currentCharacters <= lobby.maxCharacters then
+                        countLabel = countLabel .. "/" .. tostring(lobby.maxCharacters)
+                end
+                dxDrawText(countLabel, 0, nameY, sx - 50 * s, nameY + nameH, tocolor(255, 255, 255, 255), 1.1 * s, "default-bold", "right", "center")
+        end
+
+        if lobby.section == 1 then
+                local underX, underW
+                for i, char in ipairs(lobby.currentCharacters) do
+                        local charName = tostring(char[2] or ""):gsub("_", " ")
+                        local w = dxGetTextWidth(charName, 1.1 * s, "default-bold")
+                        local x = 100 * s
+                        local hovered = isMouseInPosition(x, nameY, w, nameH)
+                        local alpha = (lobby.selectedCharacter == i) and 255 or (hovered and 200 or 150)
+                        dxDrawText(charName, x, nameY + (i - 1) * (nameH + 8 * s), x + w, nameY + (i - 1) * (nameH + 8 * s) + nameH,
+                                tocolor(255, 255, 255, alpha), 1.1 * s, "default-bold", "left", "center")
+                        lobby.nameRects[i] = { x = x, y = nameY + (i - 1) * (nameH + 8 * s), w = w, h = nameH }
+                        if lobby.selectedCharacter == i then
+                                underX, underW = anim(lobby.selectAnim.tick, 400, lobby.selectAnim.fromX, lobby.selectAnim.fromW, x, w)
+                                dxDrawLine(underX, nameY + (i - 1) * (nameH + 8 * s) + nameH, underX + underW, nameY + (i - 1) * (nameH + 8 * s) + nameH, tocolor(255, 255, 255, 255), 2, true)
+                        end
+                end
+        end
+
+        -- toast -------------------------------------------------------------------
+        if toastData.text and getTickCount() - toastData.tick < toastData.life then
+                local ttw = math.min(dxGetTextWidth(toastData.text, 1 * s, "default-bold") + 40 * s, sx - 100 * s)
+                local th = 44 * s
+                local tx = (sx - ttw) / 2
+                local ty = sy - 140 * s
+                dxDrawRectangle(tx, ty, ttw, th, tocolor(10, 10, 12, 235), true)
+                dxDrawRectangle(tx, ty, 4 * s, th, tocolor(toastData.r, toastData.g, toastData.b, 255), true)
+                dxDrawText(toastData.text, tx + 15 * s, ty, tx + ttw - 15 * s, ty + th, tocolor(255, 255, 255, 255), 1 * s, "default-bold", "center", "center", false, true, true)
+        end
+
+        -- directive (skin switching) ----------------------------------------------
+        if directiveText then
+                local dtw = dxGetTextWidth(directiveText, 1 * s, "default-bold") + 40 * s
+                local dth = 40 * s
+                local dtx = (sx - dtw) / 2
+                local dty = 90 * s
+                dxDrawRectangle(dtx, dty, dtw, dth, tocolor(10, 10, 12, 220), true)
+                dxDrawText(directiveText, dtx, dty, dtx + dtw, dty + dth, tocolor(255, 255, 255, 240), 1 * s, "default-bold", "center", "center")
+        end
+end
+
+-- ===========================================================================
+-- click layer (tabs + names, raw onClientClick like the old client)
+-- ===========================================================================
+
+function lobby.click(button, state, absX, absY)
+        if button ~= "left" or state ~= "down" then return end
+        if not lobby.selection_status then return end
+
+        for i, rect in ipairs(lobby.tabRects or {}) do
+                if absX >= rect.x and absX <= rect.x + rect.w and absY >= rect.y and absY <= rect.y + rect.h then
+                        if lobby.section ~= i then
+                                selectTab(i)
+                        end
+                        return
+                end
+        end
+
+        if lobby.section == 1 then
+                for i, rect in ipairs(lobby.nameRects or {}) do
+                        if absX >= rect.x and absX <= rect.x + rect.w and absY >= rect.y and absY <= rect.y + rect.h then
+                                if lobby.selectedCharacter ~= i then
+                                        lobby.justSwitched = true
+                                        lobby.selectedCharacter = i
+                                        lobby.selectedID = lobby.currentCharacters[i][1]
+                                        lobby.selectAnim = { tick = getTickCount(), fromX = rect.x, fromW = 0 }
+                                        applyPedForCharacter()
+                                        refreshCharacterDetails()
+                                        setTimer(function() lobby.justSwitched = false end, 600, 1)
+                                end
+                                return
+                        end
+                end
+        end
+end
+
+-- ===========================================================================
+-- UIKit events
+-- ===========================================================================
+
+addEventHandler("onClientUIClick", root, function()
+        if not lobby.selection_status then return end
+        if source == UI.button.Play then
+                local char = lobby.currentCharacters[lobby.selectedCharacter]
+                if not char then return end
+                if tonumber(char[3]) == 1 then
+                        lobbyToast("هذه الشخصية ميتة، لا يمكن اللعب بها", "error")
+                        return
+                end
+                eui:uiSetVisible(UI.button.Play, false)
+                eui:uiSetVisible(UI.window.CharacterInfo, false)
+                stopLobbyMusic()
+                fadeCamera(false, 1, 0, 0, 0)
+                lobby.spawnRequested = getTickCount()
+                setTimer(function()
+                        triggerServerEvent("accounts:characters:spawn", localPlayer, lobby.selectedID)
+                end, 900, 1)
+                -- [Fix #48] SPAWN WATCHDOG: if the server never answers (an
+                -- error aborted the spawn chain), the screen used to stay
+                -- black/frozen forever with zero feedback. After 15s restore
+                -- the lobby so the player can retry instead of relogging.
+                setTimer(function()
+                        if not lobby.selection_status then return end
+                        if not lobby.spawnRequested then return end
+                        if getTickCount() - lobby.spawnRequested < 14000 then return end
+                        lobby.spawnRequested = nil
+                        fadeCamera(true, 1)
+                        eui:uiSetVisible(UI.button.Play, true)
+                        eui:uiSetVisible(UI.window.CharacterInfo, true)
+                        lobbyToast("فشل ظهور الشخصية، حاول مجددا", "error")
+                end, 15000, 1)
+        elseif source == UI.button.RemoveCharacter then
+                local char = lobby.currentCharacters[lobby.selectedCharacter]
+                if not char then return end
+                if tonumber(char[3]) ~= 1 then
+                        lobbyToast("يمكنك حذف الشخصيات الميتة فقط", "error")
+                        return
+                end
+                triggerServerEvent("accounts:characters:remove", localPlayer, tonumber(char[1]))
+        elseif source == UI.button.CloseNews then
+                eui:uiSetVisible(UI.window.News, false)
+                selectTab(1)
+        elseif source == UI.button.CloseHistory then
+                eui:uiSetVisible(UI.window.History, false)
+                selectTab(1)
+        end
+end)
+
+-- removal response: refresh the list and re-render the lobby
+addEvent("accounts:characters:remove:response", true)
+addEventHandler("accounts:characters:remove:response", root, function(ok, reason)
+        if ok then
+                lobbyToast("تم حذف الشخصية", "success")
+                triggerServerEvent("updateCharacters", localPlayer)
+                setTimer(function()
+                        local list = getElementData(localPlayer, "account:characters") or {}
+                        lobby.currentCharacters = list
+                        if not list[lobby.selectedCharacter] then lobby.selectedCharacter = 1 end
+                        if not list[lobby.selectedCharacter] then
+                                lobby.selectedID = false
+                                eui:uiSetVisible(UI.window.CharacterInfo, false)
+                                eui:uiSetVisible(UI.button.Play, false)
+                                if isElement(lobby.showPed) then destroyElement(lobby.showPed) end
+                                lobby.showPed = false
+                                selectTab(2)
+                        else
+                                lobby.selectedID = list[lobby.selectedCharacter][1]
+                                applyPedForCharacter()
+                                refreshCharacterDetails()
+                        end
+                end, 500, 1)
+        else
+                lobbyToast(tostring(reason or "فشل حذف الشخصية"), "error")
+        end
+end)
+
+-- spawned: the server owns the rest (s_characters accounts:characters:spawn)
+addEventHandler("accounts:characters:spawn", root, function()
+        lobby.spawnRequested = nil -- [Fix #48] answered -> disarm the watchdog
+        lobbyHide()
+        fadeCamera(true)
+end)
+
+addEventHandler("onClientResourceStop", resourceRoot, function()
+        if lobby.selection_status then
+                setElementAlpha(localPlayer, 255)
+                setCameraTarget(localPlayer)
+                showChat(true)
+        end
+end)
+
+-- legacy alias used by the old logout flow
+Characters_deactivateGUI = lobbyHide

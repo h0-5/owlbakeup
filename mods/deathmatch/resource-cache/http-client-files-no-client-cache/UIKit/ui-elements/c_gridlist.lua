@@ -232,6 +232,31 @@ function uiGridListGetSelectedItem(arg0)
   end
   return UI.DB[arg0].data.selected_row
 end
+-- [Fix #17] scroll-aware helpers used by the staff panel's raw click layer.
+-- The panel recomputed the clicked row from the cursor Y alone, which ignored
+-- the scroll offset (data.row_i) and picked the wrong rank after scrolling.
+-- These mirror the draw loop's own geometry so a click lands on the row that
+-- is actually painted under the cursor.
+function uiGridListGetVisibleRows(arg0)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetVisibleRows' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  return UI.DB[arg0].data.row_i or 1, UI.DB[arg0].data.row_f or 1
+end
+function uiGridListGetRowAtPoint(arg0, ay)
+  assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetRowAtPoint' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  local db = UI.DB[arg0]
+  local rows = db.data.rows or {}
+  if #rows == 0 then return -1 end
+  local ch = db.properties.column_height.value
+  for i = db.data.row_i or 1, db.data.row_f or #rows do
+    local cell = rows[i] and rows[i][1]
+    if not cell then break end
+    local ry = db.dimensions.y + 2 + ch + cell.height * (i - db.data.row_i)
+    if ay >= ry and ay <= ry + cell.height then
+      return i - 1
+    end
+  end
+  return -1
+end
 function uiGridListSetColumnText(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListSetColumnText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListSetColumnText' [There's no such column index]")
@@ -282,6 +307,8 @@ function uiGridListSetSelectedItem(arg0, arg1)
     assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListSetSelectedItem' [There's no such row index]")
   end
   UI.DB[arg0].data.selected_row = arg1
+  -- [Vortex fix #11] stamp the moment of selection so the draw can fade in
+  UI.DB[arg0].data.selection_tick = getTickCount()
   return true
 end
 UI.getDrawFunction["ui-gridlist"] = function(arg0)
@@ -295,7 +322,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       columnX[forvar17] = UI.DB[arg0].dimensions.x + columnOffset
       columnOffset = columnOffset + forvar18.width * UI.DB[arg0].dimensions.width
       if UI.DB[arg0].properties.columns_names_visible.value == "True" then
-        dxDrawText(forvar18.text, UI.DB[arg0].dimensions.x + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.x + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI)
+        dxDrawText(forvar18.text, columnX[forvar17] + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, columnX[forvar17] + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI) -- [Vortex fix] header x = columnX (the decompiled draw used the gridlist left edge for EVERY column -> all headers stacked on top of each other)
       end
     end
     if UI.DB[arg0].properties.columns_names_visible.value == "True" then
@@ -303,23 +330,52 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
     end
     if 1 <= #UI.DB[arg0].data.rows then
       UI.DB[arg0].data.hovered_row = false
+      -- [Vortex fix #14] row banding rebuilt. The decompiled draw painted the
+      -- selection rectangle PER CELL (a 5-column list stroked the same rect 5x,
+      -- alpha stacking into a near-opaque purple slab that drowned the row
+      -- text -> "the name disappears when I click" + harsh fade = broken
+      -- animation). The highlight is now drawn ONCE per row, BEFORE the cells,
+      -- with a subtle alpha cap so every rank color / name stays readable.
       for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
-        for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
-          if UI.DB[arg0].data.selected_row == forvar19 - 1 and not false then
-            dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(dxGetColor(theme.COLORS.primary), 155), UI.postGUI)
-            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
-              UI.DB[arg0].data.hovered_row = forvar19 - 1
-            end
-          elseif not isUIDisabled(arg0) and UI.HoveredElement == arg0 and forvar24 == 1 then
-            if isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, forvar25.height) then
-              UI.DB[arg0].data.hovered_row = forvar19 - 1
-              if UI.DB[arg0].data.selected_row ~= forvar19 - 1 and forvar19 - 1 ~= forvar19 - 1 and not false then
-                dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + 1, UI.DB[arg0].dimensions.width, forvar25.height - 1, tocolor(60, 60, 60, 100), UI.postGUI)
-              end
+        local rowCell1 = UI.DB[arg0].data.rows[forvar19][1]
+        local rowH = (rowCell1 and rowCell1.height) or 20
+        local rowY = UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i)
+        if UI.DB[arg0].data.selected_row == forvar19 - 1 then
+          -- [Vortex fix #15] the band is drawn ONCE per row (fix #14 killed the
+          -- per-cell overdraw), so it can be stronger without drowning the text:
+          -- fade 60 -> 170 over ~140ms = clearly "prominent + white" on the
+          -- promote/demote rank lists, text stays forced white and readable.
+          local selTick = UI.DB[arg0].data.selection_tick
+          local selAlpha = 170
+          if selTick then
+            local selDT = getTickCount() - selTick
+            if selDT < 140 then
+              selAlpha = math.floor(60 + (170 - 60) * (selDT / 140))
             end
           end
-          dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, forvar25.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
-          dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
+          -- accent bar on the left edge keeps the selection unmistakable
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, 3, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
+        end
+        if not isUIDisabled(arg0) and UI.HoveredElement == arg0
+          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, rowH) then
+          UI.DB[arg0].data.hovered_row = forvar19 - 1
+          if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
+            dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(60, 60, 60, 90), UI.postGUI)
+          end
+        end
+        -- [Fix #30 - FPS] the row separator was painted PER CELL (a 5-column
+        -- list stroked the same 0.5px line 5x per row). Draw it once.
+        dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i) + rowH, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
+        for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
+          -- [Vortex fix #14b] selected row text is forced WHITE: rank colors
+          -- like navy/maroon drowned on the selection band and the name
+          -- looked like it "disappears" when clicked
+          local cellColor = forvar25.color or tocolor(255, 255, 255, 255)
+          if UI.DB[arg0].data.selected_row == forvar19 - 1 then
+            cellColor = tocolor(255, 255, 255, 255)
+          end
+          dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, cellColor, UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
         end
       end
     end

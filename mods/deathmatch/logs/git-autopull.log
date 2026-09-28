@@ -190,3 +190,24 @@
 [2026-09-27 02:51:29] up to date
 [2026-09-27 02:53:29] up to date
 [2026-09-27 02:55:29] up to date
+[2026-09-28 17:27:32] pull FAILED even after reset; aborting merge
+[2026-09-28 17:33:35] update detected: e2095f00246ed867a3ac3c4f55a6bd47d8139a00 -> 43d7e2ddf82914a72a37adca985b31af573d6d6c
+[2026-09-28 17:33:35] pull OK -> e2095f00246ed867a3ac3c4f55a6bd47d8139a00
+[2026-09-28 17:33:35] server stopped for update
+[2026-09-28 17:33:35] server restarted (PID 3356)
+[2026-09-28 17:35:31] update detected: e2095f00246ed867a3ac3c4f55a6bd47d8139a00 -> 43d7e2ddf82914a72a37adca985b31af573d6d6c
+[2026-09-28 17:35:31] pull OK -> e2095f00246ed867a3ac3c4f55a6bd47d8139a00
+[2026-09-28 17:35:31] server stopped for update
+[2026-09-28 17:35:31] server restarted (PID 17432)
+[2026-09-28 17:37:30] update detected: e2095f00246ed867a3ac3c4f55a6bd47d8139a00 -> 43d7e2ddf82914a72a37adca985b31af573d6d6c
+[2026-09-28 17:37:30] pull OK -> e2095f00246ed867a3ac3c4f55a6bd47d8139a00
+[2026-09-28 17:37:30] server stopped for update
+[2026-09-28 17:37:30] server restarted (PID 3424)
+[2026-09-28 17:39:30] update detected: e2095f00246ed867a3ac3c4f55a6bd47d8139a00 -> 43d7e2ddf82914a72a37adca985b31af573d6d6c
+[2026-09-28 17:39:30] pull OK -> e2095f00246ed867a3ac3c4f55a6bd47d8139a00
+[2026-09-28 17:39:30] server stopped for update
+[2026-09-28 17:39:30] server restarted (PID 18300)
+[2026-09-28 17:41:30] update detected: e2095f00246ed867a3ac3c4f55a6bd47d8139a00 -> 43d7e2ddf82914a72a37adca985b31af573d6d6c
+[2026-09-28 17:41:30] pull OK -> e2095f00246ed867a3ac3c4f55a6bd47d8139a00
+[2026-09-28 17:41:30] server stopped for update
+[2026-09-28 17:41:30] server restarted (PID 17744)

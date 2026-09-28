@@ -820,8 +820,22 @@ local function updateRoleImpl(sender, levelID, rights, color)
 end
 
 addEvent("rpadmin:updateRole", true)
-addEventHandler("rpadmin:updateRole", root, function(levelID, _, rights, color)
+addEventHandler("rpadmin:updateRole", root, function(levelID, name, rights, color)
         updateRoleImpl(client, levelID, rights, color)
+        -- [Fix #53] persist a non-empty rank name from the SAME Save press
+        -- (the client used to send nil here, so typed names never saved).
+        if type(name) == "string" and name ~= "" and tonumber(levelID) and hasEditRanks(client) then
+                local row = mysql:query_fetch_assoc("SELECT LevelName FROM staff_roles WHERE ID="
+                        .. tonumber(levelID))
+                if row then
+                        mysql:query_free("UPDATE staff_roles SET LevelName='"
+                                .. mysql:escape_string(name) .. "' WHERE ID=" .. tonumber(levelID))
+                        addChangelog("Rank Renamed", row.LevelName, row.LevelName, name)
+                        outputChatBox("Rank renamed: " .. tostring(row.LevelName) .. " -> " .. name,
+                                client, 0, 255, 0)
+                        refresh(client)
+                end
+        end
 end)
 
 addEvent("rpadmin:saveLevelRights", true)

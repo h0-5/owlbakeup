@@ -25,7 +25,22 @@
 
 local sx, sy = guiGetScreenSize()
 local localPlayer = getLocalPlayer()
-local eui = exports.UIKit
+
+-- [Fix #45] `local eui = exports.UIKit` at load time raised
+-- "exports: Call to non-running server resource (UIKit)" whenever the account
+-- resource's client script started before UIKit did, which killed this script
+-- (no beginLogin handler -> no login panel at all). Resolve it lazily instead.
+local eui = nil
+
+local function ensureUIKit()
+        if eui then return true end
+        local ok, exportsTable = pcall(function() return exports.UIKit end)
+        if ok and exportsTable then
+                eui = exportsTable
+                return true
+        end
+        return false
+end
 
 local music = nil
 local fadeout_sound_timer = nil
@@ -114,12 +129,20 @@ local function drawBackground()
 end
 
 local function showLoading(on)
-        if exports.public and exports.public.loading then
-                pcall(function() exports.public:loading("login", on) end)
+        -- [Fix #45] there is no `public` resource on this server, so the plain
+        -- `exports.public ...` check raised "Call to non-running server
+        -- resource" every time. Guard on the real resource state instead.
+        local res = getResourceFromName("public")
+        if not res or getResourceState(res) ~= "running" then
+                return
         end
+        pcall(function()
+                exports.public:loading("login", on)
+        end)
 end
 
 function setLoginPanelVisible(state)
+        if not built then return end -- [Fix #45] nothing to show before buildUI succeeds
         visible = state
         if state then
                 eui:uiSetVisible(UI.window.login, true)
@@ -143,8 +166,13 @@ end
 
 -- build ------------------------------------------------------------------------
 local function buildUI()
-        if built then return end
-        built = true
+        if built then return true end
+        if not ensureUIKit() then
+                -- [Fix #45] UIKit is not running yet: leave `built` false so
+                -- the next beginLogin attempt rebuilds instead of shipping
+                -- an empty panel.
+                return false
+        end
 
         UI.image.Logo = eui:uiCreateImage((sx - 148) / 2, (sy - 150) / 2 - 148, 148, 148, ":main-menu/images/logo.png")
         eui:uiSetVisible(UI.image.Logo, false)
@@ -225,6 +253,8 @@ local function buildUI()
         -- status label (set_warning_text / set_authen_text target)
         UI.label.Status = eui:uiCreateLabel(0, 500 + 25, 350, 30, "", tocolor(255, 80, 80, 255), "center", "center", UI.window.login)
         eui:uiSetProperty(UI.label.Status, "color_coded", true)
+        built = true -- [Fix #45] only mark built once EVERY element succeeded
+        return true
 end
 
 -- container switch + logic ---------------------------------------------------
@@ -237,7 +267,7 @@ end
 -- OwlGaming global which never existed in this rebuild (runtime error on
 -- every login screen open). Re-open the rebuilt panel through it.
 function open_log_reg_pannel()
-        buildUI()
+        if not buildUI() then return end -- [Fix #45] UIKit may still be down
         setLoginPanelVisible(true)
         showContainer("login")
 end
@@ -382,17 +412,38 @@ end)
 
 -- server contract --------------------------------------------------------------
 addEvent("beginLogin", true)
+local loginRenderAdded = false
+local beginLoginRetries = 0
 addEventHandler("beginLogin", root, function()
-        buildUI()
+        if not built then
+                buildUI()
+                if not built then
+                        -- [Fix #45] UIKit is not running yet: retry shortly
+                        -- instead of dying silently (this is what used to
+                        -- leave the player with no panel)
+                        beginLoginRetries = beginLoginRetries + 1
+                        if beginLoginRetries <= 10 then
+                                setTimer(function()
+                                        triggerEvent("beginLogin", localPlayer)
+                                end, 1000, 1)
+                        else
+                                outputChatBox("Login panel failed to initialise (UIKit not running).", 255, 0, 0)
+                        end
+                        return
+                end
+        end
+        beginLoginRetries = 0
         startLoginMusic()
         if getElementData(localPlayer, "character:id") then return end
         showChat(false)
         setTime(0, 0)
         setElementInterior(localPlayer, 0)
         fadeCamera(true)
-        addEventHandler("onClientRender", root, drawBackground)
+        if not loginRenderAdded then -- [Fix #45] never stack duplicate renderers
+                addEventHandler("onClientRender", root, drawBackground)
+                loginRenderAdded = true
+        end
         local pt = CAMERA_POINTS[math.random(1, #CAMERA_POINTS)]
-        showLoading(true)
         setTimer(function(x, y, z, tx, ty, tz)
                 showLoading(false)
                 local mode = getElementData(resourceRoot, "Mode")
@@ -405,6 +456,9 @@ addEventHandler("beginLogin", root, function()
                 showCursor(true)
                 setCameraMatrix(x, y, z, tx, ty, tz)
         end, 2000, 1, pt[1], pt[2], pt[3], pt[4], pt[5], pt[6])
+        -- [Fix #45] the panel becomes visible from the timer above; showLoading
+        -- is safe (no `public` resource) but must never abort this handler
+        showLoading(true)
         -- pre-fill the remembered credentials (+ kick off the auto-login)
         local user, pass = loadRemember()
         if user and #user > 0 and UI.edit.Username then

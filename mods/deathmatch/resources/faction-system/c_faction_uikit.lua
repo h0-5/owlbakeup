@@ -43,8 +43,17 @@
 local localPlayer = getLocalPlayer()
 local eui = exports.UIKit
 
-local REF_SX = select(1, eui:uiGetReferenceScreenSize()) or 1728
-local REF_SY = select(2, eui:uiGetReferenceScreenSize()) or 972
+-- [Fix #52] the two uiGetReferenceScreenSize() calls below ran at LOAD time
+-- and raised "Call to non-running server resource (UIKit)" whenever
+-- faction-system started before UIKit (mtaserver.conf order) - the whole
+-- file died and F3 never opened. Resolve lazily on first build instead.
+local REF_SX, REF_SY = 1728, 972
+local function resolveRefSize()
+        local okRef, w, h = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if okRef and tonumber(w) and tonumber(h) then
+                REF_SX, REF_SY = tonumber(w), tonumber(h)
+        end
+end
 
 local WIN_W, WIN_H = 955, 625
 local PANEL_X, PANEL_W = 150 + 10, 955 - 150 - 15 -- 160 / 790
@@ -119,6 +128,7 @@ end
 local function buildUI()
         if built then return end
         built = true
+        resolveRefSize() -- [Fix #52] lazy reference-screen size
 
         UI.window.FactionWindow = eui:uiCreateRectangle(false, false, WIN_W, WIN_H, tocolor(6, 9, 14, 235), true, true, true, true)
         eui:uiSetVisible(UI.window.FactionWindow, false)

@@ -68,7 +68,16 @@ addEventHandler("accounts:login:request", getRootElement(),
 		--setElementPosition( getLocalPlayer(), -262, -1143, 24)
 		--setCameraMatrix(-262, -1143, 24, -97, -1167, 2)
 		setElementPosition( getLocalPlayer(), 1480, -1688, 13 )
-		setCameraMatrix (originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][2], originalStartCam[selectionScreenID][3], originalStartCam[selectionScreenID][4], originalStartCam[selectionScreenID][5], originalStartCam[selectionScreenID][6])
+		-- [Fix #52] the global `selectionScreenID` was NEVER assigned
+		-- anywhere -> originalStartCam[nil] -> 'attempt to index a nil
+		-- value' on EVERY join; the handler died before clearChat()
+		-- and before the triggerServerEvent("onJoin") that beginLogin
+		-- depends on. It also passed cam[2] (y) as the first camera
+		-- argument instead of cam[1] (x).
+		local cam = originalStartCam[tonumber(selectionScreenID) or 0] or originalStartCam[0]
+		if cam then
+			setCameraMatrix (cam[1], cam[2], cam[3], cam[4], cam[5], cam[6])
+		end
 		guiSetInputEnabled(true)
 		clearChat()
 		triggerServerEvent("onJoin", getLocalPlayer())

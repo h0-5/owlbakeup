@@ -7,7 +7,7 @@ function clientReady()
 	local missingResources = false
 	for key, value in ipairs(resources) do
 		local resourceName = getResourceName(value)
-		if resourceName == "global" or resourceName == "mysql" or resourceNmae == "pool" then
+		if resourceName == "global" or resourceName == "mysql" or resourceName == "pool" then -- [Fix #52] was 'resourceNmae' - dead check
 			if getResourceState(value) == "loaded" or getResourceState(value) == "stopping" or getResourceState(value) == "failed to load" then
 				missingResources = true
 				outputChatBox("The server is missing dependent resource '"..getResourceName(value).."'.", thePlayer, 255, 0, 0)

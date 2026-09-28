@@ -31,10 +31,27 @@
 local sx, sy = guiGetScreenSize()
 local s = sy / 1080
 local localPlayer = getLocalPlayer()
-local eui = exports.UIKit
+-- [Fix #52] `local eui = exports.UIKit` + the uiGetReferenceScreenSize()
+-- call at LOAD time raised "Call to non-running server resource (UIKit)"
+-- whenever the account resource's client started before UIKit (mtaserver.conf
+-- boots account BEFORE UIKit), killing the whole c_characters.lua: after a
+-- successful login Characters_showSelection() was a nil global and the
+-- transition into character selection died silently. Resolve UIKit lazily
+-- (same pattern as login-panel/client.lua since Fix #45) and read the
+-- reference screen size inside buildUI instead.
+local eui = nil
+local REF_SX, REF_SY = 1728, 972
+local showSelectionRetries = 0
 
-local REF_SX = select(1, eui:uiGetReferenceScreenSize()) or 1728
-local REF_SY = select(2, eui:uiGetReferenceScreenSize()) or 972
+local function ensureUIKit()
+        if eui then return true end
+        local ok, exportsTable = pcall(function() return exports.UIKit end)
+        if ok and exportsTable then
+                eui = exportsTable
+                return true
+        end
+        return false
+end
 
 -- the four old-client lobby camera spots {x, y, z, rotation}
 local CAM_SPOTS = {
@@ -157,7 +174,12 @@ end
 -- ===========================================================================
 
 local function buildUI()
-        if built then return end
+        if built then return true end
+        if not ensureUIKit() then return false end -- [Fix #52] UIKit not up yet
+        local okRef, refW, refH = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if okRef and tonumber(refW) and tonumber(refH) then
+                REF_SX, REF_SY = tonumber(refW), tonumber(refH)
+        end
         -- [Fix #48] the flag moves to the END of the function: a mid-build
         -- error must leave built=false so Characters_showSelection can retry
 
@@ -201,6 +223,7 @@ local function buildUI()
         -- mid-build error (UIKit restart race) leaves it false and the retry
         -- in Characters_showSelection can actually rebuild
         built = true
+        return true
 end
 
 -- ===========================================================================
@@ -291,6 +314,20 @@ function Characters_showSelection()
                         end
                 end
         end
+        -- [Fix #52] buildUI can also RETURN false (UIKit not running yet)
+        -- without raising; without this guard the function continued straight
+        -- into the first eui: call and killed the whole transition. A short
+--         retry covers the account-before-UIKit client start order.
+        if not built then
+                showSelectionRetries = showSelectionRetries + 1
+                if showSelectionRetries <= 3 then
+                        setTimer(function() Characters_showSelection() end, 2000, 1)
+                        return
+                end
+                outputChatBox("[Characters] Character UI is not ready (UIKit not running) - try reconnecting.", 255, 100, 100, false)
+                return
+        end
+        showSelectionRetries = 0
         triggerEvent("onSapphireXMBShow", localPlayer)
         showPlayerHudComponent("radar", false)
 

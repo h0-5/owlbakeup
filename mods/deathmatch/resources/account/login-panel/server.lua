@@ -46,13 +46,16 @@ function playerLogin(username,password,checksave)
 	mysql:free_result(encryptionRuleQuery)
 
 	-- Check if the account is banned
-	if exports.bans:checkAccountBan(accountData["id"]) then
+	-- [Fix #52] a stopped bans resource raised here and killed
+	-- playerLogin before ANY client feedback; pcall keeps the login
+	-- alive instead (fail-open, like the rest of the resilient tail).
+	local bansOk, accountBanned = pcall(function() return exports.bans:checkAccountBan(accountData["id"]) end)
+	if bansOk and accountBanned then
 		triggerClientEvent(client,"set_warning_text",client,"Login","Account is banned.")
 		return false
 	end
 
 	--Now check if passwords are matched or the account is activated, this is to prevent user with fake emails.
-	triggerClientEvent(client,"set_authen_text",client,"Login","Password Accepted! Authenticating..")
 	local encryptionRule = accountData["salt"]
 	local encryptedPW = string.lower(md5(string.lower(md5(password))..encryptionRule))
 
@@ -60,6 +63,11 @@ function playerLogin(username,password,checksave)
 		triggerClientEvent(client,"set_warning_text",client,"Login","Password is incorrect for account name '".. username .."'!")
 		return false
 	end
+
+	-- [Fix #52] 'Password Accepted' used to fire BEFORE the comparison,
+	-- so a wrong password flashed 'Password Accepted! Authenticating..'
+	-- and only then the incorrect-password warning.
+	triggerClientEvent(client,"set_authen_text",client,"Login","Password Accepted! Authenticating..")
 
 	if accountData["activated"] == "0" then
 		triggerClientEvent(client,"set_warning_text",client,"Login","Account '".. username .."' is not activated.")

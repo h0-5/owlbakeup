@@ -576,6 +576,10 @@ function hideLoginPanel()
         if UI.image.Logo then eui:uiSetVisible(UI.image.Logo, false) end
         showCursor(false)
         removeEventHandler("onClientRender", root, drawBackground)
+        -- [Fix #52] the guard flag must reset together with the handler,
+        -- otherwise the dark backdrop is never re-added after the first
+        -- hide (logout -> login screen lost its background forever).
+        loginRenderAdded = false
         showChat(true)
 end
 

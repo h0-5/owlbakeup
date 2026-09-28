@@ -389,17 +389,37 @@ end)
 
 -- server contract --------------------------------------------------------------
 addEvent("beginLogin", true)
+local loginRenderAdded = false
+local beginLoginRetries = 0
 addEventHandler("beginLogin", root, function()
-	buildUI()
+	if not built then
+		buildUI()
+		if not built then
+			-- UIKit is not running yet: retry shortly instead of dying
+			-- silently (this is what used to leave the player with no panel)
+			beginLoginRetries = beginLoginRetries + 1
+			if beginLoginRetries <= 10 then
+				setTimer(function()
+					triggerEvent("beginLogin", localPlayer)
+				end, 1000, 1)
+			else
+				outputChatBox("Login panel failed to initialise (UIKit not running).", 255, 0, 0)
+			end
+			return
+		end
+	end
+	beginLoginRetries = 0
 	startLoginMusic()
 	if getElementData(localPlayer, "character:id") then return end
 	showChat(false)
 	setTime(0, 0)
 	setElementInterior(localPlayer, 0)
 	fadeCamera(true)
-	addEventHandler("onClientRender", root, drawBackground)
+	if not loginRenderAdded then
+		addEventHandler("onClientRender", root, drawBackground)
+		loginRenderAdded = true
+	end
 	local pt = CAMERA_POINTS[math.random(1, #CAMERA_POINTS)]
-	showLoading(true)
 	setTimer(function(x, y, z, tx, ty, tz)
 		showLoading(false)
 		local mode = getElementData(resourceRoot, "Mode")
@@ -412,6 +432,9 @@ addEventHandler("beginLogin", root, function()
 		showCursor(true)
 		setCameraMatrix(x, y, z, tx, ty, tz)
 	end, 2000, 1, pt[1], pt[2], pt[3], pt[4], pt[5], pt[6])
+	-- the panel becomes visible from the timer above; showLoading() is safe
+	-- (no `public` resource) but must never be able to abort this handler
+	showLoading(true)
 	-- pre-fill the remembered credentials (+ kick off the auto-login)
 	local user, pass = loadRemember()
 	if user and #user > 0 and UI.edit.Username then

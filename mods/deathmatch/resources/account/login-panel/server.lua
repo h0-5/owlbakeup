@@ -4,11 +4,9 @@ local accountCharacters = {}
 function validateCredentials(username,password,checksave)
 	if not (username == "") then
 		if not (password == "") then
-			if checksave == true then
-				triggerClientEvent(client,"saveLoginToXML",client,username,password)
-			else
-				triggerClientEvent(client,"resetSaveXML",client,username,password)
-			end
+			-- Remember-me save/clear moved into playerLogin() AFTER the password
+			-- + activation checks pass; doing it here persisted the credentials even
+			-- when the login then failed, so the panel could remember a bad login.
 			return true
 		else
 			triggerClientEvent(client,"set_warning_text",client,"Login","Please enter your password!")
@@ -66,6 +64,15 @@ function playerLogin(username,password,checksave)
 	if accountData["activated"] == "0" then
 		triggerClientEvent(client,"set_warning_text",client,"Login","Account '".. username .."' is not activated.")
 		return false
+	end
+
+	-- Remember-me: save or clear the stored login only once the account is
+	-- fully authenticated (password + activation). A failed login can never
+	-- overwrite a good saved login with a bad one.
+	if checksave == true then
+		triggerClientEvent(client, "saveLoginToXML", client, username, password)
+	else
+		triggerClientEvent(client, "resetSaveXML", client, username, password)
 	end
 
 	--Validation is done, fetching some more details

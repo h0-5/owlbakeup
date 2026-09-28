@@ -1,0 +1,47 @@
+<meta>
+        <info author="Vortex" type="script" description="Owl Radar - old client port (Fix #55)" />
+
+        <script src="s_radar.lua" type="server" />
+        <script src="nodes.lua" type="client" cache="false" />
+        <script src="c_radar.lua" type="client" cache="false" />
+
+        <file src="images/map.jpg" />
+        <file src="images/player.png" />
+        <file src="images/blip/0.png" />
+        <file src="images/blip/1.png" />
+        <file src="images/blip/2.png" />
+        <file src="images/blip/4.png" />
+        <file src="images/blip/5.png" />
+        <file src="images/blip/6.png" />
+        <file src="images/blip/8.png" />
+        <file src="images/blip/10.png" />
+        <file src="images/blip/14.png" />
+        <file src="images/blip/19.png" />
+        <file src="images/blip/22.png" />
+        <file src="images/blip/25.png" />
+        <file src="images/blip/27.png" />
+        <file src="images/blip/30.png" />
+        <file src="images/blip/35.png" />
+        <file src="images/blip/36.png" />
+        <file src="images/blip/40.png" />
+        <file src="images/blip/41.png" />
+        <file src="images/blip/43.png" />
+        <file src="images/blip/45.png" />
+        <file src="images/blip/49.png" />
+        <file src="images/blip/51.png" />
+        <file src="images/blip/53.png" />
+        <file src="images/blip/55.png" />
+        <file src="images/blip/56.png" />
+        <file src="images/blip/58.png" />
+        <file src="images/blip/63.png" />
+        <file src="images/blip/gps.png" />
+        <file src="images/blip/safe.png" />
+        <file src="images/blip/turf.png" />
+        <file src="images/blip/waypoint.png" />
+
+        <export function="showRadar" type="client" />
+        <export function="setRadarDispatchElements" type="client" />
+        <export function="isRadarVisible" type="client" />
+        <export function="createNamedBlip" type="server" />
+        <export function="getMapBlips" type="server" />
+</meta>

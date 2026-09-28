@@ -252,12 +252,14 @@ addEventHandler("accounts:login:attempt", getRootElement(),
 
 			local characterList = getElementData(getLocalPlayer(), "account:characters")
 
-			if #characterList == 0 then
+			-- [Fix #46] a nil list (reloadCharacters failed / anticheat down)
+			-- must not crash the transition into character selection
+			if not characterList or #characterList == 0 then
 				newCharacter_init()
 			else
 				Characters_showSelection()
--- [Fix #40] stray black-out fade removed (the lobby fades itself in)
-
+-- [Fix #40] stray black-out fade removed (the lobby fades itself in)
+
 			end
 		elseif (statusCode > 0) and (statusCode < 5) then
 			LoginScreen_showWarningMessage( additionalData )

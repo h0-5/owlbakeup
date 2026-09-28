@@ -64,7 +64,11 @@ end
 function reloadCharacters()
         local chars = characterList(source)
         --setElementData(source, "account:characters", chars, true)
-        exports.anticheat:changeProtectedElementDataEx(source, "account:characters", chars)
+	-- [Fix #46] routed through the failure-tolerant setElementDataEx: the
+	-- direct anticheat export call killed reloadCharacters whenever the
+	-- anticheat resource was down, leaving account:characters unset and
+	-- crashing the client's transition into character selection
+	setElementDataEx(source, "account:characters", chars)
 end
 addEvent("updateCharacters", true)
 addEventHandler("updateCharacters", getRootElement(), reloadCharacters)
@@ -577,39 +581,39 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
         end
 end
 --addEvent("accounts:characters:spawn", true)
-addEventHandler("accounts:characters:spawn", getRootElement(), spawnCharacter)
--- [Fix #40] remove a DEAD character from the selection lobby (soft delete).
--- Only the account owner can do it, and only for cked=1 characters - the
--- old client allowed removing rejected/dead characters from the lobby.
-function removeDeadCharacter(characterID)
-	if not client then return false end
-	characterID = tonumber(characterID)
-	if not characterID then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "شخصية غير صالحة")
-		return false
-	end
-	local accountID = tonumber(getElementData(client, "account:id")) or -1
-	local row = mysql:query_fetch_assoc("SELECT id, cked FROM characters WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
-	if not row then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "الشخصية غير موجودة")
-		return false
-	end
-	if tonumber(row["cked"]) ~= 1 then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "يمكنك حذف الشخصيات الميتة فقط")
-		return false
-	end
-	local ok = mysql:query_free("UPDATE characters SET active=0 WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
-	if ok then
-		exports.logs:dbLog("ac" .. tostring(accountID), 27, { "ac" .. tostring(accountID), "ch" .. tostring(characterID) }, "Removed dead character from selection lobby")
-		triggerClientEvent(client, "accounts:characters:remove:response", client, true)
-	else
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "فشل حذف الشخصية")
-	end
-	return ok
-end
-addEvent("accounts:characters:remove", true)
-addEventHandler("accounts:characters:remove", getRootElement(), removeDeadCharacter)
-
+addEventHandler("accounts:characters:spawn", getRootElement(), spawnCharacter)
+-- [Fix #40] remove a DEAD character from the selection lobby (soft delete).
+-- Only the account owner can do it, and only for cked=1 characters - the
+-- old client allowed removing rejected/dead characters from the lobby.
+function removeDeadCharacter(characterID)
+	if not client then return false end
+	characterID = tonumber(characterID)
+	if not characterID then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "شخصية غير صالحة")
+		return false
+	end
+	local accountID = tonumber(getElementData(client, "account:id")) or -1
+	local row = mysql:query_fetch_assoc("SELECT id, cked FROM characters WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
+	if not row then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "الشخصية غير موجودة")
+		return false
+	end
+	if tonumber(row["cked"]) ~= 1 then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "يمكنك حذف الشخصيات الميتة فقط")
+		return false
+	end
+	local ok = mysql:query_free("UPDATE characters SET active=0 WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
+	if ok then
+		exports.logs:dbLog("ac" .. tostring(accountID), 27, { "ac" .. tostring(accountID), "ch" .. tostring(characterID) }, "Removed dead character from selection lobby")
+		triggerClientEvent(client, "accounts:characters:remove:response", client, true)
+	else
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "فشل حذف الشخصية")
+	end
+	return ok
+end
+addEvent("accounts:characters:remove", true)
+addEventHandler("accounts:characters:remove", getRootElement(), removeDeadCharacter)
+
  
 function Characters_onCharacterChange()
         triggerClientEvent(client, "items:inventory:hideinv", client)

@@ -167,6 +167,18 @@ local function themeColor(name)
         return tocolor(94, 76, 252) -- Vortex blue fallback
 end
 
+-- [Fix #51] the staffs username cell carries the online status prefix
+-- ("#00FF00● name" / "#808080○ name", design preview 01). The delete flow
+-- must never send the prefixed text to the server or the account lookup dies
+-- with 'Account not found'. Strips the color code + dot + whitespace.
+local function staffCellAccount(raw)
+        local s = tostring(raw or "")
+        s = s:gsub("^#[0-9A-Fa-f]+%s*", "")
+        s = s:gsub("^●%s*", ""):gsub("^○%s*", "")
+        s = s:gsub("^%s+", "")
+        return s
+end
+
 --[[ ===================== UIKit construction (1:1) ===================== ]]
 
 function UIKitReady()
@@ -679,8 +691,15 @@ local function dispatchPanelAction(el)
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.staffs)
                 if sel ~= -1 then
                         eui:uiSetVisible(UI.dialog.delete_staff, true)
-                        eui:uiSetText(UI.label.delete_staff_username,
-                                eui:uiGridListGetItemText(UI.gridlist.staffs, sel, 2))
+                        -- [Fix #51] prefer the clean itemData account name; fall
+                        -- back to stripping the online prefix from the cell text
+                        local okD, acc = pcall(eui.uiGridListGetItemData, eui,
+                                UI.gridlist.staffs, sel, 2)
+                        if not okD or acc == nil or acc == "" then
+                                acc = staffCellAccount(
+                                        eui:uiGridListGetItemText(UI.gridlist.staffs, sel, 2))
+                        end
+                        eui:uiSetText(UI.label.delete_staff_username, tostring(acc))
                 end
 
         elseif el == UI.button.add_admin then
@@ -1108,6 +1127,9 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 1, rankName)
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 2,
                         (staff.Online and "#00FF00● " or "#808080○ ") .. tostring(staff.Account))
+                -- [Fix #51] keep the CLEAN account name as the cell data so the
+                -- delete flow never has to parse the decorated text
+                eui:uiGridListSetItemData(UI.gridlist.staffs, row, 2, tostring(staff.Account))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 3,
                         tostring(staff.ReportsCount or 0))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 4,

@@ -79,7 +79,9 @@ addEventHandler("accounts:login:request", getRootElement(),
 --[[ LoginScreen_openLoginScreen( ) - Open the login screen ]]--
 local wLogin, lUsername, tUsername, lPassword, tPassword, chkRememberLogin, bLogin, bRegister--[[, updateTimer]] = nil
 function LoginScreen_openLoginScreen(title)
-	if type(open_log_reg_pannel) == "function" then		open_log_reg_pannel()	end
+	if type(open_log_reg_pannel) == "function" then
+		open_log_reg_pannel()
+	end
 	--[[
 	guiSetInputEnabled(true)
 	showCursor(true)

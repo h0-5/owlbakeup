@@ -744,5 +744,5 @@ addEventHandler("accounts:logout", getRootElement(), options_logOut)
 
 function options_logOutToLoginPanel( message )
 	triggerServerEvent("accounts:characters:logout", getLocalPlayer(), "Change Character")
-	open_log_reg_pannel()
+	if type(open_log_reg_pannel) == "function" then		open_log_reg_pannel()	end
 end

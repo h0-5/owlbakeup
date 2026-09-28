@@ -390,20 +390,30 @@ end)
 -- server contract --------------------------------------------------------------
 addEvent("beginLogin", true)
 local loginRenderAdded = false
+local beginLoginRequested = false
 local beginLoginRetries = 0
+local beginLoginRetryTimer = nil
+local beginLoginFailedShown = false
 addEventHandler("beginLogin", root, function()
+	beginLoginRequested = true
 	if not built then
 		buildUI()
 		if not built then
 			-- UIKit is not running yet: retry shortly instead of dying
-			-- silently (this is what used to leave the player with no panel)
-			beginLoginRetries = beginLoginRetries + 1
-			if beginLoginRetries <= 10 then
-				setTimer(function()
-					triggerEvent("beginLogin", localPlayer)
-				end, 1000, 1)
-			else
-				outputChatBox("Login panel failed to initialise (UIKit not running).", 255, 0, 0)
+			-- silently (this is what used to leave the player with no panel).
+			-- Only the timer path counts retries (event-driven retries below
+			-- would otherwise burn the budget in a few seconds).
+			if not isTimer(beginLoginRetryTimer) then
+				if beginLoginRetries < 15 then
+					beginLoginRetryTimer = setTimer(function()
+						beginLoginRetryTimer = nil
+						beginLoginRetries = beginLoginRetries + 1
+						triggerEvent("beginLogin", localPlayer)
+					end, 1000, 1)
+				elseif not beginLoginFailedShown then
+					beginLoginFailedShown = true
+					outputChatBox("Login panel failed to initialise (UIKit not running).", 255, 0, 0)
+				end
 			end
 			return
 		end
@@ -448,6 +458,17 @@ addEventHandler("beginLogin", root, function()
 		scheduleAutoLogin()
 	end
 end)
+
+-- UIKit readiness: rebuild the panel if the first attempt failed because
+-- UIKit was not running yet (it starts on its own schedule after a connect).
+addEvent("onClientUIReady", false)
+addEvent("onClientUIKitReady", false)
+local function retryBeginLoginIfPending()
+	if not beginLoginRequested or built then return end
+	triggerEvent("beginLogin", localPlayer)
+end
+addEventHandler("onClientUIReady", resourceRoot, retryBeginLoginIfPending)
+addEventHandler("onClientUIKitReady", root, retryBeginLoginIfPending)
 
 addEvent("showLoginScreen", true)
 addEventHandler("showLoginScreen", root, function()

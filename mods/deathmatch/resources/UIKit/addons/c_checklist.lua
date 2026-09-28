@@ -39,14 +39,22 @@ function uiCreateCheckList(arg0, arg1, arg2, arg3, arg4, arg5)
     }
   }
   addUIElement(element, arg5, sourceResource)
+  -- [Fix #42] decompiler bug: the row math reads UI.DB[el].dimensions but the
+  -- table above only defines related_dimensions - alias it or every
+  -- uiCheckListAddRow crashes with "attempt to index field 'dimensions'".
+  UI.DB[element].dimensions = UI.DB[element].related_dimensions
   UI.DB[element].data.scrollbar = uiCreateScrollBar(arg2 - 10, 3, 9, arg3 - 5, tocolor(204, 199, 199), tocolor(255, 255, 255, 0), false, element, tocolor(0, 0, 0, 0))
   uiSetVisible(UI.DB[element].data.scrollbar, false)
   return (element)
 end
 function calcCLRowsHeight(arg0)
-  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows or {}) do
+  -- [Fix #42] decompiler bug: the loop body was dropped, so this returned the
+  -- LAST row's height only (and crashed on an empty checklist) - sum them all.
+  local total = 0
+  for _, row in ipairs(UI.DB[arg0].data.rows or {}) do
+    total = total + 2 + (row.height or 0) + 4
   end
-  return 2 + forvar6.height + 4
+  return total
 end
 function findLastCLRow(arg0)
   for forvar5 = UI.DB[arg0].data.row_i, #UI.DB[arg0].data.rows do
@@ -123,12 +131,16 @@ function uiCheckListGetRowCount(arg0)
 end
 function uiCheckListGetSelectedItems(arg0)
   assert(isUIElement(arg0, "checklist"), "Bad argument @ 'uiCheckListGetSelectedItems' [Expected ui-checklist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
-  for forvar5, forvar6 in ipairs(UI.DB[arg0].data.rows) do
-    if forvar6.selected then
-      table.insert({}, forvar5)
+  -- [Fix #42] decompiler bug: the result table was anonymous ({}), so the
+  -- selected rows were collected into thin air and the function always
+  -- returned {} - the faction duty-perks checklist could never save.
+  local result = {}
+  for row, data in ipairs(UI.DB[arg0].data.rows) do
+    if data.selected then
+      table.insert(result, row)
     end
   end
-  return {}
+  return result
 end
 function uiCheckListGetItemText(arg0, arg1)
   assert(isUIElement(arg0, "checklist"), "Bad argument @ 'uiCheckListGetItemText' [Expected ui-checklist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")

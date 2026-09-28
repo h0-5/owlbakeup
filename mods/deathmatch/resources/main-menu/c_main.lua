@@ -317,8 +317,20 @@ end
 local LOGO_SIZE = 110
 local WORDMARK_LEN = 560 -- Fix #26: bigger wordmark (user)
 
-function main_menu_draw()
-        state.alpha, state.sideX = animation(state.anim)
+--[[ [Fix #47 - FPS] RENDER-TARGET CHROME CACHE (the #2 fpsdiag culprit, 74
+     FPS while the menu is open vs 32 baseline). Once the slide-in animation
+     settles, the veil + strip + gradient + divider + logo + rotated wordmark
+     are PIXEL-STATIC but were re-drawn every frame: 2 fullscreen alpha draws
+     + a fullscreen gradient + a big ROTATED image = heavy fill-rate on weak
+     GPUs. The settled chrome is now painted ONCE into a render target and
+     each frame costs one dxDrawImage. While the animation runs (and whenever
+     the GPU context is restored) it falls back to the live draw, so the
+     motion is untouched and the layering vs UIKit's window is identical
+     (the RT is drawn from the same "high-2" handler). ]]
+local chromeRT = false
+local chromeDirty = true
+
+local function drawChromeLive()
         -- dark veil over the game
         dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), true)
         -- branding strip sliding in from the left
@@ -351,6 +363,37 @@ function main_menu_draw()
                                 wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), true)
                 end
         end
+end
+
+local function paintChromeRT()
+        if not isElement(chromeRT) then
+                local ok, rt = pcall(dxCreateRenderTarget, sx, sy, true)
+                if not ok or not rt then chromeDirty = false return false end
+                chromeRT = rt
+        end
+        local ok = pcall(function()
+                dxSetRenderTarget(chromeRT, true)
+                drawChromeLive()
+                dxSetRenderTarget()
+        end)
+        chromeDirty = false
+        return ok
+end
+
+addEventHandler("onClientRestore", root, function() chromeDirty = true end)
+
+function main_menu_draw()
+        state.alpha, state.sideX = animation(state.anim)
+        local settled = getTickCount() - state.anim[1] >= state.anim[6]
+        if settled then
+                if chromeDirty then paintChromeRT() end
+                if isElement(chromeRT) then
+                        dxDrawImage(0, 0, sx, sy, chromeRT, 0, 0, 0,
+                                tocolor(255, 255, 255, 255), true)
+                        return
+                end
+        end
+        drawChromeLive()
 end
 
 --[[ F1 / ESC-binds cancel while quitting the character ]]
@@ -437,6 +480,7 @@ local function showSideBarInner(show, openSection)
         showCursor(show)
         if show then
                 state.anim = { getTickCount(), state.alpha, state.sideX, 250, 250, 350, true }
+                chromeDirty = true -- [Fix #47] repaint the settled chrome RT
                 addEventHandler("onClientRender", root, main_menu_draw, false, "high-2")
                 eui:uiSetVisible(UI.window.MainMenu, true)
                 -- optional section to land on (F2 -> reports)
@@ -451,6 +495,10 @@ local function showSideBarInner(show, openSection)
                 removeEventHandler("onClientRender", root, main_menu_draw)
                 state.anim = { getTickCount(), state.alpha, state.sideX, 0, -260, 250, false }
                 eui:uiSetVisible(UI.window.MainMenu, false)
+                -- [Fix #47] free the fullscreen chrome RT while the menu is closed
+                if isElement(chromeRT) then destroyElement(chromeRT) end
+                chromeRT = false
+                chromeDirty = true
         end
 end
 
@@ -1177,7 +1225,17 @@ local function buildMainMenuUI()
                 if type(list) ~= "table" then return end
                 local adminCount, supportCount = 0, 0
                 local nameHex = "#ffffff"
-                local pc = eui:uiGetThemeColor and eui:uiGetThemeColor("primary") or nil
+                -- [Fix #47] `eui:uiGetThemeColor` used as a VALUE is a syntax
+                -- error ("function arguments expected") - it killed the WHOLE
+                -- c_main.lua compile, so F1/F2 binds never registered and the
+                -- menu was completely dead. Resolve the theme color safely and
+                -- normalize the ARGB number to the {r,g,b} table staffHex wants.
+                local okc, pc = pcall(function() return eui:uiGetThemeColor("primary") end)
+                if okc and type(pc) == "number" then
+                        pc = { bitExtract(pc, 16, 8), bitExtract(pc, 8, 8), bitExtract(pc, 0, 8) }
+                else
+                        pc = nil
+                end
                 local idHex = staffHex(pc, "#8f7bff")
                 for _, entry in ipairs(list) do
                         local isSupport = entry[1] == true

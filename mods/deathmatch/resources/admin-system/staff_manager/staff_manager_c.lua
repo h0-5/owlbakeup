@@ -167,6 +167,18 @@ local function themeColor(name)
         return tocolor(94, 76, 252) -- Vortex blue fallback
 end
 
+-- [Fix #51] the staffs username cell carries the online status prefix
+-- ("#00FF00● name" / "#808080○ name", design preview 01). The delete flow
+-- must never send the prefixed text to the server or the account lookup dies
+-- with 'Account not found'. Strips the color code + dot + whitespace.
+local function staffCellAccount(raw)
+        local s = tostring(raw or "")
+        s = s:gsub("^#[0-9A-Fa-f]+%s*", "")
+        s = s:gsub("^●%s*", ""):gsub("^○%s*", "")
+        s = s:gsub("^%s+", "")
+        return s
+end
+
 --[[ ===================== UIKit construction (1:1) ===================== ]]
 
 function UIKitReady()
@@ -679,8 +691,15 @@ local function dispatchPanelAction(el)
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.staffs)
                 if sel ~= -1 then
                         eui:uiSetVisible(UI.dialog.delete_staff, true)
-                        eui:uiSetText(UI.label.delete_staff_username,
-                                eui:uiGridListGetItemText(UI.gridlist.staffs, sel, 2))
+                        -- [Fix #51] prefer the clean itemData account name; fall
+                        -- back to stripping the online prefix from the cell text
+                        local okD, acc = pcall(eui.uiGridListGetItemData, eui,
+                                UI.gridlist.staffs, sel, 2)
+                        if not okD or acc == nil or acc == "" then
+                                acc = staffCellAccount(
+                                        eui:uiGridListGetItemText(UI.gridlist.staffs, sel, 2))
+                        end
+                        eui:uiSetText(UI.label.delete_staff_username, tostring(acc))
                 end
 
         elseif el == UI.button.add_admin then
@@ -1029,8 +1048,12 @@ end
 function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffReport)
         panelData.changelogs = changelogs or {}
 
-        --[[ daily staff report ]]
+        -- [Fix #50 - user] MICRO-STUTTER KILL: the whole fill used to run in
+        -- ONE frame (hundreds of gridlist export calls). Heavy grids are now
+        -- staged over consecutive frames; rank tables stay synchronous.
+        --[[ daily staff report - staged 50ms ]]
         if staffReport then
+                setTimer(function()
                 eui:uiGridListClear(UI.gridlist.daily_staff_report)
                 for _, r in ipairs(staffReport) do
                         local row = eui:uiGridListAddRow(UI.gridlist.daily_staff_report)
@@ -1055,6 +1078,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                                 eui:uiGridListSetItemColor(UI.gridlist.daily_staff_report, row, 7, tocolor(0, 255, 0))
                         end
                 end
+                end, 50, 1)
         end
 
         --[[ role tables ]]
@@ -1071,7 +1095,8 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 getLevelByName[tostring(level.LevelName)] = tostring(level.ID)
         end
 
-        --[[ staffs list ]]
+        --[[ staffs list - staged 25ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.staffs)
         table.sort(admins or {}, function(a, b)
                 local ida, idb = tonumber(a.AdminID) or 0, tonumber(b.AdminID) or 0
@@ -1102,6 +1127,9 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 1, rankName)
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 2,
                         (staff.Online and "#00FF00● " or "#808080○ ") .. tostring(staff.Account))
+                -- [Fix #51] keep the CLEAN account name as the cell data so the
+                -- delete flow never has to parse the decorated text
+                eui:uiGridListSetItemData(UI.gridlist.staffs, row, 2, tostring(staff.Account))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 3,
                         tostring(staff.ReportsCount or 0))
                 eui:uiGridListSetItemText(UI.gridlist.staffs, row, 4,
@@ -1127,14 +1155,18 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                         eui:uiGridListSetItemColor(UI.gridlist.roles_members, row, 1, tocolor(unpack(color)))
                 end
         end
+        end, 25, 1)
 
-        --[[ changelogs ]]
+        --[[ changelogs - staged 75ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.changelogs)
         for _, c in ipairs(panelData.changelogs) do
                 insertChangelogRow(c)
         end
+        end, 75, 1)
 
-        --[[ ranks + add-staff rank lists ]]
+        --[[ ranks + add-staff rank lists - staged 100ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.ranks)
         eui:uiGridListClear(UI.gridlist.add_staff_ranks)
         for _, level in ipairs(levels or {}) do
@@ -1154,6 +1186,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         end
 
         eui:uiCheckBoxSetSelected(UI.checkbox.permissions_select_all, false)
+        end, 100, 1)
 end
 
 addEvent("rpadmin:sendSQLInformations", true)

@@ -15,10 +15,12 @@ local localPlayer = getLocalPlayer()
 -- gauge geometry (bottom-right corner, free area - no radar in this build)
 -- [Fix #34 - user] dial raised a little so the engine/handbrake/seatbelt/
 -- lights/lock row fits UNDER the gauge (the row is drawn by c_hud.lua)
--- [Fix #35 - user] "كبر عداد اكثر اكثر ويلي تحته خليه مناسبين": dial radius
--- 62 -> 84 and the items row under it scaled to match (34px icons)
-local G_R = 84                      -- gauge radius
-local G_CX, G_CY = sx - 140, sy - 190
+-- [Fix #35 - user] dial radius 62 -> 84
+-- [Fix #47 - user] "Scale up the vehicle speedometer gauge/text significantly":
+-- dial radius 84 -> 108, digits 1.6 -> 2.1, KM/H 0.75 -> 0.95, GEAR 0.7 -> 0.85,
+-- arrows 34 -> 42; the c_hud items row follows via the SPEEDO_* globals
+local G_R = 108                     -- gauge radius
+local G_CX, G_CY = sx - 180, sy - 246
 
 -- [Fix #34] shared with c_hud.lua (same client VM): the vehicle items row
 -- anchors to the gauge. Written at file scope so load order never matters.
@@ -114,7 +116,7 @@ local function speedoDraw()
         drawSmoothRingG(G_CX, G_CY, (G_R + 4) * 2, G_R + 3, 1.5, 255, 255, 255, 26, 1, true)
 
         -- RPM progress ring (theme primary, old SVG stroke behaviour)
-        drawRingArc(G_CX, G_CY, (G_R + 4) * 2, G_R - 3, 5,
+        drawRingArc(G_CX, G_CY, (G_R + 4) * 2, G_R - 4, 6,
                 themePrimary[1], themePrimary[2], themePrimary[3], 235, rpmProgress)
 
         -- fuel arc (thin, inside): green / orange / red
@@ -124,27 +126,27 @@ local function speedoDraw()
         elseif fuel <= 25 then
                 fr, fg, fb = 255, 170, 40
         end
-        drawRingArc(G_CX, G_CY, (G_R - 8) * 2, G_R - 10, 3, fr, fg, fb, 220, fuel / 100)
+        drawRingArc(G_CX, G_CY, (G_R - 10) * 2, G_R - 13, 3.5, fr, fg, fb, 220, fuel / 100)
 
         -- speed digits (old: %03d, hud-large, centered) + KM/H + GEAR
-        -- [Fix #34 - user] "كبر عدد السرعة وارفعه لفوق": digits sit ABOVE the
-        -- dial centre. [Fix #35] scale 1.3 -> 1.6 for the bigger dial
+        -- [Fix #34 - user] digits sit ABOVE the dial centre. [Fix #47] scale
+        -- 1.6 -> 2.1 with the bigger dial; KM/H + GEAR scaled to match
         local font = fontLarge()
-        dxDrawText(string.format("%03d", math.floor(kmh)), G_CX - G_R, G_CY - 52,
-                G_CX + G_R, G_CY + 28, tocolor(255, 255, 255, 255), 1.6, font,
+        dxDrawText(string.format("%03d", math.floor(kmh)), G_CX - G_R, G_CY - 64,
+                G_CX + G_R, G_CY + 36, tocolor(255, 255, 255, 255), 2.1, font,
                 "center", "center", false, false, true)
-        dxDrawText("KM/H", G_CX - G_R, G_CY + 30, G_CX + G_R, G_CY + 62,
-                tocolor(255, 255, 255, 150), 0.75, font, "center", "center", false, false, true)
+        dxDrawText("KM/H", G_CX - G_R, G_CY + 38, G_CX + G_R, G_CY + 74,
+                tocolor(255, 255, 255, 150), 0.95, font, "center", "center", false, false, true)
         local gear = getVehicleCurrentGear and getVehicleCurrentGear(veh) or 0
-        dxDrawText("GEAR " .. tostring(gear), G_CX - G_R, G_CY - 80, G_CX + G_R, G_CY - 54,
-                tocolor(255, 255, 255, 150), 0.7, font, "center", "center", false, false, true)
+        dxDrawText("GEAR " .. tostring(gear), G_CX - G_R, G_CY - 98, G_CX + G_R, G_CY - 68,
+                tocolor(255, 255, 255, 150), 0.85, font, "center", "center", false, false, true)
 
         -- indicator arrows (old: arrow.png right rot 0 / left rot 180,
         -- green while blinking, white 220 otherwise)
         if arrowTex then
-                local asize = 34
-                local axR, ayR = G_CX + G_R + 24, G_CY - asize / 2
-                local axL, ayL = G_CX - G_R - 24 - asize, G_CY - asize / 2
+                local asize = 42
+                local axR, ayR = G_CX + G_R + 26, G_CY - asize / 2
+                local axL, ayL = G_CX - G_R - 26 - asize, G_CY - asize / 2
                 local colR = blinkRight and tocolor(0, 255, 0, 235) or tocolor(255, 255, 255, 150)
                 local colL = blinkLeft and tocolor(0, 255, 0, 235) or tocolor(255, 255, 255, 150)
                 dxDrawImage(axR, ayR, asize, asize, arrowTex, 0, 0, 0, colR, true)

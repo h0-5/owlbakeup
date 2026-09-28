@@ -483,10 +483,43 @@ function hasItem(element, itemID, itemValue)
 	end
 end
 
+-- [Fix #49 - user] ITEM COUNT LIMIT
+-- Max 17 distinct item rows for players BY DEFAULT; owning the Backpack
+-- (item 48, sold in the General Store) raises the limit to 117.
+-- Money (item 134) is NEVER counted and NEVER blocked.
+local BASE_ITEM_SLOTS = 17
+local BACKPACK_ITEM_SLOTS = 117
+local MONEY_ITEM_ID = 134
+
+function getPlayerMaxItemSlots(element)
+	        return hasItem(element, 48) and BACKPACK_ITEM_SLOTS or BASE_ITEM_SLOTS
+end
+
+function countItemRows(element)
+	        local ok = loadItems(element)
+	        if not ok then return 0 end
+	        local rows = 0
+	        for _, value in pairs(saveditems[element]) do
+	                if value[1] ~= MONEY_ITEM_ID then rows = rows + 1 end
+	        end
+	        return rows
+end
+
 -- checks if the element has space for adding a new item
 function hasSpaceForItem(element, itemID, itemValue)
 	local success, error = loadItems( element )
 	if success then
+		-- [Fix #49 - user] item-count gate (money never counts/blocks;
+		-- a row for the SAME item+value stack does not add a new row)
+		if getElementType(element) == "player" and itemID ~= MONEY_ITEM_ID then
+			local stacksIntoExistingRow = countItems(element, itemID, itemValue) > 0
+			if not stacksIntoExistingRow then
+				local maxSlots = getPlayerMaxItemSlots(element)
+				if countItemRows(element) >= maxSlots then
+					return false, "item limit reached (" .. maxSlots .. ")"
+				end
+			end
+		end
 		local carriedWeight = getCarriedWeight(element) or false
 		local itemWeight = getItemWeight(itemID, itemValue or 1) or false
 		local maxWeight = getMaxWeight(element) or false

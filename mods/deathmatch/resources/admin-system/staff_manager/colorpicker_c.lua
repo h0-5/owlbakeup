@@ -22,6 +22,50 @@ local UI = { window = {}, rectangle = {}, button = {}, label = {}, edit = {} }
 local cpBuilt = false
 local cpColor = { r = 255, g = 255, b = 255, a = 255 }
 
+-- [Fix #50 - user] HEX COLOR CONFIG: accept #efc180 / #efc180c / efc180 /
+-- short 3-4 digit forms; returns r, g, b, a or nil when not a color code
+local function parseHexColor(text)
+        if type(text) ~= "string" then return nil end
+        local s = text:gsub("[%s#]", "")
+        if s == "" then return nil end
+        if not s:find("^%x+$") then return nil end
+        if #s >= 8 then s = s:sub(1, 8)
+        elseif #s == 7 then s = s:sub(1, 6)
+        elseif #s == 5 then s = s:sub(1, 4)
+        end
+        local r, g, b, a
+        if #s == 6 or #s == 8 then
+                r = tonumber(s:sub(1, 2), 16)
+                g = tonumber(s:sub(3, 4), 16)
+                b = tonumber(s:sub(5, 6), 16)
+                a = (#s == 8) and tonumber(s:sub(7, 8), 16) or 255
+        elseif #s == 3 or #s == 4 then
+                r = tonumber(s:sub(1, 1):rep(2), 16)
+                g = tonumber(s:sub(2, 2):rep(2), 16)
+                b = tonumber(s:sub(3, 3):rep(2), 16)
+                a = (#s == 4) and tonumber(s:sub(4, 4):rep(2), 16) or 255
+        else
+                return nil
+        end
+        if not (r and g and b and a) then return nil end
+        return r, g, b, a
+end
+
+-- commit whatever is currently typed in the hex edit (called by BOTH confirm
+-- paths so an unparsed string can never be silently dropped)
+local function commitHexFromEdit()
+        if not (UI.edit.hex and isElement(UI.edit.hex)) then return false end
+        local okText, text = pcall(function() return eui:uiGetText(UI.edit.hex) end)
+        if not okText or not text or text == "" then return false end
+        local r, g, b, a = parseHexColor(text)
+        if r then
+                cpColor.r, cpColor.g, cpColor.b, cpColor.a = r, g, b, a
+                return true
+        end
+        return false
+end
+
+
 local PALETTE = {
         -- Vortex rank colors (the ones the server seeds)
         {255,140,0}, {204,85,0}, {102,178,255}, {52,152,219}, {32,112,178},
@@ -77,6 +121,14 @@ local function buildPicker()
                 UI.rectangle["swatchrgb_" .. i] = rgb
         end
 
+        -- [Fix #50 - user] hex color config input
+        UI.edit.hex = eui:uiCreateEdit(10, 270, 380, 32, "", "#efc180 - hex color code",
+                tocolor(255, 255, 255, 255), UI.window.picker)
+        eui:uiSetProperty(UI.edit.hex, "UnderLineVisible", "False")
+        eui:uiSetFont(UI.edit.hex, "default-large")
+        UI.label.hex_hint = eui:uiCreateLabel(400, 270, 150, 32, { en = "live preview", ar = "معاينة مباشرة" },
+                tocolor(160, 160, 170, 220), "left", "center", UI.window.picker)
+
         UI.button.ok = eui:uiCreateButton(10, 315, 265, 35,
                 { en = "Confirm", ar = "تأكيد" }, "primary", UI.window.picker)
         UI.button.cancel = eui:uiCreateButton(285, 315, 265, 35,
@@ -120,6 +172,18 @@ function colorPicker.isPickerVisible()
         return (ok and v == true) or false
 end
 
+-- [Fix #50] live hex parse while typing
+addEventHandler("onClientUIChanged", root, function()
+        if source ~= UI.edit.hex then return end
+        if not commitHexFromEdit() then return end
+        if UI.rectangle.preview and isElement(UI.rectangle.preview) then
+                pcall(function()
+                        eui:uiSetColor(UI.rectangle.preview, cpColor.r, cpColor.g, cpColor.b, 255)
+                        eui:uiSetText(UI.label.preview, ("#%02X%02X%02X"):format(cpColor.r, cpColor.g, cpColor.b))
+                end)
+        end
+end)
+
 addEventHandler("onClientUIClick", root, function()
         if not (UI.window.picker and isElement(UI.window.picker)) then return end
         -- swatch hit?
@@ -134,6 +198,7 @@ addEventHandler("onClientUIClick", root, function()
                 end
         end
         if source == UI.button.ok then
+                commitHexFromEdit() -- [Fix #50] never drop a typed code
                 eui:uiSetVisible(UI.window.picker, false)
                 triggerEvent("onClientColorPickerConfirm", localPlayer,
                         cpColor.r, cpColor.g, cpColor.b, cpColor.a)
@@ -176,17 +241,25 @@ local function rebuildPickerHits()
         for i, rgb in ipairs(PALETTE) do
                 reg(UI.rectangle["swatch_" .. i], "swatch", rgb)
         end
+        reg(UI.edit.hex, "edit")
         reg(UI.button.ok, "ok")
         reg(UI.button.cancel, "cancel")
 end
 
 local function applyPick(kind, payload)
+        if kind == "edit" then
+                -- [Fix #50] the modal swallows raw clicks; route the edit click
+                -- into a programmatic focus so typing works
+                pcall(eui.uiSetFocusedElement, eui, UI.edit.hex)
+                return
+        end
         if kind == "swatch" and payload then
                 cpColor.r, cpColor.g, cpColor.b = payload[1], payload[2], payload[3]
                 eui:uiSetColor(UI.rectangle.preview, cpColor.r, cpColor.g, cpColor.b, 255)
                 eui:uiSetText(UI.label.preview,
                         ("#%02X%02X%02X"):format(cpColor.r, cpColor.g, cpColor.b))
         elseif kind == "ok" then
+                commitHexFromEdit() -- [Fix #50] never drop a typed code
                 eui:uiSetVisible(UI.window.picker, false)
                 pcall(eui.uiFlashPress, eui, UI.button.ok)
                 triggerEvent("onClientColorPickerConfirm", localPlayer,

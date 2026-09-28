@@ -251,8 +251,20 @@ end)
 -- panel writes them per rank), the numeric ladder stays the fallback. This
 -- fixes owners with custom ranks whose row-order index lands below the old
 -- threshold and silently blocked every member/rank edit.
-local function hasEditMembers(player)
-        -- Fix #25: same backend-first rule as hasEditRanks
+
+-- [Fix #51] defensive: a client may send the staffs-grid username CELL text,
+-- which carries the online status prefix ("#00FF00● name" / "#808080○ name").
+-- Strip color codes, the status dot and surrounding whitespace BEFORE any
+-- account lookup, or the removal dies with 'Account not found'.
+local function stripStatusPrefix(raw)
+        local s = tostring(raw or "")
+        s = s:gsub("^#[0-9A-Fa-f]+%s*", "")
+        s = s:gsub("^●%s*", ""):gsub("^○%s*", "")
+        s = s:gsub("^%s+", "")
+        return s
+end
+
+local function hasEditMembers(player)        -- Fix #25: same backend-first rule as hasEditRanks
         if getElementData(player, "rank:index") then
                 if type(playerHasRight) == "function" then
                         return playerHasRight(player, "admin.manager.editmembers") and true or false
@@ -542,10 +554,22 @@ local function addChangelog(cType, username, fromRank, toRank)
                 mysql:escape_string(tostring(by))))
 end
 
+-- [Fix #50 - user] MICRO-STUTTER KILL: every mutation used to fire
+-- sendFullData immediately - a blocking MySQL JOIN + 200 changelog rows +
+-- staff report on the SERVER thread, often several in a burst (updateRole,
+-- bridge rank refresh, changelog write...). The per-player 250ms debounce
+-- coalesces each burst into ONE push; the last action always wins.
+local refreshTimers = {}
 local function refresh(player)
-        if isElement(player) then
-                sendFullData(player)
-        end
+        if not isElement(player) then return end
+        local t = refreshTimers[player]
+        if t and isTimer(t) then killTimer(t) end
+        refreshTimers[player] = setTimer(function(pid)
+                refreshTimers[pid] = nil
+                if isElement(pid) then
+                        sendFullData(pid)
+                end
+        end, 250, 1, player)
 end
 
 -- [Fix #15] rank changes are PUBLIC chat logs. Format follows the classic
@@ -649,7 +673,9 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
                 outputChatBox("You don't have permission to edit staff members.", client, 255, 80, 80)
                 return
         end
-        if not account then return end
+        -- [Fix #51] never let the decorated grid text reach the account lookup
+        account = stripStatusPrefix(account)
+        if account == "" then return end
         local user = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE LOWER(username)=LOWER('"
                 .. mysql:escape_string(tostring(account)) .. "') LIMIT 1")
         if not user then

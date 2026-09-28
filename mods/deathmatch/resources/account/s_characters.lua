@@ -64,7 +64,11 @@ end
 function reloadCharacters()
         local chars = characterList(source)
         --setElementData(source, "account:characters", chars, true)
-        exports.anticheat:changeProtectedElementDataEx(source, "account:characters", chars)
+	-- [Fix #46] routed through the failure-tolerant setElementDataEx: the
+	-- direct anticheat export call killed reloadCharacters whenever the
+	-- anticheat resource was down, leaving account:characters unset and
+	-- crashing the client's transition into character selection
+	setElementDataEx(source, "account:characters", chars)
 end
 addEvent("updateCharacters", true)
 addEventHandler("updateCharacters", getRootElement(), reloadCharacters)
@@ -242,6 +246,29 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                 setPlayerNametagShowing(client, false)
                 setElementFrozen(client, true)
                 setPedGravity(client, 0)
+
+                -- [Fix #48] CAMERA-FREEZE SAFETY NET: any error in the long
+                -- spawn tail below used to leave the player frozen at alpha 0
+                -- on a dead camera ("camera freezes") with no feedback. If the
+                -- spawn did not complete within 5s, force the recovery tail:
+                -- unfreeze, restore alpha, camera on the ped, fade in, and
+                -- (re)send accounts:characters:spawn so the client lobby
+                -- always tears down. No-op on a normal spawn (already alive).
+                local spawnClient = client
+                setTimer(function()
+                        if not isElement(spawnClient) then return end
+                        local stillFrozen = getElementFrozen(spawnClient)
+                        local stillInvisible = getElementAlpha(spawnClient) == 0
+                        if stillFrozen or stillInvisible then
+                                if stillFrozen then setElementFrozen(spawnClient, false) end
+                                if stillInvisible then setElementAlpha(spawnClient, 255) end
+                                setCameraTarget(spawnClient, spawnClient)
+                                fadeCamera(spawnClient, true, 2)
+                                triggerClientEvent(spawnClient, "accounts:characters:spawn", spawnClient)
+                                outputDebugString("[spawn-recovery] forced spawn completion for "
+                                        .. tostring(getPlayerName(spawnClient)) .. " (an error aborted the normal path)")
+                        end
+                end, 5000, 1)
                
                 local locationToSpawn = {}
                 if location then -- if this is not a newly created character spawn, location would be nil /maxime
@@ -272,7 +299,12 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                
                 local teamElement = nil
                 if (tonumber(characterData["faction_id"])~=-1) then
-                        teamElement = exports.pool:getElement('team', tonumber(characterData["faction_id"]))
+                        -- [Fix #48] resilient pool: a stopped pool resource must
+                        -- not abort the spawn (player would freeze on the lobby cam)
+                        local okPool, poolTeam = pcall(function()
+                                return exports.pool:getElement('team', tonumber(characterData["faction_id"]))
+                        end)
+                        teamElement = okPool and poolTeam or nil
                         if not (teamElement) then       -- Facshun does not exist?
                                 characterData["faction_id"] = -1
                                 mysql:query_free("UPDATE characters SET faction_id='-1', faction_rank='1' WHERE id='" .. mysql:escape_string(tostring(characterID)) .. "' LIMIT 1")
@@ -288,7 +320,7 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                
                 local adminLevel = getElementDataEx(client, "admin_level")
                 local gmLevel = getElementDataEx(client, "account:gmlevel")
-                exports.global:updateNametagColor(client)
+                pcall(function() exports.global:updateNametagColor(client) end) -- [Fix #48]
                 -- ADMIN JAIL
                 local jailed = getElementData(client, "adminjailed")
                 local jailed_time = getElementData(client, "jailtime")
@@ -336,7 +368,7 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                         setCameraInterior(client, 6)
                 elseif tonumber(characterData["pdjail"]) == 1 then -- PD JAIL Chaos New System
                     setElementData(client, "jailed", 1)
-                    exports["prison-system"]:checkForRelease(client)
+                    pcall(function() exports["prison-system"]:checkForRelease(client) end) -- [Fix #48]
                 end
                
                 setElementDataEx(client, "faction", tonumber(characterData["faction_id"]), true)
@@ -353,8 +385,8 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                 setElementDataEx(client, "hoursplayed",  tonumber(characterData["hoursplayed"]), true)
                 setPlayerAnnounceValue ( client, "score", characterData["hoursplayed"] )
                 setElementDataEx(client, "alcohollevel", tonumber(characterData["alcohollevel"]) or 0, true)
-                exports.global:setMoney(client, tonumber(characterData["money"]), true)
-                exports.global:checkMoneyHacks(client)
+                pcall(function() exports.global:setMoney(client, tonumber(characterData["money"]), true) end) -- [Fix #48]
+                pcall(function() exports.global:checkMoneyHacks(client) end) -- [Fix #48]
                
                 setElementDataEx(client, "restrain", tonumber(characterData["cuffed"]), true)
                 setElementDataEx(client, "tazed", false, false)
@@ -474,14 +506,14 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                
                 if not theAdmin then
                         mysql:query_free("UPDATE characters SET lastlogin=NOW() WHERE id='" .. mysql:escape_string(characterID) .. "'")
-                        exports.logs:dbLog("ac"..tostring(accountID), 27, { "ac"..tostring(accountID), source } , "Spawned" )
+                        pcall(function() exports.logs:dbLog("ac"..tostring(accountID), 27, { "ac"..tostring(accountID), source } , "Spawned" ) end) -- [Fix #48]
                         local monitored = getElementData(client, "admin:monitor")
                         if monitored then
                                 if monitored == "New Player" then
                                         --exports.global:sendMessageToSupporters("[MONITOR] ".. getPlayerName(client):gsub("_", " ") .." ("..pid.."): "..monitored)
                                 else
-                                        exports.global:sendMessageToAdmins("[MONITOR] ".. getPlayerName(client):gsub("_", " ") .." ("..pid.."): "..monitored)
-                                        exports.global:sendMessageToSupporters("[MONITOR] ".. getPlayerName(client):gsub("_", " ") .." ("..pid.."): "..monitored)
+                                        pcall(function() exports.global:sendMessageToAdmins("[MONITOR] ".. getPlayerName(client):gsub("_", " ") .." ("..pid.."): "..monitored) end) -- [Fix #48]
+                                        pcall(function() exports.global:sendMessageToSupporters("[MONITOR] ".. getPlayerName(client):gsub("_", " ") .." ("..pid.."): "..monitored) end) -- [Fix #48]
                                 end
                         end
                 end
@@ -577,39 +609,39 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
         end
 end
 --addEvent("accounts:characters:spawn", true)
-addEventHandler("accounts:characters:spawn", getRootElement(), spawnCharacter)
--- [Fix #40] remove a DEAD character from the selection lobby (soft delete).
--- Only the account owner can do it, and only for cked=1 characters - the
--- old client allowed removing rejected/dead characters from the lobby.
-function removeDeadCharacter(characterID)
-	if not client then return false end
-	characterID = tonumber(characterID)
-	if not characterID then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "شخصية غير صالحة")
-		return false
-	end
-	local accountID = tonumber(getElementData(client, "account:id")) or -1
-	local row = mysql:query_fetch_assoc("SELECT id, cked FROM characters WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
-	if not row then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "الشخصية غير موجودة")
-		return false
-	end
-	if tonumber(row["cked"]) ~= 1 then
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "يمكنك حذف الشخصيات الميتة فقط")
-		return false
-	end
-	local ok = mysql:query_free("UPDATE characters SET active=0 WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
-	if ok then
-		exports.logs:dbLog("ac" .. tostring(accountID), 27, { "ac" .. tostring(accountID), "ch" .. tostring(characterID) }, "Removed dead character from selection lobby")
-		triggerClientEvent(client, "accounts:characters:remove:response", client, true)
-	else
-		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "فشل حذف الشخصية")
-	end
-	return ok
-end
-addEvent("accounts:characters:remove", true)
-addEventHandler("accounts:characters:remove", getRootElement(), removeDeadCharacter)
-
+addEventHandler("accounts:characters:spawn", getRootElement(), spawnCharacter)
+-- [Fix #40] remove a DEAD character from the selection lobby (soft delete).
+-- Only the account owner can do it, and only for cked=1 characters - the
+-- old client allowed removing rejected/dead characters from the lobby.
+function removeDeadCharacter(characterID)
+	if not client then return false end
+	characterID = tonumber(characterID)
+	if not characterID then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "شخصية غير صالحة")
+		return false
+	end
+	local accountID = tonumber(getElementData(client, "account:id")) or -1
+	local row = mysql:query_fetch_assoc("SELECT id, cked FROM characters WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
+	if not row then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "الشخصية غير موجودة")
+		return false
+	end
+	if tonumber(row["cked"]) ~= 1 then
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "يمكنك حذف الشخصيات الميتة فقط")
+		return false
+	end
+	local ok = mysql:query_free("UPDATE characters SET active=0 WHERE id='" .. mysql:escape_string(characterID) .. "' AND account='" .. mysql:escape_string(accountID) .. "' LIMIT 1")
+	if ok then
+		exports.logs:dbLog("ac" .. tostring(accountID), 27, { "ac" .. tostring(accountID), "ch" .. tostring(characterID) }, "Removed dead character from selection lobby")
+		triggerClientEvent(client, "accounts:characters:remove:response", client, true)
+	else
+		triggerClientEvent(client, "accounts:characters:remove:response", client, false, "فشل حذف الشخصية")
+	end
+	return ok
+end
+addEvent("accounts:characters:remove", true)
+addEventHandler("accounts:characters:remove", getRootElement(), removeDeadCharacter)
+
  
 function Characters_onCharacterChange()
         triggerClientEvent(client, "items:inventory:hideinv", client)

@@ -18,6 +18,40 @@ function isProtected(player, item)
 	end
 end
 
+-- [Fix #49] resilient anticheat writes: a stopped/restarting anticheat
+-- resource raised "Call to non-running server resource" and killed the
+-- pickup chain mid-way - the world item then stayed "transfering" forever
+-- and nothing could pick it up. Falls back to plain setElementData.
+local function acSet(element, key, value, sync)
+	local ac = getResourceFromName("anticheat")
+	if ac and getResourceState(ac) == "running" then
+		local ok = pcall(function() exports.anticheat:setEld(element, key, value, sync) end)
+		if ok then return true end
+	end
+	setElementData(element, key, value, sync == true)
+	return true
+end
+
+local function acChange(element, key, value)
+	local ac = getResourceFromName("anticheat")
+	if ac and getResourceState(ac) == "running" then
+		local ok = pcall(function() exports.anticheat:changeEld(element, key, value) end)
+		if ok then return true end
+	end
+	setElementData(element, key, value, false)
+	return true
+end
+
+local function acProt(element, key, value)
+	local ac = getResourceFromName("anticheat")
+	if ac and getResourceState(ac) == "running" then
+		local ok = pcall(function() exports.anticheat:changeProtectedElementDataEx(element, key, value) end)
+		if ok then return true end
+	end
+	setElementData(element, key, value, true)
+	return true
+end
+
 function canPickup(player, item)
 	if isWatchingTV(player) then
 		return false
@@ -30,11 +64,10 @@ function canPickup(player, item)
 		return false
 	else
 		if isElement(item) then
-			if exports['item-world']:can(player, "pickup", item) then
-				return true
-			else
-				return false
-			end
+			local okCan, canPick = pcall(function()
+				return exports['item-world']:can(player, "pickup", item)
+			end)
+			return okCan and canPick and true or false
 		end
 	end
 	return true
@@ -51,11 +84,10 @@ function canMove(player, item)
 		return false
 	else
 		if isElement(item) then
-			if exports['item-world']:can(player, "move", item) then
-				return true
-			else
-				return false
-			end
+			local okCanM, canMoveIt = pcall(function()
+				return exports['item-world']:can(player, "move", item)
+			end)
+			return okCanM and canMoveIt and true or false
 		end
 	end
 	return true
@@ -786,7 +818,7 @@ function pickupItem(object, leftammo)
 		return outputDebugString("[ITEM] pickupItem / canceled / item is being transferred.")
 	end
 	outputDebugString("[ITEM] pickupItem / Running ")
-	exports.anticheat:setEld(object, "transfering", true, "none") --No sync at all.
+	acSet(object, "transfering", true, false) --No sync at all.
 	--if true then return end
 	-- Inventory Tooltip
 	if (getResourceFromName("tooltips-system"))then
@@ -805,7 +837,7 @@ function pickupItem(object, leftammo)
 	local itemID = getElementData(object, "itemID")
 	if not canPickup(source, object) then
 		outputChatBox("You can not pick up this item. Contact an admin via F2.", source, 255, 0, 0)
-		exports.anticheat:changeEld(object, "transfering", nil)
+		acChange(object, "transfering", nil)
 		return
 	end
 	local itemValue = getElementData(object, "itemValue") or 1
@@ -815,7 +847,7 @@ function pickupItem(object, leftammo)
 		local hoursPlayedTo = getElementData( source, "hoursplayed" ) 
 		if hoursPlayedTo and hoursPlayedTo < 10 and not exports.global:isStaffOnDuty(source) then
 			outputChatBox("You require 10 hours of playing time to pick up a "..getItemName( itemID )..".", source, 255, 0, 0)
-			exports.anticheat:changeEld(object, "transfering", nil)
+			acChange(object, "transfering", nil)
 			return false
 		end
 		local creator = getElementData(object, "creator") or 0
@@ -827,7 +859,7 @@ function pickupItem(object, leftammo)
 				exports.global:sendMessageToAdmins("[ANTI-ALT->ALT]: Detected illegal assets transferring on account name '"..getElementData(source, "account:username").."'.")
 				exports.global:sendMessageToAdmins("[ANTI-ALT->ALT]: Suspect is trying to transfer a "..getItemName( itemID ).." between alternatives.")
 				exports.logs:dbLog(source, 5, {object}, "TRIED TO ALT-ALT " .. getItemName( itemID ) .. " between alternatives.")
-				exports.anticheat:changeEld(object, "transfering", nil)
+				acChange(object, "transfering", nil)
 				return false
 			end
 		end
@@ -845,14 +877,14 @@ function pickupItem(object, leftammo)
 	if itemID == 138 then
 		if not exports.integration:isPlayerAdmin(source) then
 			outputChatBox("Only a full admin can pickup this item.", source, 255, 0, 0)
-			exports.anticheat:changeEld(object, "transfering", nil)
+			acChange(object, "transfering", nil)
 			return false
 		end
 	end
 	
 	if itemID == 139 and not exports.integration:isPlayerTrialAdmin(source) then
 		outputChatBox("Only admin can pickup this item.", source, 255, 0, 0)
-		exports.anticheat:changeEld(object, "transfering", nil)
+		acChange(object, "transfering", nil)
 		return false
 	end
 	
@@ -880,7 +912,7 @@ function pickupItem(object, leftammo)
 		else
 			if leftammo and itemValue > leftammo then
 				itemValue = itemValue - leftammo
-				exports.anticheat:changeProtectedElementDataEx(object, "itemValue", itemValue)
+				acProt(object, "itemValue", itemValue)
 				mysql:query_free("UPDATE worlditems SET itemvalue=" .. itemValue .. " WHERE id=" .. id)
 				itemValue = leftammo
 			else
@@ -915,7 +947,7 @@ addEventHandler("pickupItem", getRootElement(), pickupItem)
 
 function removeItemTransferingState()
 	for i, object in pairs(exports.pool:getPoolElementsByType("object")) do
-		exports.anticheat:changeEld(object, "transfering", nil)
+		acChange(object, "transfering", nil)
 	end
 end
 addEventHandler("onResourceStop", resourceRoot, removeItemTransferingState)

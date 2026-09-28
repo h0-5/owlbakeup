@@ -251,7 +251,12 @@ local function buildUI()
         eui:uiSetProperty(UI.button.Register, "HoverGlow", true)
 
         -- status label (set_warning_text / set_authen_text target)
-        UI.label.Status = eui:uiCreateLabel(0, 500 + 25, 350, 30, "", tocolor(255, 80, 80, 255), "center", "center", UI.window.login)
+        -- [Fix #46] it used to sit at y=525, OUTSIDE the 500px window, so every
+        -- server warning ("Account doesn't exist", "Password is incorrect", ...)
+        -- rendered below the panel edge - the player saw NOTHING happen. It now
+        -- lives in the free band between the container (ends 455) and the bottom
+        -- accent bar (495): always visible, never covering the Login button.
+        UI.label.Status = eui:uiCreateLabel(10, 457, 330, 30, "", tocolor(255, 80, 80, 255), "center", "center", UI.window.login)
         eui:uiSetProperty(UI.label.Status, "color_coded", true)
         built = true -- [Fix #45] only mark built once EVERY element succeeded
         return true
@@ -300,6 +305,42 @@ local function cancelAutoLogin()
         autoLoginTimer = nil
 end
 
+-- [Fix #46] login-response watchdog: if the server never answers
+-- accounts:login:attempt (a post-auth script error on the server used to kill
+-- playerLogin mid-way and the player was left staring at a dead panel), say
+-- so after 5 seconds instead of staying silent forever.
+local loginWatchdog = nil
+local function cancelLoginWatchdog()
+        if loginWatchdog and isTimer(loginWatchdog) then
+                killTimer(loginWatchdog)
+        end
+        loginWatchdog = nil
+end
+local function armLoginWatchdog()
+        cancelLoginWatchdog()
+        loginWatchdog = setTimer(function()
+                loginWatchdog = nil
+                if not visible then return end
+                showWarning("Login", "Server did not respond - please reconnect (F8: reconnect) and try again.")
+        end, 5000, 1)
+end
+
+-- [Fix #46] a panel control gone missing (a contained build error left the
+-- edit nil) used to crash tryLogin AFTER the click - silent nothing again.
+local function loginEditsReady()
+        if UI.edit.Username and UI.edit.Password then return true end
+        outputChatBox("[Login] Panel controls are missing - reconnect to rebuild the panel.", 255, 80, 80, false)
+        return false
+end
+
+local function safeSubmit(fn)
+        -- [Fix #46] ANY error inside the submit must be REPORTED, never silent
+        local ok, err = pcall(fn)
+        if not ok then
+                outputChatBox("[Login] Panel error: " .. tostring(err), 255, 80, 80, false)
+        end
+end
+
 local function scheduleAutoLogin()
         cancelAutoLogin()
         showWarning("Login", "Saved login found - signing in automatically...")
@@ -311,7 +352,7 @@ local function scheduleAutoLogin()
                 if #eui:uiGetText(UI.edit.Password) == 0 then
                         return
                 end
-                tryLogin()
+                safeSubmit(tryLogin) -- [Fix #46] even the auto-login must never fail silently
         end, AUTO_LOGIN_DELAY, 1)
 end
 
@@ -322,15 +363,16 @@ end
 addEventHandler("onClientUIAccepted", root, function()
         if not visible then return end
         if source == UI.edit.Password or source == UI.edit.Username then
-                tryLogin()
+                safeSubmit(tryLogin)
         elseif source == UI.edit.Email then
-                tryRegister()
+                safeSubmit(tryRegister)
         end
 end)
 
 function tryLogin()
         if not visible then return end
         cancelAutoLogin() -- a real (manual) attempt replaces any pending auto-login
+        if not loginEditsReady() then return end
         local username = eui:uiGetText(UI.edit.Username)
         local password = eui:uiGetText(UI.edit.Password)
         if #username == 0 then
@@ -350,6 +392,10 @@ function tryLogin()
                 local selected = eui:uiSwitchGetSelected(UI.checkbox.Remember)
                 remember = selected == true
         end
+        -- [Fix #46] arm the no-response watchdog: the server is expected to
+        -- reply with set_warning_text / set_authen_text / hideLoginWindow, all
+        -- of which cancel it.
+        armLoginWatchdog()
         triggerServerEvent("accounts:login:attempt", localPlayer, username, password, remember)
 end
 
@@ -394,9 +440,9 @@ end
 addEventHandler("onClientUIClick", root, function()
         if not visible then return end
         if source == UI.button.Login then
-                tryLogin()
+                safeSubmit(tryLogin)
         elseif source == UI.button.Register then
-                tryRegister()
+                safeSubmit(tryRegister)
         elseif source == UI.label.toRegister then
                 showContainer("register")
                 showWarning(nil, "")
@@ -415,6 +461,7 @@ addEvent("beginLogin", true)
 local loginRenderAdded = false
 local beginLoginRetries = 0
 addEventHandler("beginLogin", root, function()
+        cancelLoginWatchdog() -- [Fix #46] a fresh panel cancels a stale watchdog
         if not built then
                 buildUI()
                 if not built then
@@ -504,11 +551,13 @@ end)
 
 addEvent("set_warning_text", true)
 addEventHandler("set_warning_text", root, function(tab, text)
+        cancelLoginWatchdog() -- [Fix #46] the server answered
         showWarning(tab, text)
 end)
 
 addEvent("set_authen_text", true)
 addEventHandler("set_authen_text", root, function(tab, text)
+        cancelLoginWatchdog() -- [Fix #46] the server answered
         showAuthen(tab, text)
 end)
 
@@ -521,6 +570,7 @@ end)
 function hideLoginPanel()
         visible = false
         cancelAutoLogin()
+        cancelLoginWatchdog() -- [Fix #46]
         stopLoginMusic()
         if UI.window.login then eui:uiSetVisible(UI.window.login, false) end
         if UI.image.Logo then eui:uiSetVisible(UI.image.Logo, false) end

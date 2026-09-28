@@ -8,16 +8,29 @@ function setElementDataEx(theElement, theParameter, theValue, syncToClient, noSy
 	if syncToClient == nil then
 		syncToClient = false
 	end
-	
+
 	if noSyncAtall == nil then
 		noSyncAtall = false
 	end
-	
+
 	if tonumber(theValue) then
 		theValue = tonumber(theValue)
 	end
-	
-	exports.anticheat:changeProtectedElementDataEx(theElement, theParameter, theValue, syncToClient, noSyncAtall)
+
+	-- [Fix #46] the anticheat export used to be a hard dependency: if the
+	-- resource was stopped/restarting, EVERY setElementDataEx call raised
+	-- "Call to non-running server resource" and killed whatever script
+	-- called it (playerLogin died mid-way -> the login panel silently did
+	-- nothing). Fall back to plain setElementData so the data still lands.
+	local ok, delivered = pcall(function()
+		return exports.anticheat:changeProtectedElementDataEx(theElement, theParameter, theValue, syncToClient, noSyncAtall)
+	end)
+	if not ok or delivered == false then
+		if not ok then
+			outputDebugString("[account] anticheat export failed for '" .. tostring(theParameter) .. "', falling back to setElementData", 2)
+		end
+		setElementData(theElement, theParameter, theValue)
+	end
 	return true
 end
 
@@ -55,17 +68,21 @@ function onJoin()
 	end
 	if not skipreset then 
 		-- Set the user as not logged in, so they can't see chat or use commands
-		exports.anticheat:changeProtectedElementDataEx(source, "loggedin", 0, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "account:loggedin", false, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "account:username", "", false)
-		exports.anticheat:changeProtectedElementDataEx(source, "account:id", "", false)
-		exports.anticheat:changeProtectedElementDataEx(source, "dbid", false)
-		exports.anticheat:changeProtectedElementDataEx(source, "admin_level", 0, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "hiddenadmin", 0, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "globalooc", 1, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "muted", 0, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "loginattempts", 0, false)
-		exports.anticheat:changeProtectedElementDataEx(source, "timeinserver", 0, false)
+	-- [Fix #46] routed through setElementDataEx (now failure-tolerant)
+	-- instead of calling the anticheat export directly, so a stopped
+	-- anticheat resource can no longer kill onJoin (dimension/name reset
+	-- + updateNametagColor used to be skipped entirely)
+	setElementDataEx(source, "loggedin", 0, false)
+	setElementDataEx(source, "account:loggedin", false, false)
+	setElementDataEx(source, "account:username", "", false)
+	setElementDataEx(source, "account:id", "", false)
+	setElementDataEx(source, "dbid", false, false)
+	setElementDataEx(source, "admin_level", 0, false)
+	setElementDataEx(source, "hiddenadmin", 0, false)
+	setElementDataEx(source, "globalooc", 1, false)
+	setElementDataEx(source, "muted", 0, false)
+	setElementDataEx(source, "loginattempts", 0, false)
+	setElementDataEx(source, "timeinserver", 0, false)
 		setElementData(source, "chatbubbles", 0, false)
 		setElementDimension(source, 9999)
 		setElementInterior(source, 0)

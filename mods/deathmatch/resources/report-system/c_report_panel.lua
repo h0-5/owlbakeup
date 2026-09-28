@@ -19,6 +19,24 @@ local reportText = "Reports\n#a9a9a9No Reports"
 local panelW = 620
 local ROW_H = 20
 
+-- [Fix #47 - FPS] everything the draw loop needs is now precomputed:
+-- the old loop counted rows with gmatch, read loggedin and hud:topRightBottom
+-- via getElementData EVERY FRAME. Row count is computed once per sync; the
+-- two element data reads are cached on data change.
+local panelH = 50
+local cachedLoggedin = false
+local cachedMoneyBottom = nil
+
+local function recalcHeight()
+        local rows = 0
+        for _ in reportText:gmatch("\n") do rows = rows + 1 end
+        panelH = math.max(50, rows * ROW_H + 40)
+end
+
+local function cacheLoggedin()
+        cachedLoggedin = (tonumber(getElementData(localPlayer, "loggedin")) == 1)
+end
+
 addEvent("reports:sync", true)
 addEventHandler("reports:sync", root, function(rows)
         if type(rows) ~= "table" then return end
@@ -42,11 +60,25 @@ addEventHandler("reports:sync", root, function(rows)
         end
         if out == "" then out = "#a9a9a9No Reports" end
         reportText = "Reports\n" .. out
+        recalcHeight()
 end)
 
 addEvent("reports:togglePanel", true)
 addEventHandler("reports:togglePanel", root, function(state)
         panelVisible = state and true or false
+end)
+
+addEventHandler("onClientElementDataChange", localPlayer, function(key)
+        if key == "loggedin" then
+                cacheLoggedin()
+        elseif key == "hud:topRightBottom" then
+                cachedMoneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
+        end
+end, false)
+
+addEventHandler("onClientResourceStart", resourceRoot, function()
+        cacheLoggedin()
+        cachedMoneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
 end)
 
 -- old client: the staff panel closes the list too when the duty tag goes off
@@ -77,16 +109,13 @@ end
 
 addEventHandler("onClientRender", root, function()
         if not panelVisible then return end
-        if getElementData(localPlayer, "loggedin") ~= 1 then return end
-        -- row count from the text, the old way: height = rows * ROW_H + 40
-        local rows = 0
-        for _ in reportText:gmatch("\n") do rows = rows + 1 end
-        local h = math.max(50, rows * ROW_H + 40)
+        if not cachedLoggedin then return end
+        -- height precomputed at sync time (was: gmatch row count every frame)
+        local h = panelH
         -- [Fix #33 - user] "قائمة ريبورتات خليها تحت الفلوس": dock the list
         -- UNDER the money block (the hud publishes its bottom edge) instead
-        -- of overlapping the clock/date/money stack
-        local moneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
-        local y = moneyBottom and (moneyBottom + 8) or 170
+        -- of overlapping the clock/date/money stack (cached on data change)
+        local y = cachedMoneyBottom and (cachedMoneyBottom + 8) or 170
         local x, y = sx - panelW - 14, y
         drawRoundRect8(x, y, panelW, h, tocolor(0, 0, 0, 200))
         dxDrawText(reportText, x + 10, y + 10, x + panelW - 10, y + h - 10,

@@ -158,7 +158,8 @@ end
 
 local function buildUI()
         if built then return end
-        built = true
+        -- [Fix #48] the flag moves to the END of the function: a mid-build
+        -- error must leave built=false so Characters_showSelection can retry
 
         -- character info window (right side, 250x500)
         UI.window.CharacterInfo = eui:uiCreateRectangle(REF_SX - 300, false, 250, 500, "bg_default", true, true, true, true)
@@ -196,6 +197,10 @@ local function buildUI()
         UI.label.HistoryText = eui:uiCreateLabel(15, 50, 470, 250, "", tocolor(255, 255, 255, 220), "left", "top", UI.window.History)
         eui:uiSetProperty(UI.label.HistoryText, "word_break", true)
         UI.button.CloseHistory = eui:uiCreateButton(15, 320, 470, 30, { en = "Hide", ar = "إخفاء" }, tocolor(0, 0, 0, 255), UI.window.History)
+        -- [Fix #48] built flips true only AFTER the whole build succeeds, so a
+        -- mid-build error (UIKit restart race) leaves it false and the retry
+        -- in Characters_showSelection can actually rebuild
+        built = true
 end
 
 -- ===========================================================================
@@ -270,7 +275,22 @@ end
 -- ===========================================================================
 
 function Characters_showSelection()
-        buildUI()
+        -- [Fix #48] a failed buildUI (UIKit restart race) used to abort the
+        -- whole transition and leave the camera wherever the login screen
+        -- ended - frozen with no UI. Build is pcall'd with one retry; a total
+        -- failure is reported in chat instead of dying silently.
+        if not built then
+                local okBuild, buildErr = pcall(buildUI)
+                if not okBuild then
+                        built = false
+                        outputChatBox("[Characters] UI build failed: " .. tostring(buildErr), 255, 100, 100, false)
+                        local okRetry, retryErr = pcall(buildUI)
+                        if not okRetry then
+                                built = false
+                                outputChatBox("[Characters] UI build retry failed: " .. tostring(retryErr), 255, 100, 100, false)
+                        end
+                end
+        end
         triggerEvent("onSapphireXMBShow", localPlayer)
         showPlayerHudComponent("radar", false)
 
@@ -557,9 +577,24 @@ addEventHandler("onClientUIClick", root, function()
                 eui:uiSetVisible(UI.window.CharacterInfo, false)
                 stopLobbyMusic()
                 fadeCamera(false, 1, 0, 0, 0)
+                lobby.spawnRequested = getTickCount()
                 setTimer(function()
                         triggerServerEvent("accounts:characters:spawn", localPlayer, lobby.selectedID)
                 end, 900, 1)
+                -- [Fix #48] SPAWN WATCHDOG: if the server never answers (an
+                -- error aborted the spawn chain), the screen used to stay
+                -- black/frozen forever with zero feedback. After 15s restore
+                -- the lobby so the player can retry instead of relogging.
+                setTimer(function()
+                        if not lobby.selection_status then return end
+                        if not lobby.spawnRequested then return end
+                        if getTickCount() - lobby.spawnRequested < 14000 then return end
+                        lobby.spawnRequested = nil
+                        fadeCamera(true, 1)
+                        eui:uiSetVisible(UI.button.Play, true)
+                        eui:uiSetVisible(UI.window.CharacterInfo, true)
+                        lobbyToast("فشل ظهور الشخصية، حاول مجددا", "error")
+                end, 15000, 1)
         elseif source == UI.button.RemoveCharacter then
                 local char = lobby.currentCharacters[lobby.selectedCharacter]
                 if not char then return end
@@ -607,6 +642,7 @@ end)
 
 -- spawned: the server owns the rest (s_characters accounts:characters:spawn)
 addEventHandler("accounts:characters:spawn", root, function()
+        lobby.spawnRequested = nil -- [Fix #48] answered -> disarm the watchdog
         lobbyHide()
         fadeCamera(true)
 end)

@@ -78,9 +78,18 @@ function playerLogin(username,password,checksave)
 	--Validation is done, fetching some more details
 	triggerClientEvent(client,"set_authen_text",client,"Login","Account authenticated! Logging in..")
 
+-- [Fix #46] resilient player pool: if the pool resource is down, fall
+-- back to getElementsByType so the login never dies here
+local poolOk, poolPlayers = pcall(function()
+	return exports.pool:getPoolElementsByType("player")
+end)
+if not poolOk or type(poolPlayers) ~= "table" then
+	poolPlayers = getElementsByType("player")
+end
+
 	-- Check the account is already logged in
 	local found = false
-	for _, thePlayer in ipairs(exports.pool:getPoolElementsByType("player")) do
+	for _, thePlayer in ipairs(poolPlayers) do
 		local playerAccountID = tonumber(getElementData(thePlayer, "account:id"))
 		if (playerAccountID) then
 			if (playerAccountID == tonumber(accountData["id"])) and (thePlayer ~= client) then
@@ -94,6 +103,13 @@ function playerLogin(username,password,checksave)
 
 	-----------------------------------------------------------------------START THE MAGIC-----------------------------------------------------------------------------------
 	triggerClientEvent(client, "items:inventory:hideinv", client)
+
+-- [Fix #46] failure-tolerant post-auth tail: a dead export (anticheat/
+-- report-system/donators/integration/...) used to kill playerLogin
+-- mid-way, which left the login panel open with NO message at all
+-- ("clicked login and nothing happened"). Any error is logged server-
+-- side and the login STILL completes for the player.
+local loginOk, loginErr = pcall(function()
 
 	-- Start the magic
 	setElementDataEx(client, "account:loggedin", true, true)
@@ -110,11 +126,11 @@ function playerLogin(username,password,checksave)
 
 -- Vortex 21-rank ladder: resolve the account's staff rank (overrides the
 -- legacy columns above when a rank is assigned in /staffs)
-if getResourceState(getResourceFromName("admin-system")) == "running" then
-
-	pcall(function() exports["admin-system"]:refreshPlayerRank(client) end)
-
-end
+if getResourceState(getResourceFromName("admin-system")) == "running" then
+
+	pcall(function() exports["admin-system"]:refreshPlayerRank(client) end)
+
+end
 
 	exports['report-system']:reportLazyFix(client)
 
@@ -185,23 +201,20 @@ end
 	loadAccountSettings(client, accountData["id"])
 
 	-- Check if player passed application
-	--outputDebugString(type(accountData["appreason"]))
 	if tonumber(accountData["appstate"]) < 3 then
 		if exports.integration:isPlayerTrialAdmin(client) or exports.integration:isPlayerSupporter(client) then
 			exports.mysql:query_free("UPDATE `accounts` SET `appstate`='3', `appreason`=NULL WHERE `id`='"..accountData["id"].."' ")
-		else
-	triggerClientEvent(client, "vehicle_rims", client)
-	triggerClientEvent(client, "accounts:login:attempt", client, 0 )
-	triggerEvent( "social:account", client, tonumber( accountData.id ) )
-	triggerClientEvent (client,"hideLoginWindow",client)
-			return false
 		end
 	end
+end) -- [Fix #46] end of the failure-tolerant tail
+if not loginOk then
+	outputDebugString("[login-panel] post-auth error for '" .. tostring(username) .. "': " .. tostring(loginErr), 1)
+end
 
-	triggerClientEvent(client, "vehicle_rims", client)
-	triggerClientEvent(client, "accounts:login:attempt", client, 0 )
-	triggerEvent( "social:account", client, tonumber( accountData.id ) )
-	triggerClientEvent (client,"hideLoginWindow",client)
+triggerClientEvent(client, "vehicle_rims", client)
+triggerClientEvent(client, "accounts:login:attempt", client, 0 )
+triggerEvent( "social:account", client, tonumber( accountData.id ) )
+triggerClientEvent (client,"hideLoginWindow",client)
 end
 addEvent("accounts:login:attempt",true)
 addEventHandler("accounts:login:attempt",getRootElement(),playerLogin)

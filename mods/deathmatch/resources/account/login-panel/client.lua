@@ -25,7 +25,22 @@
 
 local sx, sy = guiGetScreenSize()
 local localPlayer = getLocalPlayer()
-local eui = exports.UIKit
+
+-- [Fix] `local eui = exports.UIKit` at load time raised
+-- "exports: Call to non-running server resource (UIKit)" whenever the account
+-- resource's client script started before UIKit did, which killed this script
+-- (no beginLogin handler -> no login panel at all). Resolve it lazily instead.
+local eui = nil
+
+local function ensureUIKit()
+	if eui then return true end
+	local ok, exportsTable = pcall(function() return exports.UIKit end)
+	if ok and exportsTable then
+		eui = exportsTable
+		return true
+	end
+	return false
+end
 
 local music = nil
 local fadeout_sound_timer = nil
@@ -115,10 +130,18 @@ local function drawBackground()
 	dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 180), true)
 end
 
+-- [Fix] there is no `public` resource on this server, so the plain
+-- `exports.public ...` check raised "Call to non-running server resource"
+-- every time. The error escaped showLoading() and aborted beginLogin() right
+-- BEFORE the setTimer that makes the panel visible -- the panel never appeared.
 local function showLoading(on)
-	if exports.public and exports.public.loading then
-		pcall(function() exports.public:loading("login", on) end)
+	local res = getResourceFromName("public")
+	if not res or getResourceState(res) ~= "running" then
+		return
 	end
+	pcall(function()
+		exports.public:loading("login", on)
+	end)
 end
 
 function setLoginPanelVisible(state)
@@ -146,7 +169,11 @@ end
 -- build ------------------------------------------------------------------------
 local function buildUI()
 	if built then return end
-	built = true
+	if not ensureUIKit() then
+		-- UIKit is not running yet: leave `built` false so the next
+		-- beginLogin attempt rebuilds instead of shipping an empty panel.
+		return
+	end
 
 	UI.image.Logo = eui:uiCreateImage((sx - 148) / 2, (sy - 150) / 2 - 148, 148, 148, ":main-menu/images/logo.png")
 	eui:uiSetVisible(UI.image.Logo, false)
@@ -222,6 +249,7 @@ local function buildUI()
 	-- status label (set_warning_text / set_authen_text target)
 	UI.label.Status = eui:uiCreateLabel(0, 500 + 25, 350, 30, "", tocolor(255, 80, 80, 255), "center", "center", UI.window.login)
 	eui:uiSetProperty(UI.label.Status, "color_coded", true)
+	built = true
 end
 
 -- container switch + logic ---------------------------------------------------

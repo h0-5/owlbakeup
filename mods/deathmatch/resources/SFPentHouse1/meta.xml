@@ -1,0 +1,5 @@
+<meta>
+    <info author="old-client" type="script" name="SFPentHouse1" description="restored old map" />
+    <script src="client.lua" type="client" cache="false" />
+    <min_mta_version client="1.5.9" server="1.5.9" />
+</meta>

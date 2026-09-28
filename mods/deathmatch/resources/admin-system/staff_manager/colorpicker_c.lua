@@ -112,8 +112,12 @@ function colorPicker.RGBToHex(red, green, blue, alpha)
 end
 
 function colorPicker.isPickerVisible()
-        return UI.window.picker and isElement(UI.window.picker)
-                and eui:uiGetVisible(UI.window.picker)
+        if not (UI.window.picker and isElement(UI.window.picker)) then return false end
+        -- [Fix #34] pcall: a UIKit restart between the isElement check and the
+        -- export call used to hard-error the whole client VM from inside the
+        -- raw click handler
+        local ok, v = pcall(function() return eui:uiGetVisible(UI.window.picker) end)
+        return (ok and v == true) or false
 end
 
 addEventHandler("onClientUIClick", root, function()
@@ -192,12 +196,27 @@ local function applyPick(kind, payload)
         end
 end
 
-addEventHandler("onClientClick", root, function(button, state, ax, ay)
-        if button ~= "left" or state ~= "up" then return end
-        if not (UI.window.picker and isElement(UI.window.picker)) then return end
-        local okV, vis = pcall(eui.uiGetVisible, eui, UI.window.picker)
-        if not (okV and vis) then return end
+--[[ [Fix #34 - user] "تقدر تضغط على القائمة لتحتها مع انك تكون جالس تختار لون
+        فبسبب الخطا ذا يختار رتبة ثانية ويصير لون لها": the picker sat ON TOP of
+        the staff panel, but a click on a swatch ALSO travelled underneath -
+        the panel's raw hit-test matched the rank row behind it, selected
+        another rank, and the confirm then recolored THAT rank. The picker is
+        now a TRUE MODAL: while it is visible EVERY raw click is swallowed
+        (cancelEvent on down AND up, inside or outside the picker window), the
+        staff panel additionally refuses all input (see staff_manager_c.lua)
+        and Escape closes it. There is no legal click target behind the picker
+        while it is open, so nothing can ever be selected through it again.
+========================================================================== ]]
+
+local function pickerSwallowClick(button, state, ax, ay)
+        if not colorPicker.isPickerVisible() then return end
+        -- one click = down + up: kill BOTH halves so no element underneath
+        -- (UIKit pipeline, panel raw hit-test, other resources) ever sees it
+        cancelEvent(true)
+        if button ~= "left" then return end
         if not CP_HIT[UI.window.picker] then rebuildPickerHits() end
+        -- only "up" acts (same as before) - "down" is merely swallowed
+        if state ~= "up" then return end
         -- topmost hit wins: iterate swatches last so they outrank the window
         local hitEl, hitInfo
         for el, info in pairs(CP_HIT) do
@@ -212,6 +231,23 @@ addEventHandler("onClientClick", root, function(button, state, ax, ay)
         cpDispatchTick[hitEl] = nowTick
         pcall(eui.uiFlashPress, eui, hitEl)
         applyPick(hitInfo.kind, hitInfo.payload)
+end
+
+addEventHandler("onClientClick", root, function(button, state, ax, ay)
+        pickerSwallowClick(button, state, ax, ay)
+end)
+
+-- [Fix #34] Escape closes the picker (and keeps the MTA main menu shut
+-- while the modal is up); keypad_enter confirms the current swatch
+addEventHandler("onClientKey", root, function(key, press)
+        if not colorPicker.isPickerVisible() then return end
+        if press ~= "down" then return end
+        if key == "escape" then
+                cancelEvent(true)
+                colorPicker.closeSelect()
+        elseif key == "enter" or key == "kp_enter" or key == "num_enter" then
+                applyPick("ok")
+        end
 end)
 
 -- rebuild the registry whenever the picker is opened (UIKit may have

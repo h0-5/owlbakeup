@@ -336,12 +336,35 @@ end
 -- permission API
 -- ============================================================================
 
+-- [Fix #34 - user] "لما اقفل أمر على رتبة ... ما أحد معه هي رتبة يقدر يستخدمه":
+-- the stored Rights set is THE WHOLE TRUTH. The panel always sends the
+-- COMPLETE checked set on save, so a right that is ABSENT from it was
+-- deliberately unticked and must DENY - for every rank, management included.
+-- The old "unknown right defaults to ALLOWED for index >= 11" fallback made
+-- every untick on ranks 11..21 (Lead Administrator..Owner) a silent no-op.
+-- The ONLY carve-out that survives: a right that does not exist in AllRights
+-- at all (added to the code after this rank's last save) stays allowed for
+-- management+ so a restart can never lock them out of a brand-new feature.
+local knownRightsSet
+local function isKnownRight(right)
+        if type(AllRights) ~= "table" then return true end -- rights file missing: do not lock out
+        if not knownRightsSet then
+                knownRightsSet = {}
+                for _, r in ipairs(AllRights) do knownRightsSet[tostring(r)] = true end
+        end
+        return knownRightsSet[right] == true
+end
+
 -- exact right check against the rank's stored Rights JSON
 function playerHasRight(player, right)
         if not right then return false end
         -- [Fix #18] live rights are pushed as element data by applyPlayerRank
         -- (rank:rights is the raw JSON string). Unwrap the MTA array wrapper
         -- so rights["admin.goto"] resolves instead of always nil.
+        -- [Fix #34] when a live set EXISTS at all it is the complete saved
+        -- set -> an absent right denies WITHOUT a DB round-trip (the old code
+        -- fell through to a fresh MySQL read on every absent key, which made
+        -- every chat command from ranked staff hit the DB twice).
         local raw = getElementData(player, "rank:rights")
         if type(raw) == "string" and raw ~= "" then
                 local parsed = fromJSON(raw)
@@ -349,25 +372,24 @@ function playerHasRight(player, right)
                         if type(parsed[1]) == "table" and next(parsed, 1) == nil then
                                 parsed = parsed[1]
                         end
-                        if parsed[right] == true then return true end
-                        if parsed[right] ~= nil then return false end
+                        if type(parsed) == "table" then
+                                return parsed[right] == true
+                        end
                 end
         end
-        -- fall back to a fresh DB read (rank edited but the player is not
-        -- online / element data not pushed yet)
+        -- no live set (never pushed / unparseable): one fresh DB read decides
         local record = getPlayerRankRecord(player)
         if not record then
                 -- legacy fallback: only the old top ladder gets the flat grant
                 local level = tonumber(getElementData(player, "admin_level")) or 0
                 return level >= 4
         end
-        -- Fix #25: a right the rank JSON simply does not KNOW about (rank row
-        -- created before the right existed) defaults to ALLOWED for management
-        -- and above, instead of silently locking management out of the panel
-        if record.rights[right] == nil and (tonumber(record.index) or 0) >= 11 then
+        if record.rights[right] == true then return true end
+        if record.rights[right] == nil and not isKnownRight(right)
+                and (tonumber(record.index) or 0) >= 11 then
                 return true
         end
-        return record.rights[right] == true
+        return false
 end
 
 -- at-rank-or-above check (the gate the integration file uses)

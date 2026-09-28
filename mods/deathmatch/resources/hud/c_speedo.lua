@@ -13,8 +13,17 @@ local sx, sy = guiGetScreenSize()
 local localPlayer = getLocalPlayer()
 
 -- gauge geometry (bottom-right corner, free area - no radar in this build)
+-- [Fix #34 - user] dial raised a little so the engine/handbrake/seatbelt/
+-- lights/lock row fits UNDER the gauge (the row is drawn by c_hud.lua)
 local G_R = 62                      -- gauge radius
-local G_CX, G_CY = sx - 104, sy - 122
+local G_CX, G_CY = sx - 104, sy - 138
+
+-- [Fix #34] shared with c_hud.lua (same client VM): the vehicle items row
+-- anchors to the gauge. Written at file scope so load order never matters.
+SPEEDO_CX = G_CX
+SPEEDO_CY = G_CY
+SPEEDO_R = G_R
+SPEEDO_DISC_R = G_R + 4
 
 local arrowTex
 local rpmSmooth = 0
@@ -116,15 +125,17 @@ local function speedoDraw()
         drawRingArc(G_CX, G_CY, (G_R - 8) * 2, G_R - 10, 2.5, fr, fg, fb, 220, fuel / 100)
 
         -- speed digits (old: %03d, hud-large, centered) + KM/H + GEAR
+        -- [Fix #34 - user] "كبر عدد السرعة وارفعه لفوق": digits 0.9 -> 1.3 and
+        -- their block sits ABOVE the dial centre; GEAR/KM/H pushed to the rim
         local font = fontLarge()
-        dxDrawText(string.format("%03d", math.floor(kmh)), G_CX - G_R, G_CY - 26,
-                G_CX + G_R, G_CY + 26, tocolor(255, 255, 255, 255), 0.9, font,
+        dxDrawText(string.format("%03d", math.floor(kmh)), G_CX - G_R, G_CY - 38,
+                G_CX + G_R, G_CY + 20, tocolor(255, 255, 255, 255), 1.3, font,
                 "center", "center", false, false, true)
-        dxDrawText("KM/H", G_CX - G_R, G_CY + 26, G_CX + G_R, G_CY + 48,
-                tocolor(255, 255, 255, 150), 0.55, font, "center", "center", false, false, true)
+        dxDrawText("KM/H", G_CX - G_R, G_CY + 22, G_CX + G_R, G_CY + 46,
+                tocolor(255, 255, 255, 150), 0.62, font, "center", "center", false, false, true)
         local gear = getVehicleCurrentGear and getVehicleCurrentGear(veh) or 0
-        dxDrawText("GEAR " .. tostring(gear), G_CX - G_R, G_CY - 52, G_CX + G_R, G_CY - 30,
-                tocolor(255, 255, 255, 150), 0.55, font, "center", "center", false, false, true)
+        dxDrawText("GEAR " .. tostring(gear), G_CX - G_R, G_CY - 58, G_CX + G_R, G_CY - 38,
+                tocolor(255, 255, 255, 150), 0.6, font, "center", "center", false, false, true)
 
         -- indicator arrows (old: arrow.png right rot 0 / left rot 180,
         -- green while blinking, white 220 otherwise)

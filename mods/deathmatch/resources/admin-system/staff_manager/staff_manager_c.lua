@@ -129,6 +129,19 @@ local HIT_MENU_ROWS = {}      -- [1-based menu row] = section id (rebuilt on men
 local panelDispatchTick = {}  -- per-element dispatch latch
 local permToggleTick = {}     -- per-row permission toggle latch (double-click)
 local rawRankRoleID = nil     -- Fix #25: roleID of the EXACT row the raw click landed on
+
+-- [Fix #34] the color picker is a modal: while it is open the panel must
+-- not react to ANY click (the old leak - a click inside the picker also
+-- selecting the rank row underneath - is what recolored the wrong rank).
+local function pickerOpen()
+        if type(colorPicker) ~= "table"
+                or type(colorPicker.isPickerVisible) ~= "function" then
+                return false
+        end
+        local ok, v = pcall(colorPicker.isPickerVisible)
+        return (ok and v == true) or false
+end
+local pickerTargetRoleID = nil -- rank whose color dialog is open (restored on confirm)
 local rawRankRowText = nil    -- Fix #25: that row's name text (selection may race)
 local regSeq = 0              -- registration order = painter order
 local winX, winY              -- absolute top-left of admin_panel (set in UIKitReady)
@@ -527,6 +540,8 @@ end)
 local function dispatchPanelAction(el)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then return end
         if not el or not isElement(el) then return end
+        -- [Fix #34] modal color picker: the panel is inert while it is open
+        if pickerOpen() then return end
         -- [V7] per-element latch: the UIKit path and the raw-input fallback
         -- can both land here for the same click; only the first counts
         local nowTick = getTickCount()
@@ -592,6 +607,12 @@ local function dispatchPanelAction(el)
                         return
                 end
                 currentColorLabel = UI.rectangle.rank_color
+                -- [Fix #34] remember WHICH rank the dialog was opened for; the
+                -- confirm handler re-selects it so the picked color can only
+                -- ever land on the rank being edited
+                local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
+                pickerTargetRoleID = (sel ~= -1
+                        and eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1)) or nil
                 colorPicker.openSelect(unpack(RankColor))
 
         elseif el == UI.checkbox.permissions_select_all then
@@ -725,6 +746,8 @@ local function togglePermissionRow(sel)
 end
 
 addEventHandler("onClientUIDoubleClick", root, function()
+        -- [Fix #34] modal color picker: no permission toggling behind it
+        if pickerOpen() then return end
         if source == UI.gridlist.permissions
                 and eui:uiGridListGetSelectedItem(source) ~= -1 then
                 togglePermissionRow(eui:uiGridListGetSelectedItem(source))
@@ -893,6 +916,9 @@ end
 
 addEventHandler("onClientClick", root, function(button, state, ax, ay)
         if button ~= "left" or state ~= "up" or not uiBuilt then return end
+        -- [Fix #34] modal color picker: the raw path must not reach the panel
+        -- through (or around) the picker window
+        if pickerOpen() then return end
         local hitEl, info = panelHitTest(ax, ay)
         if hitEl and info then
                 panelDispatch(hitEl, info, ax, ay)
@@ -901,6 +927,7 @@ end)
 
 addEventHandler("onClientDoubleClick", root, function(button, ax, ay)
         if button ~= "left" or not uiBuilt then return end
+        if pickerOpen() then return end
         local hitEl, info = panelHitTest(ax, ay)
         if hitEl and info and info.kind == "grid" and hitEl == UI.gridlist.permissions then
                 local idx = panelGridRowAt(info, hitEl, ay)
@@ -922,6 +949,31 @@ addEventHandler("onClientColorPickerConfirm", root, function(r, g, b, a)
                 RankColor = { r, g, b, a or 255 }
         end
         currentColorLabel = nil
+        -- [Fix #34] the picked color belongs to ONE rank: if anything managed
+        -- to move the ranks-grid selection while the dialog was open, put it
+        -- back on the rank the dialog was opened for and reload its data, so
+        -- "save rank changes" can never write this color into another rank
+        if pickerTargetRoleID then
+                local target = pickerTargetRoleID
+                pickerTargetRoleID = nil
+                local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
+                local selData = (sel ~= -1
+                        and eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1)) or nil
+                if tonumber(selData) ~= tonumber(target) then
+                        for row = 0, eui:uiGridListGetRowCount(UI.gridlist.ranks) - 1 do
+                                if tonumber(eui:uiGridListGetItemData(UI.gridlist.ranks, row, 1)) == tonumber(target) then
+                                        eui:uiGridListSetSelectedItem(UI.gridlist.ranks, row)
+                                        rawRankRoleID = target
+                                        dispatchPanelAction(UI.gridlist.ranks)
+                                        -- the reload above resets RankColor from the rank's
+                                        -- stored color - re-apply the picked one AFTER it
+                                        RankColor = { r, g, b, a or 255 }
+                                        eui:uiSetColor(UI.rectangle.rank_color, r, g, b, a or 255)
+                                        break
+                                end
+                        end
+                end
+        end
 end)
 
 --[[ ===================== data refresh (1:1, row-safe) ===================== ]]

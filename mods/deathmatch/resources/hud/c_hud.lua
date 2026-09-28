@@ -540,7 +540,7 @@ end
 
 local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 2, current = -80 } }
 local statusHudDraw -- forward declaration
-local moneyBlockBottom = false   -- bottom Y of the money block (used by vehicle row)
+local moneyBlockBottom = false   -- bottom Y of the money block (publishes hud:topRightBottom for the reports dock)
 local zoneText, zoneLabel = "", ""
 local zoneLabelColor = tocolor(255, 255, 255, 255)
 
@@ -1087,13 +1087,21 @@ local function drawHUD()
         end
 
         -- in-vehicle row (driver only, old client states)
-        -- pinned below the money block on the right (never overlaps the rings)
+        -- [Fix #34 - user] "نزل امور مثل حزام وغيره فرامل يد وذول لتحت عداد
+        -- السرعة وكبرهم": the engine/handbrake/seatbelt/lights/lock row moved
+        -- from the top-right money stack to UNDER the speedometer dial,
+        -- icons 24 -> 30, centred on the gauge (SPEEDO_* globals from
+        -- c_speedo.lua - same client VM, set at file scope)
         local veh = getPedOccupiedVehicle(localPlayer)
         if veh and getVehicleController(veh) == localPlayer then
-                local size, gap = 24, 5
+                local size, gap = 30, 7
                 local rowW = #VEH_ITEMS * size + (#VEH_ITEMS - 1) * gap
-                local vx = sx - rowW - 14
-                local vy = (statusHud.visible and moneyBlockBottom) and (moneyBlockBottom + 8) or 14
+                local scx = tonumber(SPEEDO_CX) or (sx - 104)
+                local scy = tonumber(SPEEDO_CY) or (sy - 138)
+                local sdisc = tonumber(SPEEDO_DISC_R) or 66
+                local vx = scx - rowW / 2
+                local vy = math.min(scy + sdisc + 12, sy - size - 28)
+                local rowX = vx
                 for i, item in ipairs(VEH_ITEMS) do
                         local state = "off"
                         if item.key == "engine" then
@@ -1120,8 +1128,11 @@ local function drawHUD()
                 end
                 local hovered = VEH_ITEMS[hoveredVehItem]
                 if hovered then
-                        outlineText(hovered.label, 10, vy + size + 6, sx - 20, 30,
-                                tocolor(255, 255, 255, 230), 1, "default-bold", "right", "top", true)
+                        -- label sits BELOW the row (old client strip behaviour;
+                        -- above is the dial rim, below is the screen edge)
+                        outlineText(hovered.label, rowX, vy + size + 6, rowW, 20,
+                                tocolor(255, 255, 255, 230), 1, "default-bold",
+                                "center", "top", true)
                 end
         end
 end

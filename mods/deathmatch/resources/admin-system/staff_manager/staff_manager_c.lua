@@ -1029,8 +1029,12 @@ end
 function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffReport)
         panelData.changelogs = changelogs or {}
 
-        --[[ daily staff report ]]
+        -- [Fix #50 - user] MICRO-STUTTER KILL: the whole fill used to run in
+        -- ONE frame (hundreds of gridlist export calls). Heavy grids are now
+        -- staged over consecutive frames; rank tables stay synchronous.
+        --[[ daily staff report - staged 50ms ]]
         if staffReport then
+                setTimer(function()
                 eui:uiGridListClear(UI.gridlist.daily_staff_report)
                 for _, r in ipairs(staffReport) do
                         local row = eui:uiGridListAddRow(UI.gridlist.daily_staff_report)
@@ -1055,6 +1059,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                                 eui:uiGridListSetItemColor(UI.gridlist.daily_staff_report, row, 7, tocolor(0, 255, 0))
                         end
                 end
+                end, 50, 1)
         end
 
         --[[ role tables ]]
@@ -1071,7 +1076,8 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 getLevelByName[tostring(level.LevelName)] = tostring(level.ID)
         end
 
-        --[[ staffs list ]]
+        --[[ staffs list - staged 25ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.staffs)
         table.sort(admins or {}, function(a, b)
                 local ida, idb = tonumber(a.AdminID) or 0, tonumber(b.AdminID) or 0
@@ -1127,14 +1133,18 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                         eui:uiGridListSetItemColor(UI.gridlist.roles_members, row, 1, tocolor(unpack(color)))
                 end
         end
+        end, 25, 1)
 
-        --[[ changelogs ]]
+        --[[ changelogs - staged 75ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.changelogs)
         for _, c in ipairs(panelData.changelogs) do
                 insertChangelogRow(c)
         end
+        end, 75, 1)
 
-        --[[ ranks + add-staff rank lists ]]
+        --[[ ranks + add-staff rank lists - staged 100ms ]]
+        setTimer(function()
         eui:uiGridListClear(UI.gridlist.ranks)
         eui:uiGridListClear(UI.gridlist.add_staff_ranks)
         for _, level in ipairs(levels or {}) do
@@ -1154,6 +1164,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         end
 
         eui:uiCheckBoxSetSelected(UI.checkbox.permissions_select_all, false)
+        end, 100, 1)
 end
 
 addEvent("rpadmin:sendSQLInformations", true)

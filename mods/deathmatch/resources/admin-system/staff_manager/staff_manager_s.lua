@@ -542,10 +542,22 @@ local function addChangelog(cType, username, fromRank, toRank)
                 mysql:escape_string(tostring(by))))
 end
 
+-- [Fix #50 - user] MICRO-STUTTER KILL: every mutation used to fire
+-- sendFullData immediately - a blocking MySQL JOIN + 200 changelog rows +
+-- staff report on the SERVER thread, often several in a burst (updateRole,
+-- bridge rank refresh, changelog write...). The per-player 250ms debounce
+-- coalesces each burst into ONE push; the last action always wins.
+local refreshTimers = {}
 local function refresh(player)
-        if isElement(player) then
-                sendFullData(player)
-        end
+        if not isElement(player) then return end
+        local t = refreshTimers[player]
+        if t and isTimer(t) then killTimer(t) end
+        refreshTimers[player] = setTimer(function(pid)
+                refreshTimers[pid] = nil
+                if isElement(pid) then
+                        sendFullData(pid)
+                end
+        end, 250, 1, player)
 end
 
 -- [Fix #15] rank changes are PUBLIC chat logs. Format follows the classic

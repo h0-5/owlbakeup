@@ -256,7 +256,8 @@ addEventHandler("accounts:login:attempt", getRootElement(),
 				newCharacter_init()
 			else
 				Characters_showSelection()
-				fadeCamera ( false, 0, 0,0,0 )
+-- [Fix #40] stray black-out fade removed (the lobby fades itself in)
+
 			end
 		elseif (statusCode > 0) and (statusCode < 5) then
 			LoginScreen_showWarningMessage( additionalData )

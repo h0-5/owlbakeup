@@ -46,7 +46,13 @@ if sx == 1024 and sy == 768 then
         refSx, refSy = sx / SCALE_X, sy / SCALE_Y
 end
 
-local eui = exports.UIKit
+-- [Fix] UIKit may not be running yet when this script loads; a hard error
+-- here would kill the whole resource. buildMainMenuUI re-resolves it (line ~482).
+local eui = (function()
+        local ok, t = pcall(function() return exports.UIKit end)
+        if ok then return t end
+        return nil
+end)()
 
 --[[ ============================== branding ============================== ]]
 

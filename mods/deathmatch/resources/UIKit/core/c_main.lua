@@ -187,12 +187,22 @@ addEventHandler("onClientResourceStop", root, function(arg0)
         destroyElement(forvar5)
       end
     end
-    for forvar5, forvar6 in ipairs(UI.Elements) do
-      if isElement(forvar6) then
-        table.insert({}, forvar6)
+    -- [Fix #32 - F1 DEAD] the decompiled rebuild here was destroyed
+    -- (table.insert({}, ...) into a discarded table) and then
+    -- UI.Elements was wiped to {}: stopping ANY resource that owns
+    -- UIKit elements (the scoreboard owns its search edit since
+    -- Fix #31) dropped EVERY other resource's windows from the
+    -- drawing list FOREVER - the F1 menu stopped opening right after
+    -- the last deploy restarts. Keep every element that survived.
+    local kept = {}
+    for i = 1, #UI.Elements do
+      local el = UI.Elements[i]
+      if isElement(el) then
+        kept[#kept + 1] = el
       end
     end
-    UI.Elements = {}
+    UI.Elements = kept
+    UI.updateDrawingList()
   end
   if arg0 then
     UI.ResourceElements[arg0] = nil
@@ -451,6 +461,15 @@ end
 function uiGetPosition(arg0)
   assert(isUIElement(arg0), "Bad argument @ 'uiGetPosition' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   return UI.DB[arg0].related_dimensions.x, UI.DB[arg0].related_dimensions.y
+end
+-- [Fix #32] ABSOLUTE on-screen rect (what the draw loop actually paints).
+-- external hit-tests (staff panel / color picker) must use this instead of
+-- re-deriving UIKit geometry by hand - the hand-rolled math drifted and
+-- clicks landed one palette row below the swatch.
+function uiGetAbsoluteBounds(arg0)
+  assert(isUIElement(arg0), "Bad argument @ 'uiGetAbsoluteBounds' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  local d = UI.DB[arg0].dimensions
+  return d.x, d.y, d.width, d.height
 end
 function uiSetSize(arg0, arg1, arg2)
   assert(isUIElement(arg0), "Bad argument @ 'uiSetSize' [Expected ui-element at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")

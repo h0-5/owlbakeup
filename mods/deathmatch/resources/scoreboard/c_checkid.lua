@@ -23,6 +23,8 @@ local okBtn, cancelBtn
 local infoWin, infoGrid, closeBtn                -- result panel
 
 local sx, sy = guiGetScreenSize()
+local HIT = {}            -- [Fix #32] raw hit-test registry
+local rebuildHits         -- forward declaration (defined below, used by builders)
 
 local function ensureEui()
         if eui then return true end
@@ -72,6 +74,15 @@ local function buildInputWindow()
                 { en = "Search", ar = "بحث" }, "primary", inputWin)
         cancelBtn = eui:uiCreateButton(180, 120, 145, 32,
                 { en = "Cancel", ar = "إلغاء" }, tocolor(10, 10, 10, 240), inputWin)
+        -- [Fix #32] hand the keyboard to the edit right away (the report memo
+        -- needed the same trick): without focus the user cannot type a query
+        -- and the dialog looks dead
+        setTimer(function()
+                if inputEdit and isElement(inputEdit) then
+                        pcall(function() eui:uiSetFocusedElement(inputEdit) end)
+                end
+        end, 50, 1)
+        rebuildHits()
         return true
 end
 
@@ -91,8 +102,63 @@ local function buildInfoWindow()
 
         closeBtn = eui:uiCreateButton(WIN_W - 130, WIN_H - 45, 115, 30,
                 { en = "Close", ar = "إغلاق" }, tocolor(10, 10, 10, 240), infoWin)
+        rebuildHits()
         return true
 end
+
+-- [Fix #32] RAW click fallback (the same class of fix the color picker got):
+-- the UIKit onClientUIClick pipeline is not reliably alive on this server,
+-- so Search/Cancel/Close did NOTHING and the dialog appeared "stuck with no
+-- result" (user: 'تطلع قائمة تبحث بس ما يطلع نتيجة'). Hit-test the elements'
+-- ABSOLUTE rects straight from UIKit (uiGetAbsoluteBounds).
+HIT = {}
+rebuildHits = function()
+        HIT = {}
+        if not ensureEui() then return end
+        local function reg(el, kind)
+                if el and isElement(el) then
+                        local ok, x, y, w, h = pcall(eui.uiGetAbsoluteBounds, eui, el)
+                        if ok and x then HIT[el] = { x = x, y = y, w = w or 0, h = h or 0, kind = kind } end
+                end
+        end
+        reg(inputWin, "window")
+        reg(inputEdit, "edit")
+        reg(okBtn, "ok")
+        reg(cancelBtn, "cancel")
+        reg(infoWin, "window2")
+        reg(closeBtn, "close")
+end
+
+addEventHandler("onClientClick", root, function(button, state, ax, ay)
+        if button ~= "left" or state ~= "up" then return end
+        if not (inputWin and isElement(inputWin)) and not (infoWin and isElement(infoWin)) then return end
+        if not next(HIT) then rebuildHits() end
+        local hitEl, hitInfo
+        for el, info in pairs(HIT) do
+                if ax >= info.x and ax <= info.x + info.w and ay >= info.y and ay <= info.y + info.h then
+                        -- buttons outrank the window surface
+                        if not hitInfo or (info.kind ~= "window" and info.kind ~= "window2"
+                                and (hitInfo.kind == "window" or hitInfo.kind == "window2")) then
+                                hitEl, hitInfo = el, info
+                        end
+                end
+        end
+        if not hitEl then return end
+        if hitInfo.kind == "ok" then
+                submitQuery()
+        elseif hitInfo.kind == "cancel" then
+                destroyInput()
+        elseif hitInfo.kind == "close" then
+                destroyInfo()
+        elseif hitInfo.kind == "edit" then
+                pcall(function()
+                        eui:uiSetFocusedElement(inputEdit)
+                        local txt = tostring(eui:uiGetText(inputEdit) or "")
+                        local n = (utf8 and utf8.len and utf8.len(txt)) or #txt
+                        eui:uiEditSetCaretIndex(inputEdit, n + 1)
+                end)
+        end
+end)
 
 addEvent("checkid:openInput", true)
 addEventHandler("checkid:openInput", root, function(prefill)

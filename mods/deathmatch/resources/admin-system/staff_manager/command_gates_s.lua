@@ -211,3 +211,20 @@ _G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, res
         end
         return rawAddCommandHandler(commandName, gated, caseSensitive, restricted, ...)
 end
+
+-- ===========================================================================
+-- [Fix #32 - user] "انا قفلت امر fixveh على اونر وباقي اقدر استخدمه":
+-- the addCommandHandler wrapper above only exists inside the admin-system
+-- Lua VM - commands registered by OTHER resources (vehicle-manager /fixveh
+-- and /fixvehs, /giveveh, ...) never saw the gate and the panel toggles
+-- looked dead. MTA fires onPlayerCommand for EVERY typed command BEFORE any
+-- handler runs and cancelEvent() blocks it, so this is the real GLOBAL
+-- enforcement layer: every mapped command now obeys the rank's stored
+-- Rights no matter which resource registered it.
+-- ===========================================================================
+addEventHandler("onPlayerCommand", root, function(commandName)
+        if not source or not isElement(source) or getElementType(source) ~= "player" then return end
+        if hasCommandRight(source, commandName) then return end
+        cancelEvent()
+        outputChatBox("You don't have permission to use this command.", source, 255, 0, 0)
+end)

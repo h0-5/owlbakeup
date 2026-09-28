@@ -407,12 +407,12 @@ end
 --------------------------------------------------------------------------------
 local DEFAULT_ITEMS = {
         { "walkingstyle", "on", "walkingstyle", "Next Walking Style", "" },
-        { "head_turning", "on", "head_turning", "Head Turning", "" },
+        -- [Fix #32 - user] "شيل head turing و فتح وقفل سيارة": the head-turning
+        -- and Lock/Unlock-Vehicle strip items are REMOVED (the in-vehicle quick
+        -- row still has its own engine/lock/lights buttons like the old client)
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
         { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
         -- ("ads" dropped: icons/ads.png does not exist, the item rendered nothing)
-        -- Fix #23 (user): visible systems the strip was missing
-        { "lockvehicle",  "on", "car_lock",     "Lock/Unlock Vehicle", "" },
 }
 
 local function isStaffForStrip(player)
@@ -445,6 +445,15 @@ local function pushDefaultItems(player)
 
         for _, item in ipairs(DEFAULT_ITEMS) do
                 upsert(item[1], item[2], item[3], item[4], item[5])
+        end
+        -- [Fix #32 - user] rows removed from the strip must be actively
+        -- PRUNED (the upsert above would keep stale head_turning/lockvehicle
+        -- rows on every account that received them before)
+        for i = #items, 1, -1 do
+                local row = items[i]
+                if type(row) == "table" and (row[1] == "head_turning" or row[1] == "lockvehicle") then
+                        table.remove(items, i)
+                end
         end
         -- staff-only duty toggle (on/off duty = badge above the head while on
         -- duty). Trial Moderator+ gets the ADMIN badge (/adminduty); pure
@@ -534,16 +543,9 @@ addEventHandler("hud:onHudItemClick", root, function(item)
                 triggerEvent("advertisements:open_ads", player)
         elseif item == "seatbelt" then
                 triggerEvent("realism:seatbelt:toggle", player, player)
-        elseif item == "head_turning" then
-                -- cycle 0 -> 1 -> 2 -> 0 (realism-system/c_ped_look_at reads this)
-                local cur = tostring(getElementData(player, "head_turning") or "0")
-                local next_ = (cur == "0" and "1") or (cur == "1" and "2") or "0"
-                setProtected(player, "head_turning", next_)
+        -- [Fix #32 - user] head_turning + lockvehicle strip rows removed
         elseif item == "reportpanel" then
-                -- handled client-side (opens report-system UI)
-        elseif item == "lockvehicle" then
-                -- Fix #23: strip lock/unlock -> the same real vehicle lock event
-                triggerEvent("togLockVehicle", player, player)
+                -- handled client-side (opens the reports panel)
         elseif item == "adminduty" then
                 -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
                 -- announcements, element data) instead of a client-side fake

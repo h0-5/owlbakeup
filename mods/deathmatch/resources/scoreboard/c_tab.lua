@@ -227,7 +227,10 @@ end
 -- [Vortex] the account part is a real permission: only Trial Administrator+
 -- viewers may see it, and off-duty staff read as plain players (no account)
 local function getDisplayName(p, id)
-        if isHidden(p) then return "Hidden" end
+        -- [Fix #32 - user] "خلي اسم شخصية لا تيغير": a hidden admin keeps
+        -- showing their REAL character name (they read as a normal player) -
+        -- the old "Hidden" placeholder is gone. Mask/fakename rules below
+        -- still apply on top.
         -- Fix #24 (user): before a character is picked the board shows the
         -- ACCOUNT NAME (it is known at login), not a useless row number
         if tonumber(getElementData(p, "loggedin")) ~= 1 then
@@ -321,7 +324,11 @@ local function getRankColor(p, rankName)
                 local okG, isG = pcall(function() return exports.integration:isPlayerVCTMember(p) end)
                 if okG and isG then return tocolor(0, 243, 215, 255) end
         end
-        return getRankColorRaw(p, rankName)
+        -- [Fix #32 - user] "ما ابي لون رتبة يسوي مستطيل ... تطلع بلون مثل صورة":
+        -- the RANK color must NOT flood the whole row (a colored band of text
+        -- reads like a rectangle). The row stays plain; the rank color lives
+        -- on the NAME and the RANK cell only (see cellData).
+        return PLAIN_COLOR
 end
 
 -- Fix #29: the RANK COLUMN keeps the rank's own color even when the player
@@ -572,7 +579,9 @@ local function cellData(colName, p, c, id)
         elseif colName == "" then
                 return nil, c.color, c.badges
         elseif colName == "Name" then
-                return getDisplayName(p, id), c.color
+                -- [Fix #32 - user] badge on = the NAME + the RANK cell carry the
+                -- rank color; the rest of the row stays plain information
+                return getDisplayName(p, id), c.rankColor or c.color
         elseif colName == "Rank" then
                 -- Fix #29: rank column = the rank's OWN color (no whitening on
                 -- hover, stays colored when off duty) like the reference
@@ -646,10 +655,14 @@ local function drawHeader()
                 tocolor(158, 167, 188, 240), 1, fontAR, "right", "center", true, false, true)
 
         -- Fix #29: collapse chevron (reference) - click to fold the rows away
+        -- [Fix #32 - user] "سهم مفروض يكون عمودي جنب اعلى تواجد بس هو صاير تحت":
+        -- the chevron sits BESIDE the "أعلى تواجد" line, not under it
         chevronBox.w = 22 * s
         chevronBox.h = 16 * s
-        chevronBox.x = BOARD.x + BOARD.w - PAD_X - chevronBox.w
-        chevronBox.y = BOARD.y + 62 * s
+        local peakText = "أعلى تواجد: " .. tostring(maxOnline)
+        local peakW = (dxGetTextWidth(peakText, 1, fontAR) or 0)
+        chevronBox.x = rightEdge - 12 * s - peakW - 10 * s - chevronBox.w
+        chevronBox.y = BOARD.y + 41 * s
         local x0, y0 = chevronBox.x, chevronBox.y
         local cw2, ch2 = chevronBox.w, chevronBox.h
         local apexY = (not collapsed) and (y0 + 3 * s) or (y0 + ch2 - 3 * s)

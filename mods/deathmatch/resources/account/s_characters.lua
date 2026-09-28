@@ -671,69 +671,61 @@ end
 addEventHandler("accounts:characters:change", getRootElement(), Characters_onCharacterChange)
  
 function Characters_onCharacterLogout()
-        --[[
-        triggerClientEvent(client, "items:inventory:hideinv", client)
-        triggerEvent("savePlayer", client, "Change Character")
-        triggerEvent('setDrunkness', client, 0)
-        setElementDataEx(client, "alcohollevel", 0, true)
-       
-        removeMasksAndBadges(client)
-       
-        setElementDataEx(client, "pd.jailserved")
-        setElementDataEx(client, "pd.jailtime")
-        setElementDataEx(client, "pd.jailtimer")
-        setElementDataEx(client, "pd.jailstation")
-        setElementDataEx(client, "loggedin", 0, true)
-        setElementDataEx(client, "bankmoney", 0)
-        setElementDataEx(client, "account:character:id", false)
-        setElementAlpha(client, 0)
-       
-        if (getPedOccupiedVehicle(client)) then
-                removePedFromVehicle(client)
-        end
-        exports.global:updateNametagColor(client)
-        local clientAccountID = getElementDataEx(client, "account:id") or -1
-       
-        setElementInterior(client, 0)
-        setElementDimension(client, 1)
-        setElementPosition(client, -26.8828125, 2320.951171875, 24.303373336792)
-        exports.logs:dbLog("ac"..tostring(clientAccountID), 27, { "ac"..tostring(clientAccountID), client } , "Logged out" )
-       
-        --Clearing things
-        setElementDataEx(client, "account:loggedin", false, true)
-        setElementDataEx(client, "account:id", nil, true)
-        setElementDataEx(client, "account:username", nil, false)
-        setElementDataEx(client, "adminreports", nil, false)
-        setElementDataEx(client, "hiddenadmin", nil, false)
-        --setElementDataEx(client, "autopark", nil, true)
-        setElementDataEx(client, "email", nil, true)
-        setElementDataEx(client, "admin_level", nil, false)
-        setElementDataEx(client, "account:gmlevel", nil, false)
-        setElementDataEx(client, "duty_admin", nil, true)
-        setElementDataEx(client, "duty_supporter", nil, true)
-        setElementDataEx(client, "wrn:style", nil, true)
-        setElementDataEx(client, "ia:warn", nil, false)
-        setElementDataEx(client, "ia:infractions", nil, false)
-        setElementDataEx(client, "adminjailed", nil, false)
-        setElementDataEx(client, "jailtime", nil, false)
-        setElementDataEx(client, "jailadmin", nil, false)
-        setElementDataEx(client, "jailreason", nil, false)
-        setElementDataEx(client, "admin:monitor", nil, false)
-        removeElementData(client, "jailed")
-        removeElementData(client, "jail_time")
-        removeElementData(client, "jail:id")
-        removeElementData(client, "jail:cell")
-        removeElementData(client, "enableGunAttach")
-        triggerEvent("destroyWepObjects", client)
+	-- [Fix #43] the original cleanup below was fully commented out, leaving
+	-- "logout / change character" dead: nothing was cleared and the panel
+	-- never reopened. Restored from the commented original + the working
+	-- Characters_onCharacterChange cleanup, ending in the join state
+	-- (dimension 9999 + random name, like onJoin) and a beginLogin re-trigger
+	-- so the rebuilt login panel actually comes back up.
+	local clientAccountID = getElementDataEx(client, "account:id") or -1
+	triggerClientEvent(client, "items:inventory:hideinv", client)
+	triggerEvent("savePlayer", client, "Change Character")
+	triggerEvent('setDrunkness', client, 0)
+	setElementDataEx(client, "alcohollevel", 0, true)
+	removeMasksAndBadges(client)
 
-        
-        setElementDataEx(client, "legitnamechange", 1)
-        setPlayerName(client, "DeerUser."..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9))..tostring(math.random(0,9)))
-        setElementDataEx(client, "legitnamechange", 0)
- 
-        setPlayerTeam(client, nil)
-        ]]
+	setElementDataEx(client, "pd.jailserved")
+	setElementDataEx(client, "pd.jailtime")
+	setElementDataEx(client, "pd.jailtimer")
+	setElementDataEx(client, "pd.jailstation")
+	setElementDataEx(client, "loggedin", 0, true)
+	setElementDataEx(client, "bankmoney", 0)
+	setElementDataEx(client, "account:character:id", false)
+	setElementAlpha(client, 0)
+
+	if (getPedOccupiedVehicle(client)) then
+		removePedFromVehicle(client)
+	end
+	exports.global:updateNametagColor(client)
+
+	-- account-level reset (restored from the original commented body)
+	setElementDataEx(client, "account:loggedin", false, true)
+	setElementDataEx(client, "account:id", nil, true)
+	setElementDataEx(client, "account:username", nil, false)
+	setElementDataEx(client, "adminreports", nil, false)
+	setElementDataEx(client, "hiddenadmin", nil, false)
+	setElementDataEx(client, "email", nil, true)
+	setElementDataEx(client, "admin_level", nil, false)
+	setElementDataEx(client, "account:gmlevel", nil, false)
+	setElementDataEx(client, "duty_admin", nil, true)
+	setElementDataEx(client, "duty_supporter", nil, true)
+	setElementDataEx(client, "adminjailed", false, true)
+	setElementDataEx(client, "jailtime", nil, true)
+	setElementDataEx(client, "jailadmin", nil, true)
+	setElementDataEx(client, "jailreason", nil, true)
+	setElementDataEx(client, "admin:monitor", nil, false)
+
+	exports.logs:dbLog("ac" .. tostring(clientAccountID), 27, { "ac" .. tostring(clientAccountID), client }, "Logged out" )
+
+	-- back to the not-logged-in state (same as onJoin in s_main.lua)
+	setElementInterior(client, 0)
+	setElementDimension(client, 9999)
+	makeIName(client)
+
+	-- reopen the login panel (client reruns the camera/music/panel flow)
+	triggerClientEvent(client, "beginLogin", client)
 end
+
 addEventHandler("accounts:characters:logout", getRootElement(), Characters_onCharacterLogout)
  
 function removeMasksAndBadges(client)

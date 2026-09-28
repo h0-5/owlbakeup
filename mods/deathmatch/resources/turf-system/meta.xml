@@ -1,0 +1,10 @@
+<meta>
+	<info author="Vortex" type="script" description="Turf System - old client OS:AREA port (Fix #57)" />
+
+	<script src="s_turf.lua" type="server" />
+	<script src="c_turf.lua" type="client" cache="false" />
+
+	<export function="getTurfList" type="server" />
+	<export function="getTurfByID" type="server" />
+	<export function="getGroupTurfAreas" type="client" />
+</meta>

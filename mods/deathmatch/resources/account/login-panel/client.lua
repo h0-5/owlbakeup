@@ -34,20 +34,36 @@ local built = false
 local UI = { window = {}, label = {}, edit = {}, button = {}, rect = {}, image = {}, checkbox = {}, container = {} }
 
 -- rememberme persistence ---------------------------------------------------
-local function saveRemember(username, password)
-	local xml = xmlLoadFile("login-panel/rememberme.xml")
-	if not xml then
-		xml = xmlCreateFile("login-panel/rememberme.xml", "login")
-		xmlNodeSetValue(xmlCreateChild(xml, "username"), tostring(username or ""))
-		xmlNodeSetValue(xmlCreateChild(xml, "password"), tostring(password or ""))
-	else
-		local un = xmlFindChild(xml, "username", 0)
-		local pw = xmlFindChild(xml, "password", 0)
-		if un then xmlNodeSetValue(un, tostring(username or "")) end
-		if pw then xmlNodeSetValue(pw, tostring(password or "")) end
+-- Plain client-side path (same pattern animation-system uses for
+-- favourite.xml): the file lives in THIS client's local copy of the
+-- resource, so it survives reconnects. The old version wrote nothing when
+-- the file existed but was missing the <username>/<password> children
+-- (the shipped rememberme.xml has root <rememberme>), so every save was a
+-- silent no-op and the panel never pre-filled again.
+
+local REMEMBER_FILE = "login-panel/rememberme.xml"
+
+local function childFor(xml, name)
+	local node = xmlFindChild(xml, name, 0)
+	if not node then
+		node = xmlCreateChild(xml, name)
 	end
+	return node
+end
+
+local function saveRemember(username, password)
+	local xml = xmlLoadFile(REMEMBER_FILE)
+	if not xml then
+		xml = xmlCreateFile(REMEMBER_FILE, "login")
+		if not xml then return false end
+	end
+	local un = childFor(xml, "username")
+	local pw = childFor(xml, "password")
+	if un then xmlNodeSetValue(un, tostring(username or "")) end
+	if pw then xmlNodeSetValue(pw, tostring(password or "")) end
 	xmlSaveFile(xml)
 	xmlUnloadFile(xml)
+	return true
 end
 
 local function clearRemember()
@@ -224,6 +240,37 @@ local function showAuthen(tab, text)
 	showWarning(tab, text)
 end
 
+-- auto-login -----------------------------------------------------------------
+-- When remember-me stored credentials, the panel pre-fills them and then
+-- submits the login by itself so the player does not have to type. Any
+-- click inside the username/password box cancels it (the player wants to
+-- type instead), and a manual Login click makes the timer harmless because
+-- the panel is gone (visible == false) by the time it fires.
+local AUTO_LOGIN_DELAY = 3000
+local autoLoginTimer = nil
+
+local function cancelAutoLogin()
+	if autoLoginTimer and isTimer(autoLoginTimer) then
+		killTimer(autoLoginTimer)
+	end
+	autoLoginTimer = nil
+end
+
+local function scheduleAutoLogin()
+	cancelAutoLogin()
+	showWarning("Login", "Saved login found - signing in automatically...")
+	autoLoginTimer = setTimer(function()
+		autoLoginTimer = nil
+		if not visible or not UI.edit.Username or not UI.edit.Password then
+			return
+		end
+		if #eui:uiGetText(UI.edit.Password) == 0 then
+			return
+		end
+		tryLogin()
+	end, AUTO_LOGIN_DELAY, 1)
+end
+
 -- enter pressed inside an edit -> submit
 addEventHandler("onClientGUIAccepted", root, function()
 	if not visible then return end
@@ -236,6 +283,7 @@ end)
 
 function tryLogin()
 	if not visible then return end
+	cancelAutoLogin() -- a real (manual) attempt replaces any pending auto-login
 	local username = eui:uiGetText(UI.edit.Username)
 	local password = eui:uiGetText(UI.edit.Password)
 	if #username == 0 then
@@ -246,7 +294,11 @@ function tryLogin()
 		showWarning("Login", "Please enter your password!")
 		return
 	end
-	local remember = UI.checkbox.Remember and eui:uiCheckBoxGetSelected(UI.checkbox.Remember) or false
+	-- NOTE: the remember control is a ui-SWITCH (uiCreateSwitch), so the
+	-- switch accessors must be used. uiCheckBoxGetSelected asserts
+	-- "ui-checkbox" and aborted tryLogin here, which kept the whole login
+	-- attempt (and the remember-me save) from ever reaching the server.
+	local remember = UI.checkbox.Remember and eui:uiSwitchGetSelected(UI.checkbox.Remember) or false
 	triggerServerEvent("accounts:login:attempt", localPlayer, username, password, remember)
 end
 
@@ -330,14 +382,17 @@ addEventHandler("beginLogin", root, function()
 		showCursor(true)
 		setCameraMatrix(x, y, z, tx, ty, tz)
 	end, 2000, 1, pt[1], pt[2], pt[3], pt[4], pt[5], pt[6])
-	-- pre-fill the remembered credentials
+	-- pre-fill the remembered credentials (+ kick off the auto-login)
 	local user, pass = loadRemember()
 	if user and #user > 0 and UI.edit.Username then
 		eui:uiSetText(UI.edit.Username, user)
 	end
 	if pass and #pass > 0 and UI.edit.Password then
 		eui:uiSetText(UI.edit.Password, pass)
-		if UI.checkbox.Remember then eui:uiCheckBoxSetSelected(UI.checkbox.Remember, true) end
+		if UI.checkbox.Remember then
+			eui:uiSwitchSetSelected(UI.checkbox.Remember, true)
+		end
+		scheduleAutoLogin()
 	end
 end)
 

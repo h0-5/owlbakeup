@@ -133,6 +133,34 @@ end
 setTimer ( reapplyMissingRanks, 60000, 0 )
 setTimer ( reapplyMissingRanks, 10000, 1 ) -- shortly after resource start
 
+-- ============================================================================
+-- [Fix #31 - user] RANK COLORS = STAFF SYSTEM ONLY
+--
+-- "ياخذ لون الرتبة من نظام الرتب ستاف سستم مب من تاب لحاله"
+-- The client no longer hardcodes any rank colors: s_tab pulls the whole
+-- staff_roles color table from the staff bridge (admin-system) and pushes
+-- it to every client. Re-synced on start, on a timer (covers late admin-system
+-- starts), and by the bridge itself whenever a rank is saved.
+-- ============================================================================
+
+local function syncRankColors ( )
+        local adminSys = getResourceFromName ( "admin-system" )
+        if not adminSys or getResourceState ( adminSys ) ~= "running" then
+                return
+        end
+        local ok, tbl = pcall ( function ( )
+                return exports [ "admin-system" ]:getAllRankColors ( )
+        end )
+        if ok and type ( tbl ) == "table" and next ( tbl ) then
+                triggerClientEvent ( "scoreboard:rankColors", root, tbl )
+        end
+end
+
+addEventHandler ( "onResourceStart", resourceRoot, function ( )
+        setTimer ( syncRankColors, 5000, 1 )  -- let admin-system finish booting
+end )
+setTimer ( syncRankColors, 30000, 0 )         -- keep mirroring staff_roles
+
 --------------------------------------------------------------------------------
 -- Fix #24 (user): FIXED MOD ID per account
 --   * every account gets a permanent sequential id the first time it logs in

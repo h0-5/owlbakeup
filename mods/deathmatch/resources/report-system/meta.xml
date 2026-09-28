@@ -1,17 +1,19 @@
-<meta>
-    <info author="OwlGaming MTA Scripting Team" type="script" description="Report System"/>
-
-	<script src="s_reports.lua"/>
-    <script src="c_reports.lua" type="client" />
-	
-	<script src="s_external_report_box.lua" type="server"/>
-    <script src="c_external_report_box.lua" type="client" />
-	
-	<script src="s_top_right_box.lua" type="server"/>
-	<script src="c_top_right_box.lua" type="client"/>
-	
-	<script src="g_reports.lua" type="shared"/>
-	
-	<export function="showToAdminPanel" type="server" />
-	<export function="reportLazyFix" type="server"/>
-</meta>
+﻿<meta>
+    <info author="OwlGaming MTA Scripting Team" type="script" description="Report System"/>
+
+	<script src="s_reports.lua"/>
+    <script src="c_reports.lua" type="client" />
+    <!-- [Fix #32] live reports list - old client drawReports port -->
+    <script src="c_report_panel.lua" type="client" cache="false" />
+	
+	<script src="s_external_report_box.lua" type="server"/>
+    <script src="c_external_report_box.lua" type="client" />
+	
+	<script src="s_top_right_box.lua" type="server"/>
+	<script src="c_top_right_box.lua" type="client"/>
+	
+	<script src="g_reports.lua" type="shared"/>
+	
+	<export function="showToAdminPanel" type="server" />
+	<export function="reportLazyFix" type="server"/>
+</meta>

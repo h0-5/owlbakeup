@@ -396,6 +396,13 @@ function getMenuElement()
 end
 
 function showSideBar(show, openSection)
+        -- [Fix #32] if the UIKit window was ever lost (a UIKit restart, or
+        -- the old draw-list wipe when another resource stopped), rebuild it
+        -- on demand instead of pressing F1 into nothing
+        if show and (not UI.window.MainMenu or not isElement(UI.window.MainMenu)) then
+                uiBuilt = false
+                UIKitReady()
+        end
         state.state = show
         showCursor(show)
         if show then

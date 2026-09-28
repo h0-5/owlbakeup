@@ -150,6 +150,7 @@
 	<export function="uiGetFontSize" type="client" />
 	<export function="uiGetParent" type="client" />
 	<export function="uiGetPosition" type="client" />
+	<export function="uiGetAbsoluteBounds" type="client" />
 	<export function="uiGetProperties" type="client" />
 	<export function="uiGetProperty" type="client" />
 	<export function="uiGetReferenceScreenSize" type="client" />

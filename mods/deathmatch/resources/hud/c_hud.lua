@@ -204,6 +204,14 @@ local function drawSmoothDisc(cx, cy, rad, r, g, b, a, postGUI)
         end
 end
 
+-- [Fix #32] shared with c_speedo.lua (same resource, separate file)
+function drawSmoothRingG(cx, cy, size, radius, thickness, r, g, b, a, progress, postGUI)
+        return drawSmoothRing(cx, cy, size, radius, thickness, r, g, b, a, progress, postGUI)
+end
+function drawSmoothDiscG(cx, cy, rad, r, g, b, a, postGUI)
+        return drawSmoothDisc(cx, cy, rad, r, g, b, a, postGUI)
+end
+
 --------------------------------------------------------------------------------
 -- CONFIG — old client read these from exports.settings (settings resource
 -- restored alongside this fix). Guarded so hud still boots if settings is off.
@@ -276,11 +284,12 @@ local function anim(startTick, duration, fromValue, toValue)
 end
 
 local function outlineText(text, x, y, w, h, color, scale, font, alignX, alignY, postGUI, colorCoded)
+        -- [Fix #32 - PERF + old client] the old client drew every hud text as
+        -- ONE black offset shadow + ONE colored pass (var16 pattern). The
+        -- 5-pass outline tripled the dxDrawText cost for clock/date/zone and
+        -- tooltips EVERY frame. 2 passes, same old-client look.
         local black = tocolor(0, 0, 0, 255)
-        dxDrawText(text, x - 1, y, x + w - 1, y + h, black, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
-        dxDrawText(text, x + 1, y, x + w + 1, y + h, black, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
-        dxDrawText(text, x, y - 1, x + w, y + h - 1, black, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
-        dxDrawText(text, x, y + 1, x + w, y + h + 1, black, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
+        dxDrawText(text, x + 2, y + 2, x + w + 2, y + h + 2, black, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
         dxDrawText(text, x, y, x + w, y + h, color, scale, font, alignX, alignY, false, false, postGUI, colorCoded)
 end
 
@@ -507,20 +516,23 @@ local LOGO_GAP   = 14
 local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 318
 local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 16
 local PANEL_H = 56
-local PANEL_X = sx - PANEL_W
+-- [Fix #32 - user] "ارفع مكانه باعلى الشاشة لكن مب لازق بحواف الشاشة":
+-- rest at the top but with real margins - no longer glued to the edges
+local PANEL_MARGIN_X = 14
+local PANEL_X = sx - PANEL_W - PANEL_MARGIN_X
 local STRIP_H = 37
 
--- Fix #19: light purple frame — thin Vortex-purple border + a barely-visible
--- fill behind the states so the frame never hides the rings/icons
+-- Fix #19: light purple frame — thin Vortex-purple border + a fill behind
+-- the states. [Fix #32 - user] "تغمق لون كمان شوي": darker fill than #30/#31
 local FRAME_BORDER = tocolor(149, 84, 255, 115)
-local FRAME_FILL   = tocolor(10, 6, 20, 55)
+local FRAME_FILL   = tocolor(8, 5, 16, 120)
 
 local function drawStatusFrame(x, y, w, h, postGUI)
         dxDrawRoundedRectangle(x, y, w, h, FRAME_BORDER, 12, postGUI)
         dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 10, postGUI)
 end
 
-local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 25, current = -80 } }
+local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 2, current = -80 } }
 local statusHudDraw -- forward declaration
 local moneyBlockBottom = false   -- bottom Y of the money block (used by vehicle row)
 local zoneText, zoneLabel = "", ""
@@ -613,7 +625,9 @@ function showStatusHud(state)
         if state then
                 statusHud.anims.count = getTickCount()
                 statusHud.anims.from = statusHud.anims.current
-                statusHud.anims.to = 25
+                -- [Fix #31 -> #32 - user] rest at the top of the screen but
+                -- NOT glued to the edges: ~17px top rest, 14px right margin
+                statusHud.anims.to = 12
                 addEventHandler("onClientRender", root, statusHudDraw, false, "high-5")
                 -- seed from life-system if the real one is running (old client)
                 local life = getResourceFromName("life-system")
@@ -798,19 +812,19 @@ local function statusHudDrawImpl()
 
         -- clock + date (old formats, right aligned under the frame)
         if not CONFIG.hideClock then
-                -- Fix #30 (user): the clock and date were STILL too small -
-                -- now genuinely big: 1.35 scale clock, 0.9 date
-                local textY = panelY + PANEL_H + 14
-                outlineText(getCurrentTime(), sx - 380, textY, 368, 66,
-                        tocolor(255, 255, 255, 255), 1.35, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 380, textY + 72, 368, 44,
-                        tocolor(255, 255, 255, 210), 0.9, fontHudLarge(), "right", "top", postGUI)
+                -- Fix #30 (user) "كبرو بس لسا ماوصلو للشكل المطلوب" -> #32:
+                -- bigger again: 1.7 scale clock, 1.15 date
+                local textY = panelY + PANEL_H + 10
+                outlineText(getCurrentTime(), sx - 440, textY, 426, 82,
+                        tocolor(255, 255, 255, 255), 1.7, fontHudLarge(), "right", "top", postGUI)
+                outlineText(getCurrentDate(), sx - 440, textY + 84, 426, 56,
+                        tocolor(255, 255, 255, 210), 1.15, fontHudLarge(), "right", "top", postGUI)
                 -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 10, textY + 124, postGUI)
-                moneyBlockBottom = textY + 124 + mh
+                local mh = drawMoneyBlock(sx - 14, textY + 146, postGUI)
+                moneyBlockBottom = textY + 146 + mh
         else
-                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 14, postGUI)
-                moneyBlockBottom = panelY + PANEL_H + 14 + mh
+                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 8, postGUI)
+                moneyBlockBottom = panelY + PANEL_H + 8 + mh
         end
 
         -- zone label, bottom-left above the radar (old client)
@@ -990,6 +1004,7 @@ local STRIP_ICON, STRIP_PITCH = 32, 37
 local stripAnim = { count = 0, time = 250, from = -STRIP_H - 2, to = -STRIP_H - 2, current = -STRIP_H - 2 }
 local hoveredItem = 0
 local hoveredVehItem = 0
+local lastHoveredItem = 0
 local lastItemClick = 0
 local hudState = false
 
@@ -1030,9 +1045,15 @@ local function drawHUD()
                                                 tocolor(255, 255, 255, active and 255 or 130), true)
                                 end
                                 if isMouseInPosition(iconX - 2.5, py, STRIP_PITCH, STRIP_H) then
-                                        if hoveredItem ~= i then
+                                        -- [Fix #32 - LAG] hoveredItem resets to 0 at the top of
+                                        -- every frame, so "hoveredItem ~= i" was ALWAYS true and
+                                        -- playSound fired EVERY FRAME while the cursor rested on
+                                        -- an item (dozens of sound elements per second = the lag
+                                        -- storm). Track the real previous index.
+                                        if lastHoveredItem ~= i then
                                                 playSelectSound()
                                         end
+                                        lastHoveredItem = i
                                         hoveredItem = i
                                 end
                                 iconX = iconX + (STRIP_PITCH - 5)
@@ -1180,10 +1201,18 @@ end)
 addEvent("hud:onClientHudItemClick", false)
 addEventHandler("hud:onClientHudItemClick", localPlayer, function(id)
         if id == "reportpanel" then
-                -- Report Center is owned by report-system (/report)
-                if getResourceFromName("report-system")
-                        and getResourceState(getResourceFromName("report-system")) == "running" then
-                        executeCommandHandler("report", localPlayer)
+                -- [Fix #32 - user] "قائمة الريبورتات ماتظهر ريبورتات موجودة":
+                -- the old client opens the LIVE REPORTS LIST through the
+                -- reports:showUnansweredReportsPanel protocol (report-system
+                -- c_report_panel.lua), not the /report submit window
+                if getElementData(localPlayer, "report_panel_state") then
+                        setElementData(localPlayer, "report_panel_state", false, false)
+                        triggerServerEvent("reports:onHideUnansweredReportsPanel", localPlayer)
+                        triggerEvent("reports:togglePanel", localPlayer, false)
+                else
+                        setElementData(localPlayer, "report_panel_state", true, false)
+                        triggerServerEvent("reports:showUnansweredReportsPanel", localPlayer)
+                        triggerEvent("reports:togglePanel", localPlayer, true)
                 end
         elseif id == "tagmode" then
                 setHudSetting("tagmode", not getHudSetting("tagmode"))

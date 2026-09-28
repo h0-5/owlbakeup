@@ -58,11 +58,10 @@ local function fontDefault() return dxFontDefault or "default-bold" end
 local function fontHud() return dxFontHud or "default" end
 
 local function outlineText(text, x, y, w, h, color, scale, font, alignX, alignY)
+        -- [Fix #32] old client = 1 black offset shadow + 1 colored pass
+        -- (was 5 passes per text per player per frame)
         local black = tocolor(0, 0, 0, 255)
-        dxDrawText(text, x - 1, y, x + w - 1, y + h, black, scale, font, alignX, alignY, false, false, true)
-        dxDrawText(text, x + 1, y, x + w + 1, y + h, black, scale, font, alignX, alignY, false, false, true)
-        dxDrawText(text, x, y - 1, x + w, y + h - 1, black, scale, font, alignX, alignY, false, false, true)
-        dxDrawText(text, x, y + 1, x + w, y + h + 1, black, scale, font, alignX, alignY, false, false, true)
+        dxDrawText(text, x + 2, y + 2, x + w + 2, y + h + 2, black, scale, font, alignX, alignY, false, false, true)
         dxDrawText(text, x, y, x + w, y + h, color, scale, font, alignX, alignY, false, false, true)
 end
 
@@ -97,6 +96,11 @@ local function buildPlayerEntry(player)
         if getElementData(player, "duty_admin") == 1
                 and not getElementData(player, "admin:hideadmin") then
                 table.insert(icons, "admin_badge")
+        end
+        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+        if getElementData(player, "duty_supporter") == 1
+                and not getElementData(player, "admin:hideadmin") then
+                table.insert(icons, "support_badge")
         end
         if getElementData(player, "temp:heart") then
                 table.insert(icons, "heart")
@@ -179,6 +183,25 @@ addEventHandler("typing:sync", root, function(state)
 end)
 
 --------------------------------------------------------------------------------
+-- ALT = show IDs (old client: lalt hold / ralt toggle -> local element data
+-- "describtion:show"; the name then draws with the player ID in parentheses)
+--------------------------------------------------------------------------------
+local altSticky = false
+bindKey("lalt", "both", function(_, press)
+        if not altSticky then
+                setElementData(localPlayer, "describtion:show", press == "down", false)
+        end
+end)
+bindKey("ralt", "down", function()
+        altSticky = not getElementData(localPlayer, "describtion:show")
+        setElementData(localPlayer, "describtion:show", altSticky, false)
+end)
+addEventHandler("onClientPlayerSpawn", localPlayer, function()
+        altSticky = false
+        setElementData(localPlayer, "describtion:show", false, false)
+end)
+
+--------------------------------------------------------------------------------
 -- draw (old client drawPlayersName)
 --------------------------------------------------------------------------------
 local WaitTyping = 0
@@ -231,8 +254,17 @@ addEventHandler("onClientRender", root, function()
                                                         -- Fix #19: rank title text removed —
                                                         -- the admin badge below is the only rank marker
 
-                                                        -- the name
-                                                        outlineText(entry.name, sX - 120, baseY - 22, 240, 18,
+                                                        -- the name (Alt = ID in parentheses, old client describtion:show)
+                                                        local nameText = entry.name
+                                                        if getElementData(localPlayer, "describtion:show") then
+                                                                local pid = getElementData(player, "playerid")
+                                                                        or getElementData(player, "character:id")
+                                                                        or getElementData(player, "account:character:id")
+                                                                if pid then
+                                                                        nameText = nameText .. " (" .. tostring(pid) .. ")"
+                                                                end
+                                                        end
+                                                        outlineText(nameText, sX - 120, baseY - 22, 240, 18,
                                                                 entry.color, 1, fontDefault(), "center", "top")
 
                                                         -- badge icons under the name (old client icons row)

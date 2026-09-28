@@ -144,6 +144,35 @@ local function fetchMemberRow(accountID)
                 .. tonumber(accountID) .. " LIMIT 1")
 end
 
+-- [Fix #31 - user] the FULL rank color table straight from staff_roles.
+-- UI consumers (the scoreboard tab) must take rank colors from the STAFF
+-- SYSTEM ("ياخذ لون الرتبة من نظام الرتب ستاف سستم") - never from their own
+-- hardcoded ladders. Returns { [LevelName] = {r, g, b} }.
+function getAllRankColors()
+        local out = {}
+        local q = mysql:query("SELECT LevelName, Color FROM staff_roles")
+        if q then
+                while true do
+                        local row = mysql:fetch_assoc(q)
+                        if not row then break end
+                        local c = fromJSON(row.Color or "") or { 255, 255, 255, 255 }
+                        out[tostring(row.LevelName)] = {
+                                tonumber(c[1]) or 255,
+                                tonumber(c[2]) or 255,
+                                tonumber(c[3]) or 255,
+                        }
+                end
+                mysql:free_result(q)
+        end
+        return out
+end
+
+-- push the table to every client (called on staff_manager start and after
+-- every rank save, so the tab always mirrors the live staff_roles colors)
+function pushRankColorsToAll()
+        triggerClientEvent("scoreboard:rankColors", root, getAllRankColors())
+end
+
 -- resolve the rank record (index included) for an account id; nil = no rank
 function getPlayerRankRecordByAccountID(accountID)
         local member = fetchMemberRow(accountID)
@@ -278,6 +307,8 @@ function refreshRankMembers(roleID)
                         end
                 end
         end
+        -- [Fix #31] role colors may have changed - re-push to the UIs
+        pushRankColorsToAll()
 end
 
 -- refresh every online player (resource start / rank table rebuild)
@@ -285,6 +316,8 @@ function refreshAllPlayerRanks()
         for _, player in ipairs(getElementsByType("player")) do
                 refreshPlayerRank(player)
         end
+        -- [Fix #31] publish the staff-system rank colors to every client
+        pushRankColorsToAll()
 end
 
 -- ============================================================================

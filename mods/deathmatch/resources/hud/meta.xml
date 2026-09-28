@@ -5,6 +5,8 @@
     
 
     <script src="c_hud.lua" type="client" />
+    <!-- [Fix #32] in-vehicle speedometer - old client [rp]/speedo port -->
+    <script src="c_speedo.lua" type="client" cache="false" />
 
     <script src="c_nametags.lua" type="client" />
 
@@ -253,6 +255,8 @@
 
     <file src="old_school_united_stencil.ttf" />
     <file src="hud_bg.png" />
+    <!-- [Fix #32] speedometer indicator arrow -->
+    <file src="images/arrow.png" />
     <file src="afk.png" />
     <file src="images/vortex_logo.png" />
 

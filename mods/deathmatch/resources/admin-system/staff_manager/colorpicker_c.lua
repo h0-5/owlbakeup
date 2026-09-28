@@ -151,40 +151,29 @@ end)
 local CP_HIT = {}          -- [element] = { x, y, w, h, kind, payload }
 local cpDispatchTick = {}  -- per-element latch (300ms)
 
-local function cpScreenRect(x, y, w, h)
-        local sx, sy = guiGetScreenSize()
-        local refX, refY = eui.uiGetReferenceScreenSize()
-        local scx, scy = sx / refX, sy / refY
-        -- center the 560x360 window the same way uiCreateWindow(false,false)
-        -- does, then scale the inner offsets by the Y scale (UIKit's own
-        -- geometry for child elements)
-        local winW, winH = 560 * scy, 360 * scy
-        local winX = (sx - winW) / 2 + (winW - 560 * scy) / 2
-        local winY = (sy - winH) / 2
-        return winX + x * scy, winY + y * scy, w * scy, h * scy
-end
-
+-- [Fix #32 - user] "لو ضغط على لون ياخذ كبسة على لوحة لتحتها": the hit rects
+-- were re-derived by hand from the reference-space math and DRIFTED from what
+-- UIKit actually paints (window centering + title bar), so a click on one
+-- swatch registered on the row below. The registry now reads each element's
+-- ABSOLUTE rendered rect straight from UIKit (uiGetAbsoluteBounds) - the same
+-- geometry the drawing loop and hover use - so click == visual, always.
 local function rebuildPickerHits()
         CP_HIT = {}
         if not (UI.window.picker and isElement(UI.window.picker)) then return end
-        local wx, wy = cpScreenRect(0, 0, 560, 360)
-        CP_HIT[UI.window.picker] = { x = wx, y = wy, w = 560 * SCALE_Y, h = 360 * SCALE_Y, kind = "window" }
-        local px, py, pw, ph = cpScreenRect(10, 35, 540, 40)
-        CP_HIT[UI.rectangle.preview] = { x = px, y = py, w = pw, h = ph, kind = "preview" }
-        for i, rgb in ipairs(PALETTE) do
-                local col = (i - 1) % SW_COLS
-                local row = math.floor((i - 1) / SW_COLS)
-                local sxp, syp, swp, shp = cpScreenRect(
-                        10 + col * (SW_SIZE + SW_GAP),
-                        85 + row * (SW_SIZE + SW_GAP),
-                        SW_SIZE, SW_SIZE)
-                CP_HIT[UI.rectangle["swatch_" .. i]] = {
-                        x = sxp, y = syp, w = swp, h = shp, kind = "swatch", payload = rgb }
+        local function reg(el, kind, payload)
+                if not el or not isElement(el) then return end
+                local ok, x, y, w, h = pcall(eui.uiGetAbsoluteBounds, eui, el)
+                if not ok or not x then return end
+                CP_HIT[el] = { x = x, y = y, w = w or 0, h = h or 0,
+                        kind = kind, payload = payload }
         end
-        local okx, oky, okw, okh = cpScreenRect(10, 315, 265, 35)
-        CP_HIT[UI.button.ok] = { x = okx, y = oky, w = okw, h = okh, kind = "ok" }
-        local cx, cy, cw, ch = cpScreenRect(285, 315, 265, 35)
-        CP_HIT[UI.button.cancel] = { x = cx, y = cy, w = cw, h = ch, kind = "cancel" }
+        reg(UI.window.picker, "window")
+        reg(UI.rectangle.preview, "preview")
+        for i, rgb in ipairs(PALETTE) do
+                reg(UI.rectangle["swatch_" .. i], "swatch", rgb)
+        end
+        reg(UI.button.ok, "ok")
+        reg(UI.button.cancel, "cancel")
 end
 
 local function applyPick(kind, payload)

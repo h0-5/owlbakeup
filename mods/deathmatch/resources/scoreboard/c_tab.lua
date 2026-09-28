@@ -583,25 +583,31 @@ end)
 --[[ ==================== cell data ==================== ]]
 
 local function cellData(colName, p, c, id)
+        -- [Fix #47 - user] DYNAMIC RANK COLOR ON ALL COLUMNS: when the player
+        -- carries an active rank color (staff rank via rank:color / the staff
+        -- system table), ID, Name, Rank, Playtime and Ping ALL draw in it.
+        -- Hidden admins and plain players read the DEFAULT color instantly
+        -- (the row cache invalidates on the watched element-data keys the
+        -- moment anything flips). Rank-colored rows do not whiten on hover;
+        -- plain rows keep the old hover whitening.
+        local colColor = c.rankColor or c.color
+        local isRankColored = (colColor ~= PLAIN_COLOR)
         if colName == "ID" then
-                return tostring(id), c.color
+                return tostring(id), colColor, nil, isRankColored
         elseif colName == "" then
-                return nil, c.color, c.badges
+                return nil, colColor, c.badges
         elseif colName == "Name" then
-                -- [Fix #32 - user] badge on = the NAME + the RANK cell carry the
-                -- rank color; the rest of the row stays plain information
-                return getDisplayName(p, id), c.rankColor or c.color
+                return getDisplayName(p, id), colColor, nil, isRankColored
         elseif colName == "Rank" then
                 -- Fix #29: rank column = the rank's OWN color (no whitening on
                 -- hover, stays colored when off duty) like the reference
                 return c.rank, c.rankColor or c.color, nil, true
         elseif colName == "Playtime" then
-                -- Fix #29: playtime + ping follow the ROW color like the ref
-                return getPlaytime(p), c.color
+                return getPlaytime(p), colColor, nil, isRankColored
         elseif colName == "Ping" then
-                return tostring(getPlayerPing(p) or 0), c.color
+                return tostring(getPlayerPing(p) or 0), colColor, nil, isRankColored
         end
-        return "-", c.color
+        return "-", colColor
 end
 
 --[[ ==================== drawing ==================== ]]
@@ -683,12 +689,13 @@ end
 local function drawBoard()
         local list = filteredList()
 
-        -- board body: dark rounded fill with a hairline outer border
-        -- Fix #29: near-black indigo fill + subtle navy border (reference)
+        -- board body: solid black rounded fill with a hairline outer border
+        -- [Fix #47 - user] "Remove all grey background boxes entirely - solid
+        -- black theme": the near-black indigo becomes true black
         local bodyH = collapsed and (HEADER_H + 12 * s) or BOARD.h
         local bw = 1 * s
-        drawRoundRect(BOARD.x - bw, BOARD.y - bw, BOARD.w + 2 * bw, bodyH + 2 * bw, tocolor(150, 150, 200, 26), true)
-        drawRoundRect(BOARD.x, BOARD.y, BOARD.w, bodyH, tocolor(5, 3, 9, 247), true)
+        drawRoundRect(BOARD.x - bw, BOARD.y - bw, BOARD.w + 2 * bw, bodyH + 2 * bw, tocolor(120, 120, 150, 30), true)
+        drawRoundRect(BOARD.x, BOARD.y, BOARD.w, bodyH, tocolor(0, 0, 0, 252), true)
 
         drawHeader()
 
@@ -741,11 +748,10 @@ local function drawBoard()
                         end
                         local rowHover = (i == hoverRow) and hoverAnim or 0
 
-                        -- row background: Fix #29 reference styling - clear zebra
-                        -- rows, the local row keeps a soft light plate and the
-                        -- hovered row goes DARKER with the accent bar
+                        -- row background: [Fix #47 - user] solid black theme -
+                        -- the zebra stripes are gone; only my row keeps a faint
+                        -- plate and the hovered row darkens with the accent bar
                         local bgA = isLocal and 12 or 0
-                        if i % 2 == 0 then bgA = bgA + 9 end
                         if bgA > 0.5 then
                                 drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(255, 255, 255, bgA), true, 6 * s)
                         end
@@ -765,13 +771,8 @@ local function drawBoard()
                         local cellX = BOARD.x + PAD_X
                         for _, col in ipairs(COLUMNS) do
                                 local cw = col.frac * CONTENT_W
-                                -- [Fix #35 - user] "مستطيلات لحول اسم الرمادية ذي حول كل
-                                -- معلومات مب بس اسم": the gray cell plate goes around
-                                -- EVERY column now (ID / badges / Name / Rank /
-                                -- Playtime / Ping), not just the name
-                                drawRoundRect(cellX + 2 * s, rowY + 2 * s,
-                                        cw - 5 * s, ROW_H - 7 * s,
-                                        tocolor(150, 156, 170, 26), true, 4 * s)
+                                -- [Fix #47 - user] the grey cell plates behind every
+                                -- column are GONE - solid black theme, text only
                                 local value, color, badges, noWhiten = cellData(col.name, p, c, pData.id)
                                 if badges then
                                         for b = 1, #badges do

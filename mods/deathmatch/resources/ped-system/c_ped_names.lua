@@ -17,7 +17,10 @@ local lastLookAt = {}
 
 -- [Fix #33] one-time error report: a silent per-frame abort killed NPC names
 -- AND logged an error every frame (FPS). Wrap the draw, show it once.
+-- [Fix #47] "once" became FOREVER - one transient error disabled NPC names
+-- for the whole session. Report at most once per 30s, auto-recover instead.
 local pedNameErrorShown = false
+local pedLastError = 0
 
 -- [Fix #35] one-time gate report: "NPC names never appear" was a silent
 -- early return - say WHY the first time it happens (once per session)
@@ -79,11 +82,13 @@ setTimer(rebuildList, 3000, 0)
 addEventHandler("onClientResourceStart", resourceRoot, rebuildList)
 
 addEventHandler("onClientRender", root, function()
-        if pedNameErrorShown then return end
         local ok, err = pcall(drawPedsName)
-        if not ok and not pedNameErrorShown then
-                pedNameErrorShown = true
-                outputChatBox("[NPC names] " .. tostring(err), 255, 100, 100, false)
+        if not ok then
+                local now = getTickCount()
+                if now - pedLastError > 30000 then
+                        pedLastError = now
+                        outputChatBox("[NPC names] " .. tostring(err), 255, 100, 100, false)
+                end
         end
 end, false, "high-2")
 

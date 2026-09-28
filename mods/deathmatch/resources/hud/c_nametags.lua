@@ -20,7 +20,15 @@ local NAMETAG_DISTANCE = 20
 -- [Fix #33] self-diagnostics: any error inside this handler used to kill the
 -- draw silently EVERY FRAME (and eat FPS with error logging). Wrap it and
 -- surface the first error in chat so it can never hide again.
+-- [Fix #47] the old one-time kill-switch was the real "names never show"
+-- bug: ONE transient error (e.g. a UIKit restart destroying the font element
+-- mid-frame) permanently disabled every player name for the whole session
+-- while NPC names (separate file) kept working - exactly the user's report.
+-- Errors are now reported at most once per 30s and the draw AUTOMATICALLY
+-- recovers on the next frame with fonts revalidated.
 local nametagErrorShown = false
+local nametagLastError = 0
+local nametagErrorCount = 0
 
 local playersHud = {}   -- [player] = { name, color, icons, hidden }
 local typing = {}       -- [player] = true while chatting
@@ -62,8 +70,16 @@ end
 addEventHandler("onClientUIReady", resourceRoot, UIKitReady)
 addEventHandler("onClientUIKitReady", root, UIKitReady)
 
-local function fontDefault() return dxFontDefault or "default-bold" end
-local function fontHud() return dxFontHud or "default" end
+local function fontDefault()
+        -- [Fix #47] UIKit restarts destroy the exported font elements; drawing
+        -- with a dead font element is a per-frame error. Revalidate on use.
+        if dxFontDefault and not isElement(dxFontDefault) then dxFontDefault = nil end
+        return dxFontDefault or "default-bold"
+end
+local function fontHud()
+        if dxFontHud and not isElement(dxFontHud) then dxFontHud = nil end
+        return dxFontHud or "default"
+end
 
 local function outlineText(text, x, y, w, h, color, scale, font, alignX, alignY)
         -- [Fix #32] old client = 1 black offset shadow + 1 colored pass
@@ -78,6 +94,15 @@ end
 --------------------------------------------------------------------------------
 local function isOne(v)
         return v == true or v == "1" or tonumber(v) == 1
+end
+
+-- [Fix #47] the Nametag gate accepts every loggedin shape the stack produces
+-- (number 1, string "1", boolean true) and BOTH character id keys, matching
+-- the ped-system gate so players and NPCs can never disagree again.
+local function localIsLoggedIn()
+        return isOne(getElementData(localPlayer, "loggedin"))
+                or getElementData(localPlayer, "account:character:id") ~= nil
+                or getElementData(localPlayer, "character:id") ~= nil
 end
 
 local function localIsStaff()
@@ -228,12 +253,28 @@ end)
 --------------------------------------------------------------------------------
 local WaitTyping = 0
 
+-- [Fix #47] instant self-heal: if the entry cache is empty while other
+-- players ARE streamed in, rebuild it right now instead of waiting for the
+-- 2s timer (missed stream events used to leave names blank for seconds)
+local function cacheLooksBroken()
+        if next(playersHud) ~= nil then return false end
+        for _, p in ipairs(getElementsByType("player", root, true)) do
+                if p ~= localPlayer then return true end
+        end
+        return false
+end
+
 addEventHandler("onClientRender", root, function()
-        if nametagErrorShown then return end
         local ok, err = pcall(drawNametags)
-        if not ok and not nametagErrorShown then
-                nametagErrorShown = true
-                outputChatBox("[Nametags] " .. tostring(err), 255, 100, 100, false)
+        if not ok then
+                -- [Fix #47] report once per 30s, keep drawing (auto-recover)
+                local now = getTickCount()
+                nametagErrorCount = nametagErrorCount + 1
+                if now - nametagLastError > 30000 then
+                        nametagLastError = now
+                        outputChatBox("[Nametags] " .. tostring(err)
+                                .. " (recovered, errors so far: " .. nametagErrorCount .. ")", 255, 100, 100, false)
+                end
         end
 end, false, "high-2")
 
@@ -264,8 +305,10 @@ function drawNametags()
                 gateReport("tagmode is off")
                 return
         end
-        if getElementData(localPlayer, "loggedin") ~= 1
-                and not getElementData(localPlayer, "account:character:id") then
+        -- [Fix #47] robust gate (1 / "1" / true, both id keys) - was
+        -- `loggedin ~= 1 and not account:character:id` which dead-ended on
+        -- every non-number loggedin shape and never accepted character:id
+        if not localIsLoggedIn() then
                 gateReport("waiting for character select (loggedin="
                         .. tostring(getElementData(localPlayer, "loggedin")) .. ")")
                 return
@@ -275,6 +318,9 @@ function drawNametags()
         local lX, lY, lZ = getElementPosition(localPlayer)
         local recon = getElementData(localPlayer, "reconx")  -- hoisted out of the loop
         local now = getTickCount()
+
+        -- [Fix #47] self-heal: empty cache while other players are streamed in
+        if cacheLooksBroken() then updatePlayersHud() end
 
         for player, entry in pairs(playersHud) do
                 if player ~= localPlayer and isElement(player) and entry

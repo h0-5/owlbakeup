@@ -525,7 +525,9 @@ local CLOCK_SCALE = 1.3
 local DATE_SCALE   = 1.05
 local CLOCK_LINE_H = 36
 local DATE_LINE_H  = 27
-local CLOCK_RECT_W = 152
+-- [Fix #47 - user] strict rectangle per the reference shot: a little wider
+-- so the right-aligned text floats over the fade zone like Image 1
+local CLOCK_RECT_W = 172
 local CLOCK_RECT_H = 8 + CLOCK_LINE_H + 2 + DATE_LINE_H + 8
 local PANEL_H = 56
 -- [Fix #32 - user] rest at the top with real margins - not glued to the edges
@@ -596,19 +598,44 @@ local function pulseForPaint()
         return math.abs(math.sin(getTickCount() / 300)) * 230
 end
 
+-- [Fix #47 - user] CLOCK = STRICT RECTANGLE (Image 1): sharp corners, NO
+-- purple border, background is a right->left dark fade (solid at the right
+-- screen edge, dissolving to nothing on the left) exactly like the shot.
+-- The fade is painted ONCE into a 128x1 render target; each frame costs one
+-- dxDrawImage (fallback: flat rectangle when RT creation fails).
+local clockGradTex = false
+local function ensureClockGradient()
+        if isElement(clockGradTex) then return true end
+        local ok, rt = pcall(dxCreateRenderTarget, 128, 1, true)
+        if not ok or not rt then return false end
+        local painted = pcall(function()
+                dxSetRenderTarget(rt, true)
+                for x = 0, 127 do
+                        local t = x / 127
+                        local a = math.floor(205 * (t * t)) -- solid hugs the right edge
+                        dxDrawRectangle(x, 0, 1, 1, tocolor(12, 10, 14, a))
+                end
+                dxSetRenderTarget()
+        end)
+        if not painted then return false end
+        clockGradTex = rt
+        return true
+end
+
 local function drawStatusClock(panelY, postGUI)
-        -- [Fix #35 - user] clock + date in their OWN slightly-black rectangle
-        -- right below the status panel, pulled close together, right-aligned:
-        -- clock (bigger) on top, date smaller but the SAME font colour
         local clockText, dateText = statusTexts()
         local x, y = CLOCK_RECT_X, panelY + PANEL_H + 6
-        dxDrawRoundedRectangle(x, y, CLOCK_RECT_W, CLOCK_RECT_H,
-                FRAME_BORDER, 12, postGUI)
-        dxDrawRoundedRectangle(x + 2, y + 2, CLOCK_RECT_W - 4, CLOCK_RECT_H - 4,
-                tocolor(8, 6, 16, 175), 10, postGUI)
-        outlineText(clockText, x + 10, y + 7, CLOCK_RECT_W - 20, CLOCK_LINE_H,
+        if ensureClockGradient() then
+                dxDrawImage(x, y, CLOCK_RECT_W, CLOCK_RECT_H, clockGradTex, 0, 0, 0,
+                        tocolor(255, 255, 255, 255), postGUI)
+        else
+                dxDrawRectangle(x, y, CLOCK_RECT_W, CLOCK_RECT_H,
+                        tocolor(12, 10, 14, 190), postGUI)
+        end
+        -- clock (bigger) on top, date below - both white, right-aligned
+        outlineText(clockText, x + 12, y + 6, CLOCK_RECT_W - 22, CLOCK_LINE_H,
                 tocolor(255, 255, 255, 255), CLOCK_SCALE, fontHudLarge(), "right", "top", postGUI)
-        outlineText(dateText, x + 10, y + 7 + CLOCK_LINE_H + 2, CLOCK_RECT_W - 20, DATE_LINE_H,
+        outlineText(dateText, x + 12, y + 6 + CLOCK_LINE_H + 2, CLOCK_RECT_W - 22, DATE_LINE_H,
                 tocolor(255, 255, 255, 255), DATE_SCALE, fontHudLarge(), "right", "top", postGUI)
         return CLOCK_RECT_H + 6
 end
@@ -1118,8 +1145,9 @@ local function drawHUD()
         -- c_speedo.lua - same client VM, set at file scope)
         local veh = getPedOccupiedVehicle(localPlayer)
         if veh and getVehicleController(veh) == localPlayer then
-                -- [Fix #35] icons scaled up with the bigger dial ("خليه مناسبين")
-                local size, gap = 34, 8
+                -- [Fix #35] icons scaled up with the bigger dial
+                -- [Fix #47] dial is 108 now - row icons 34 -> 38 to keep pace
+                local size, gap = 38, 9
                 local rowW = #VEH_ITEMS * size + (#VEH_ITEMS - 1) * gap
                 local scx = tonumber(SPEEDO_CX) or (sx - 104)
                 local scy = tonumber(SPEEDO_CY) or (sy - 138)
@@ -1356,6 +1384,8 @@ end
 -- resolution change) - force one repaint afterwards
 addEventHandler("onClientRestore", root, function()
         panelRTDirty = true
+        if isElement(clockGradTex) then destroyElement(clockGradTex) end
+        clockGradTex = false -- [Fix #47] the 1D clock gradient is an RT too
 end)
 
 addEventHandler("onClientResourceStart", resourceRoot, function()

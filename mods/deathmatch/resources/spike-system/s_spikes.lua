@@ -7,7 +7,19 @@ Shape2 = {}
 function ThrowSpikes(sourcePlayer, command)
 	local theTeam = getPlayerTeam(sourcePlayer)
 	local teamType = getElementData(theTeam, "type")
-	
+
+	-- [Fix #56] faction type + rank permission layer (old client
+	-- faction_permissions: type 2 Law -> "spikes", min rank 3 / leader).
+	-- If faction-system is stopped the pcall fails and the legacy
+	-- teamType==2 check below stays authoritative (Fix #46 class).
+	local okPerm, hasPerm = pcall(function()
+		return exports["faction-system"]:doesPlayerHaveFactionPermission(sourcePlayer, "spikes")
+	end)
+	if okPerm and hasPerm == false then
+		outputChatBox("تحتاج رتبة اعلى داخل الفاكشن لاستخدام الاشواك.", sourcePlayer, 255, 0, 0, true)
+		return
+	end
+
 	if (teamType==2) then
 		local x1,y1,z1 = getElementPosition(sourcePlayer)
 		local rotz = getPedRotation(sourcePlayer)

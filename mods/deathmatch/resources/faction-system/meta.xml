@@ -1,14 +1,15 @@
 <meta>
 
-	<info author="OwlGaming MTA Scripting Team" type="script" description="Faction System"/>
+        <info author="OwlGaming MTA Scripting Team" type="script" description="Faction System"/>
 
-	<script src="s_faction_system.lua" type="server" />
+        <script src="permissions.lua" type="server" />
+        <script src="s_faction_system.lua" type="server" />
 
-							
-	<script src="s_faction_admin.lua" type="server" />
+                                                        
+        <script src="s_faction_admin.lua" type="server" />
 
-	<script src="c_faction_uikit.lua" type="client" cache="false" />
+        <script src="c_faction_uikit.lua" type="client" cache="false" />
 
-	<script src="c_faction_admin.lua" type="client" />
+        <script src="c_faction_admin.lua" type="client" />
 
 </meta>

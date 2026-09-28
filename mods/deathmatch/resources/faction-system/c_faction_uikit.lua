@@ -90,6 +90,7 @@ F = {
 
 local SECTIONS = {
         { id = "members",    title = { en = "Members",    ar = "الأعضاء" },    level = "Member", icon = ":assets/icons/group.png" },
+        { id = "tools",      title = { en = "Tools",      ar = "الأدوات" },    level = "Member", icon = ":assets/icons/traffic-barrier.png" },
         { id = "ranks",      title = { en = "Ranks",      ar = "الرتب" },      level = "Leader", icon = ":assets/icons/settings.png" },
         { id = "notes",      title = { en = "Notes",      ar = "الملاحظات" },  level = "Leader", icon = ":assets/icons/note.png" },
         { id = "management", title = { en = "Settings",   ar = "الإعدادات" },  level = "Leader", icon = ":assets/icons/dollar.png" },
@@ -194,6 +195,17 @@ local function buildUI()
         UI.label.RanksHint = eui:uiCreateLabel(PANEL_W / 2 + 5, 75, PANEL_W / 2 - 10, 40,
                 "اختر رتبة من القائمة ثم عدّل الاسم والراتب.\nالترتيب من الأعلى (قائد) إلى الأسفل.", tocolor(255, 255, 255, 150), "left", "top", UI.container.ranks)
         UI.button["Ranks.Save"] = eui:uiCreateButton(PANEL_W - 145, BTN_ROW, 140, 30, { en = "Save Changes", ar = "حفظ التغييرات" }, _, UI.container.ranks)
+
+        -- ================= TOOLS (Fix #56) =================
+        -- faction type + rank permissions, synced from permissions.lua
+        -- (server authority); read-only display like the old client's
+        -- permission-gated menu entries
+        UI.label.ToolsTitle = eui:uiCreateLabel(5, 5, PANEL_W - 10, 20, "", tocolor(255, 255, 255, 160), "left", "top", UI.container.tools)
+        UI.gridlist.Tools = eui:uiCreateGridList(5, 30, PANEL_W - 10, PANEL_H - 40, tocolor(6, 9, 14, 235), UI.container.tools)
+        eui:uiGridListAddColumn(UI.gridlist.Tools, { en = "Permission", ar = "الصلاحية" }, 0.42)
+        eui:uiGridListAddColumn(UI.gridlist.Tools, { en = "Status", ar = "الحالة" }, 0.28)
+        eui:uiGridListAddColumn(UI.gridlist.Tools, { en = "Required Rank", ar = "الرتبة المطلوبة" }, 0.3)
+        eui:uiSetAlign(UI.gridlist.Tools, "left", "center")
 
         -- ================= NOTES =================
         eui:uiCreateLabel(5, 5, 300, 20, { en = "Notes (leader only)", ar = "الملاحظات (للقائد)" }, tocolor(255, 255, 255, 160), "left", "top", UI.container.notes)
@@ -311,6 +323,39 @@ end
 local function showSection(id)
         for _, sec in ipairs(SECTIONS) do
                 eui:uiSetVisible(UI.container[sec.id], sec.id == id)
+        end
+end
+
+local function refreshToolsGrid()
+        if not UI.gridlist.Tools then return end
+        eui:uiSetText(UI.label.ToolsTitle, "أدوات الفاكشن حسب النوع: " .. tostring((F.toolsType or {}).ar or "-"))
+        eui:uiGridListClear(UI.gridlist.Tools)
+        if not F.tools or #F.tools == 0 then
+                local row = eui:uiGridListAddRow(UI.gridlist.Tools)
+                eui:uiGridListSetItemText(UI.gridlist.Tools, row, 1, "-")
+                eui:uiGridListSetItemText(UI.gridlist.Tools, row, 2, "لا صلاحيات لهذا النوع")
+                eui:uiGridListSetItemText(UI.gridlist.Tools, row, 3, "-")
+                for col = 1, 3 do
+                        eui:uiGridListSetItemColor(UI.gridlist.Tools, row, col, tocolor(255, 255, 255, 160))
+                end
+                return
+        end
+        for _, p in ipairs(F.tools) do
+                local row = eui:uiGridListAddRow(UI.gridlist.Tools)
+                eui:uiGridListSetItemText(UI.gridlist.Tools, row, 1, tostring(p.ar))
+                if p.allowed then
+                        eui:uiGridListSetItemText(UI.gridlist.Tools, row, 2, "#00FF00متاح")
+                        eui:uiGridListSetItemText(UI.gridlist.Tools, row, 3, "-")
+                        for col = 1, 3 do
+                                eui:uiGridListSetItemColor(UI.gridlist.Tools, row, col, tocolor(0, 255, 0, 255))
+                        end
+                else
+                        eui:uiGridListSetItemText(UI.gridlist.Tools, row, 2, "#FF0000مقفل")
+                        eui:uiGridListSetItemText(UI.gridlist.Tools, row, 3, tostring(p.minRankName or ("رتبة " .. tostring(p.minRank))))
+                        for col = 1, 3 do
+                                eui:uiGridListSetItemColor(UI.gridlist.Tools, row, col, tocolor(255, 255, 255, 130))
+                        end
+                end
         end
 end
 
@@ -533,6 +578,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         eui:uiSetText(UI.memo.MOTD, F.motdBuffer)
         refreshHeader()
         refreshMembersGrid()
+        refreshToolsGrid()
         refreshRanksGrid()
         refreshVehiclesGrid()
         refreshDutyGrids()
@@ -545,6 +591,14 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         F.visible = true
         eui:uiSetVisible(UI.window.FactionWindow, true)
         showCursor(true)
+end)
+
+addEventHandler("faction:permissions:sync", localPlayer, function(perms, typeName)
+        F.tools = perms or {}
+        F.toolsType = typeName or {}
+        if built and F.visible and F.section == "tools" then
+                refreshToolsGrid()
+        end
 end)
 
 addEventHandler("onClientUIMenuSelectChange", root, function(row)

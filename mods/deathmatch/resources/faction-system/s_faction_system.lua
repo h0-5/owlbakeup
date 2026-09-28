@@ -8,11 +8,11 @@ addEvent("onPlayerJoinFaction", false)
 
 addEventHandler("onPlayerJoinFaction", getRootElement(),
 
-	function(theTeam)
+        function(theTeam)
 
-		return
+                return
 
-	end
+        end
 
 )
 
@@ -26,215 +26,215 @@ custom = { }
 
 function loadAllFactions(res)
 
-	local counter = 0
+        local counter = 0
 
-	setElementData(resourceRoot, "DutyGUI", {})
+        setElementData(resourceRoot, "DutyGUI", {})
 
 
 
-	local result = mysql:query("SELECT * FROM factions ORDER BY id ASC")
+        local result = mysql:query("SELECT * FROM factions ORDER BY id ASC")
 
-	if not result then return end
+        if not result then return end
 
 
 
-	while result do
+        while result do
 
-		local row = mysql:fetch_assoc(result)
+                local row = mysql:fetch_assoc(result)
 
-		if not row then break end
+                if not row then break end
 
-		
+                
 
-		local id = tonumber(row.id)
+                local id = tonumber(row.id)
 
-		local name = row.name
+                local name = row.name
 
-		local money = tonumber(row.bankbalance)
+                local money = tonumber(row.bankbalance)
 
-		local factionType = tonumber(row.type)
+                local factionType = tonumber(row.type)
 
-		
+                
 
-		local theTeam = createTeam(tostring(name))
+                local theTeam = createTeam(tostring(name))
 
-		exports.pool:allocateElement(theTeam, id)
+                exports.pool:allocateElement(theTeam, id)
 
-		setFactionProtectedData(theTeam, "type", factionType, true)
+                setFactionProtectedData(theTeam, "type", factionType, true)
 
-		setFactionProtectedData(theTeam, "money", money, true)
+                setFactionProtectedData(theTeam, "money", money, true)
 
-		setFactionProtectedData(theTeam, "id", id, true)
+                setFactionProtectedData(theTeam, "id", id, true)
 
-		
+                
 
-		local factionRanks = {}
+                local factionRanks = {}
 
-		local factionWages = {}
+                local factionWages = {}
 
-		for i = 1, 20 do
+                for i = 1, 20 do
 
-			factionRanks[i] = row['rank_'..i]
+                        factionRanks[i] = row['rank_'..i]
 
-			factionWages[i] = tonumber(row['wage_'..i])
+                        factionWages[i] = tonumber(row['wage_'..i])
 
-		end
+                end
 
-		local motd = row.motd
+                local motd = row.motd
 
-		setFactionProtectedData(theTeam, "ranks", factionRanks, true)
+                setFactionProtectedData(theTeam, "ranks", factionRanks, true)
 
-		setFactionProtectedData(theTeam, "wages", factionWages, false)
+                setFactionProtectedData(theTeam, "wages", factionWages, false)
 
-		setFactionProtectedData(theTeam, "motd", motd, false)
+                setFactionProtectedData(theTeam, "motd", motd, false)
 
-		setFactionProtectedData(theTeam, "note", row.note == nil and "" or row.note, false)
+                setFactionProtectedData(theTeam, "note", row.note == nil and "" or row.note, false)
 
-		setFactionProtectedData(theTeam, "fnote", row.fnote == nil and "" or row.fnote, false)
+                setFactionProtectedData(theTeam, "fnote", row.fnote == nil and "" or row.fnote, false)
 
-		setFactionProtectedData(theTeam, "phone", row.phone ~= nil and row.phone or nil, false)
+                setFactionProtectedData(theTeam, "phone", row.phone ~= nil and row.phone or nil, false)
 
-		setFactionProtectedData(theTeam, "max_interiors", tonumber(row.max_interiors), false, true) --Don't sync at all / Maxime
+                setFactionProtectedData(theTeam, "max_interiors", tonumber(row.max_interiors), false, true) --Don't sync at all / Maxime
 
 
 
-		custom[id] = { }
+                custom[id] = { }
 
-		local customQ = mysql:query("SELECT * FROM duty_custom WHERE factionid = ".. id .." ORDER BY id ASC")
+                local customQ = mysql:query("SELECT * FROM duty_custom WHERE factionid = ".. id .." ORDER BY id ASC")
 
-		while customQ do
+                while customQ do
 
-			local row = mysql:fetch_assoc(customQ)
+                        local row = mysql:fetch_assoc(customQ)
 
-			if not row then break end
+                        if not row then break end
 
-		
+                
 
-			local skins = fromJSON(tostring(row.skins)) or {}
+                        local skins = fromJSON(tostring(row.skins)) or {}
 
-			local locations = fromJSON(tostring(row.locations)) or {}
+                        local locations = fromJSON(tostring(row.locations)) or {}
 
-			local items = fromJSON(tostring(row.items)) or {}
+                        local items = fromJSON(tostring(row.items)) or {}
 
-			custom[id][tonumber(row.id)] = { row.id, row.name, skins, locations, items }
+                        custom[id][tonumber(row.id)] = { row.id, row.name, skins, locations, items }
 
-			--table.insert( custom, id[tonumber(row.id)], { row.id, row.name, skins, locations, items } )
+                        --table.insert( custom, id[tonumber(row.id)], { row.id, row.name, skins, locations, items } )
 
-		end
+                end
 
-		mysql:free_result(customQ)
+                mysql:free_result(customQ)
 
 
 
-		locations[id] = { }
+                locations[id] = { }
 
-		local locationQ = mysql:query("SELECT * FROM duty_locations WHERE factionid = ".. id .." ORDER BY id ASC")
+                local locationQ = mysql:query("SELECT * FROM duty_locations WHERE factionid = ".. id .." ORDER BY id ASC")
 
-		while locationQ do
+                while locationQ do
 
-			local row = mysql:fetch_assoc(locationQ)
+                        local row = mysql:fetch_assoc(locationQ)
 
-			if not row then break end
+                        if not row then break end
 
-			locations[id][tonumber(row.id)] = { row.id, row.name, row.x, row.y, row.z, row.radius, row.dimension, row.interior, row.vehicleid, row.model }
+                        locations[id][tonumber(row.id)] = { row.id, row.name, row.x, row.y, row.z, row.radius, row.dimension, row.interior, row.vehicleid, row.model }
 
-			if not tonumber(row.model) then -- If it's not a vehicle it must be a location. Right?
+                        if not tonumber(row.model) then -- If it's not a vehicle it must be a location. Right?
 
-				exports.duty:createDutyColShape(row.x, row.y, row.z, row.radius, row.interior, row.dimension, id, row.id)
+                                exports.duty:createDutyColShape(row.x, row.y, row.z, row.radius, row.interior, row.dimension, id, row.id)
 
-			end
+                        end
 
-		end
+                end
 
-		mysql:free_result(locationQ)
+                mysql:free_result(locationQ)
 
-		counter = counter + 1
+                counter = counter + 1
 
-	end
+        end
 
-	triggerEvent("Duty:updateDuty", root, custom)
+        triggerEvent("Duty:updateDuty", root, custom)
 
-	mysql:free_result(result)
+        mysql:free_result(result)
 
 
 
-	maxIndex = 0
+        maxIndex = 0
 
-	local maxl = mysql:query_fetch_assoc("SELECT id FROM duty_locations ORDER BY id DESC LIMIT 0, 1") -- Cache Last Insert IDs
+        local maxl = mysql:query_fetch_assoc("SELECT id FROM duty_locations ORDER BY id DESC LIMIT 0, 1") -- Cache Last Insert IDs
 
-	if maxl and maxl.id ~= nil and tonumber(maxl.id) then
+        if maxl and maxl.id ~= nil and tonumber(maxl.id) then
 
-		maxIndex = tonumber(maxl.id)
+                maxIndex = tonumber(maxl.id)
 
-	end
+        end
 
-	setElementData(resourceRoot, "maxlindex", maxIndex)
+        setElementData(resourceRoot, "maxlindex", maxIndex)
 
 
 
-	maxIndex = 0
+        maxIndex = 0
 
-	local maxc = mysql:query_fetch_assoc("SELECT id FROM duty_custom ORDER BY id DESC LIMIT 0, 1")
+        local maxc = mysql:query_fetch_assoc("SELECT id FROM duty_custom ORDER BY id DESC LIMIT 0, 1")
 
-	if maxc and maxc.id ~= nil and tonumber(maxc.id) then
+        if maxc and maxc.id ~= nil and tonumber(maxc.id) then
 
-		maxIndex = tonumber(maxc.id)
+                maxIndex = tonumber(maxc.id)
 
-	end
+        end
 
-	setElementData(resourceRoot, "maxcindex", maxIndex)
+        setElementData(resourceRoot, "maxcindex", maxIndex)
 
 
 
-	local citteam = createTeam("Citizen", 255, 255, 255)
+        local citteam = createTeam("Citizen", 255, 255, 255)
 
-	exports.pool:allocateElement(citteam, -1)
+        exports.pool:allocateElement(citteam, -1)
 
-	
+        
 
-	-- set all players into their appropriate faction
+        -- set all players into their appropriate faction
 
-	local players = exports.pool:getPoolElementsByType("player")
+        local players = exports.pool:getPoolElementsByType("player")
 
-	for k, thePlayer in ipairs(players) do
+        for k, thePlayer in ipairs(players) do
 
-		local username = getPlayerName(thePlayer)
+                local username = getPlayerName(thePlayer)
 
-		local safeusername = mysql:escape_string(username)
+                local safeusername = mysql:escape_string(username)
 
-		
+                
 
-		local result = mysql:query_fetch_assoc("SELECT faction_id, faction_rank, faction_leader, faction_perks, faction_phone FROM characters WHERE charactername='" .. safeusername .. "' LIMIT 1")
+                local result = mysql:query_fetch_assoc("SELECT faction_id, faction_rank, faction_leader, faction_perks, faction_phone FROM characters WHERE charactername='" .. safeusername .. "' LIMIT 1")
 
-		if result then
+                if result then
 
-			setFactionProtectedData(thePlayer, "factionMenu", 0, false)
+                        setFactionProtectedData(thePlayer, "factionMenu", 0, false)
 
-			setFactionProtectedData(thePlayer, "faction", tonumber(result.faction_id), false)
+                        setFactionProtectedData(thePlayer, "faction", tonumber(result.faction_id), false)
 
-			setFactionProtectedData(thePlayer, "factionrank", tonumber(result.faction_rank), false)
+                        setFactionProtectedData(thePlayer, "factionrank", tonumber(result.faction_rank), false)
 
-			setFactionProtectedData(thePlayer, "factionphone", tonumber(result.faction_phone), false)
+                        setFactionProtectedData(thePlayer, "factionphone", tonumber(result.faction_phone), false)
 
-			setFactionProtectedData(thePlayer, "factionleader", tonumber(result.faction_leader), false)
+                        setFactionProtectedData(thePlayer, "factionleader", tonumber(result.faction_leader), false)
 
-			setFactionProtectedData(thePlayer, "factionPackages", type(result.faction_perks) == "string" and fromJSON(result.faction_perks) or { }, true)
+                        setFactionProtectedData(thePlayer, "factionPackages", type(result.faction_perks) == "string" and fromJSON(result.faction_perks) or { }, true)
 
-			
+                        
 
-			setPlayerTeam(thePlayer, exports.pool:getElement("team", result.faction_id) or citteam)
+                        setPlayerTeam(thePlayer, exports.pool:getElement("team", result.faction_id) or citteam)
 
-		end
+                end
 
-	end
+        end
 
 
 
-	setElementData(getResourceRootElement(getResourceFromName("duty")), "factionDuty", custom)
+        setElementData(getResourceRootElement(getResourceFromName("duty")), "factionDuty", custom)
 
-	setElementData(getResourceRootElement(getResourceFromName("duty")), "factionLocations", locations)
+        setElementData(getResourceRootElement(getResourceFromName("duty")), "factionLocations", locations)
 
-	
+        
 
 end
 
@@ -246,25 +246,25 @@ addEventHandler("onResourceStart", resourceRoot, loadAllFactions)
 
 function hasPlayerAccessOverFaction(theElement, factionID)
 
-	if (isElement(theElement)) then	-- Is the player online?
+        if (isElement(theElement)) then -- Is the player online?
 
-		local realFactionID = getElementData(theElement, "faction") or -1
+                local realFactionID = getElementData(theElement, "faction") or -1
 
-		local factionLeaderStatus = getElementData(theElement, "factionleader") or 0
+                local factionLeaderStatus = getElementData(theElement, "factionleader") or 0
 
-		if tonumber(realFactionID) == tonumber(factionID) then -- Is the player in the specific faction
+                if tonumber(realFactionID) == tonumber(factionID) then -- Is the player in the specific faction
 
-			if tonumber(factionLeaderStatus) == 1 then -- Is the player a faction leader?
+                        if tonumber(factionLeaderStatus) == 1 then -- Is the player a faction leader?
 
-				return true
+                                return true
 
-			end
+                        end
 
-		end
+                end
 
-	end
+        end
 
-	return false
+        return false
 
 end
 
@@ -276,51 +276,51 @@ end
 
 function getPlayerFaction(playerName)
 
-	local thePlayerElement = getPlayerFromName(playerName)
+        local thePlayerElement = getPlayerFromName(playerName)
 
-	local override = false
+        local override = false
 
-	if (thePlayerElement) then -- Player is online
+        if (thePlayerElement) then -- Player is online
 
-		if (getElementData(thePlayerElement, "loggedin") ~= 1) then
+                if (getElementData(thePlayerElement, "loggedin") ~= 1) then
 
-			override = true
+                        override = true
 
-		else
+                else
 
-			local playerFaction = getElementData(thePlayerElement, "faction")
+                        local playerFaction = getElementData(thePlayerElement, "faction")
 
-			local playerFactionRank = getElementData(thePlayerElement, "factionrank")
+                        local playerFactionRank = getElementData(thePlayerElement, "factionrank")
 
-			local playerFactionLeader = getElementData(thePlayerElement, "factionleader")
+                        local playerFactionLeader = getElementData(thePlayerElement, "factionleader")
 
-			local playerFactionPerks = getElementData(thePlayerElement, "factionPackages")
+                        local playerFactionPerks = getElementData(thePlayerElement, "factionPackages")
 
-			
+                        
 
-			return 0, playerFaction, playerFactionRank, playerFactionLeader, playerFactionPerks, thePlayerElement
+                        return 0, playerFaction, playerFactionRank, playerFactionLeader, playerFactionPerks, thePlayerElement
 
-		end
+                end
 
-	end
+        end
 
-	
+        
 
-	if (not thePlayerElement or override) then  -- Player is offline
+        if (not thePlayerElement or override) then  -- Player is offline
 
-		local row = mysql:query_fetch_assoc("SELECT faction_id, faction_rank, faction_perks, faction_leader FROM characters WHERE charactername='" .. mysql:escape_string(playerName) .. "'")
+                local row = mysql:query_fetch_assoc("SELECT faction_id, faction_rank, faction_perks, faction_leader FROM characters WHERE charactername='" .. mysql:escape_string(playerName) .. "'")
 
-		if row then
+                if row then
 
-			return 1, tonumber(row["faction_id"]), tonumber(row["faction_rank"]), tonumber(row["faction_leader"]), (fromJSON(row["faction_perks"]) or { }), nil
+                        return 1, tonumber(row["faction_id"]), tonumber(row["faction_rank"]), tonumber(row["faction_leader"]), (fromJSON(row["faction_perks"]) or { }), nil
 
-		end
+                end
 
-	end
+        end
 
-	
+        
 
-	return 2, -1, 20, 0, { }, nil -- Player was not found
+        return 2, -1, 20, 0, { }, nil -- Player was not found
 
 end
 
@@ -332,33 +332,33 @@ end
 -- whole calling function (F3 chain: faction/factionMenu never set -> menu
 -- could never open). Falls back to a plain synced setElementData.
 function setFactionProtectedData(element, key, value, synchronize)
-	if element == nil or key == nil then return false end
-	local ac = getResourceFromName("anticheat")
-	if ac and getResourceState(ac) == "running" then
-		local ok = pcall(function()
-			setFactionProtectedData(element, key, value, synchronize)
-		end)
-		if ok then return true end
-	end
-	setElementData(element, key, value, synchronize == true)
-	return true
+        if element == nil or key == nil then return false end
+        local ac = getResourceFromName("anticheat")
+        if ac and getResourceState(ac) == "running" then
+                local ok = pcall(function()
+                        setFactionProtectedData(element, key, value, synchronize)
+                end)
+                if ok then return true end
+        end
+        setElementData(element, key, value, synchronize == true)
+        return true
 end
 
 -- Bind Keys required
 
 function bindKeys()
 
-	local players = exports.pool:getPoolElementsByType("player")
+        local players = exports.pool:getPoolElementsByType("player")
 
-	for k, arrayPlayer in ipairs(players) do
+        for k, arrayPlayer in ipairs(players) do
 
-		if not(isKeyBound(arrayPlayer, "F3", "down", showFactionMenu)) then
+                if not(isKeyBound(arrayPlayer, "F3", "down", showFactionMenu)) then
 
-			bindKey(arrayPlayer, "F3", "down", showFactionMenu)
+                        bindKey(arrayPlayer, "F3", "down", showFactionMenu)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -366,7 +366,7 @@ end
 
 function bindKeysOnJoin()
 
-	bindKey(source, "F3", "down", showFactionMenu)
+        bindKey(source, "F3", "down", showFactionMenu)
 
 end
 
@@ -378,7 +378,7 @@ addEventHandler("onPlayerJoin", getRootElement(), bindKeysOnJoin)
 
 function showFactionMenu(source)
 
-	showFactionMenuEx(source)
+        showFactionMenuEx(source)
 
 end
 
@@ -386,287 +386,288 @@ end
 
 function showFactionMenuEx(source, factionID, fromShowF)
 
-	local logged = getElementData(source, "loggedin")
+        local logged = getElementData(source, "loggedin")
 
-	
+        
 
-	if (logged==1) then
+        if (logged==1) then
 
-		local menuVisible = getElementData(source, "factionMenu")
+                local menuVisible = getElementData(source, "factionMenu")
 
-		
+                
 
-		-- [Fix #47] ~= 1 (not ==0): data that was never initialized (nil)
-		-- used to block F3 forever with no feedback
-		if (menuVisible~=1) then
+                -- [Fix #47] ~= 1 (not ==0): data that was never initialized (nil)
+                -- used to block F3 forever with no feedback
+                if (menuVisible~=1) then
 
-			local factionID = factionID or getElementData(source, "faction")
+                        local factionID = factionID or getElementData(source, "faction")
 
-			
+                        
 
-			if (factionID~=-1) then
+                        if (factionID~=-1) then
 
-				local theTeam = exports.pool:getElement("team", factionID)
+                                local theTeam = exports.pool:getElement("team", factionID)
 
-				local query = mysql:query("SELECT charactername,  faction_rank, faction_perks, faction_leader, faction_phone, DATEDIFF(NOW(), lastlogin) AS lastlogin FROM characters WHERE faction_ID='" .. factionID .. "' ORDER BY faction_rank DESC, charactername ASC")
+                                local query = mysql:query("SELECT charactername,  faction_rank, faction_perks, faction_leader, faction_phone, DATEDIFF(NOW(), lastlogin) AS lastlogin FROM characters WHERE faction_ID='" .. factionID .. "' ORDER BY faction_rank DESC, charactername ASC")
 
-				if query then
+                                if query then
 
-					
+                                        
 
-					local memberUsernames = {}
+                                        local memberUsernames = {}
 
-					local memberRanks = {}
+                                        local memberRanks = {}
 
-					local memberLeaders = {}
+                                        local memberLeaders = {}
 
-					local memberOnline = {}
+                                        local memberOnline = {}
 
-					local memberLastLogin = {}
+                                        local memberLastLogin = {}
 
-					--[[local memberLocation = {}]]
+                                        --[[local memberLocation = {}]]
 
-					local memberPerks = {}
+                                        local memberPerks = {}
 
-					local factionRanks = getElementData(theTeam, "ranks")
+                                        local factionRanks = getElementData(theTeam, "ranks")
 
-					local factionWages = getElementData(theTeam, "wages")
+                                        local factionWages = getElementData(theTeam, "wages")
 
-					local motd = getElementData(theTeam, "motd")
+                                        local motd = getElementData(theTeam, "motd")
 
-					local note = hasPlayerAccessOverFaction(source, factionID) and getElementData(theTeam, "note")
+                                        local note = hasPlayerAccessOverFaction(source, factionID) and getElementData(theTeam, "note")
 
-					local fnote = getElementData(theTeam, "fnote")
+                                        local fnote = getElementData(theTeam, "fnote")
 
-					local vehicleIDs = {}
+                                        local vehicleIDs = {}
 
-					local vehicleModels = {}
+                                        local vehicleModels = {}
 
-					local vehiclePlates = {}
+                                        local vehiclePlates = {}
 
-					local vehicleLocations = {}
+                                        local vehicleLocations = {}
 
-					local memberOnDuty = {}
+                                        local memberOnDuty = {}
 
-					local phone = getElementData(theTeam, "phone")
+                                        local phone = getElementData(theTeam, "phone")
 
-					local memberPhones = phone and {} or nil
+                                        local memberPhones = phone and {} or nil
 
 
 
-					if (motd == "") then motd = nil end
+                                        if (motd == "") then motd = nil end
 
-					
+                                        
 
-					local i = 1
+                                        local i = 1
 
-					while query do
+                                        while query do
 
-						local row = mysql:fetch_assoc(query)
+                                                local row = mysql:fetch_assoc(query)
 
-						if not row then break end
+                                                if not row then break end
 
-						
+                                                
 
-						local playerName = row.charactername
+                                                local playerName = row.charactername
 
-						memberUsernames[i] = playerName
+                                                memberUsernames[i] = playerName
 
-						memberRanks[i] = row.faction_rank
+                                                memberRanks[i] = row.faction_rank
 
-						memberPerks[i] = type(row.faction_perks) == "string" and fromJSON(row.faction_perks) or { }
+                                                memberPerks[i] = type(row.faction_perks) == "string" and fromJSON(row.faction_perks) or { }
 
-						if phone and row.faction_phone ~= nil and tonumber(row.faction_phone) then
+                                                if phone and row.faction_phone ~= nil and tonumber(row.faction_phone) then
 
-							memberPhones[i] = ("%02d"):format(tonumber(row.faction_phone))
+                                                        memberPhones[i] = ("%02d"):format(tonumber(row.faction_phone))
 
-						end
+                                                end
 
 
 
-						if (tonumber(row.faction_leader)==1) then
+                                                if (tonumber(row.faction_leader)==1) then
 
-							memberLeaders[i] = true
+                                                        memberLeaders[i] = true
 
-						else
+                                                else
 
-							memberLeaders[i] = false
+                                                        memberLeaders[i] = false
 
-						end
+                                                end
 
-						
+                                                
 
-						local login = ""
+                                                local login = ""
 
-						
+                                                
 
-						memberLastLogin[i] = tonumber(row.lastlogin)
+                                                memberLastLogin[i] = tonumber(row.lastlogin)
 
-						if getPlayerFromName(playerName) then
+                                                if getPlayerFromName(playerName) then
 
-							local testingPlayer = getPlayerFromName(playerName)
+                                                        local testingPlayer = getPlayerFromName(playerName)
 
-							local onlineState = getElementData(testingPlayer, "loggedin")
+                                                        local onlineState = getElementData(testingPlayer, "loggedin")
 
-							if (onlineState == 1) then
+                                                        if (onlineState == 1) then
 
-								--[[if getElementDimension(testingPlayer) == 0 and getElementInterior(testingPlayer) == 0 then
+                                                                --[[if getElementDimension(testingPlayer) == 0 and getElementInterior(testingPlayer) == 0 then
 
-									memberLocation[i] = tostring(exports.global:getElementZoneName(testingPlayer, false))
+                                                                        memberLocation[i] = tostring(exports.global:getElementZoneName(testingPlayer, false))
 
-								else
+                                                                else
 
-									memberLocation[i] = "Unknown"
+                                                                        memberLocation[i] = "Unknown"
 
-								end]]
+                                                                end]]
 
-								memberOnline[i] = true
+                                                                memberOnline[i] = true
 
-								
+                                                                
 
-								local dutydata = getElementData(testingPlayer, "duty")
+                                                                local dutydata = getElementData(testingPlayer, "duty")
 
-								if dutydata then
+                                                                if dutydata then
 
-									if(tonumber(dutydata) > 0) then
+                                                                        if(tonumber(dutydata) > 0) then
 
-										memberOnDuty[i] = true
+                                                                                memberOnDuty[i] = true
 
-									else
+                                                                        else
 
-										memberOnDuty[i] = false	
+                                                                                memberOnDuty[i] = false 
 
-									end
+                                                                        end
 
-								end								
+                                                                end                                                             
 
-							end
+                                                        end
 
-						else
+                                                else
 
-							memberOnline[i] = false
+                                                        memberOnline[i] = false
 
-							memberOnDuty[i] = false
+                                                        memberOnDuty[i] = false
 
-							--[[memberLocation[i] = "Unknown"]]
+                                                        --[[memberLocation[i] = "Unknown"]]
 
-						end
+                                                end
 
-						i = i + 1
+                                                i = i + 1
 
-					end
+                                        end
 
-					mysql:free_result( query )
+                                        mysql:free_result( query )
 
 
 
-					local towstats = nil
+                                        local towstats = nil
 
-					if hasPlayerAccessOverFaction(source, factionID) then
+                                        if hasPlayerAccessOverFaction(source, factionID) then
 
-						local result = mysql:query("SELECT id, model, currx, curry, currz, plate FROM vehicles WHERE faction=" .. factionID .. " AND deleted=0")
+                                                local result = mysql:query("SELECT id, model, currx, curry, currz, plate FROM vehicles WHERE faction=" .. factionID .. " AND deleted=0")
 
-						if result then
+                                                if result then
 
-							local j = 1
+                                                        local j = 1
 
-							while result do
+                                                        while result do
 
-								local row = mysql:fetch_assoc(result)
+                                                                local row = mysql:fetch_assoc(result)
 
-								if not row then break end
+                                                                if not row then break end
 
-								vehicleIDs[j] = row.id
+                                                                vehicleIDs[j] = row.id
 
-								vehiclePlates[j] = row.plate
+                                                                vehiclePlates[j] = row.plate
 
-								local veh = exports.pool:getElement("vehicle", row.id)
+                                                                local veh = exports.pool:getElement("vehicle", row.id)
 
-								vehicleModels[j] = exports.global:getVehicleName(veh)
+                                                                vehicleModels[j] = exports.global:getVehicleName(veh)
 
-								if true then -- this is totally non-sense / maxime / exports.global:hasItem(veh, 139) and getElementDimension(veh) == 0 and getElementInterior(veh) == 0 then
+                                                                if true then -- this is totally non-sense / maxime / exports.global:hasItem(veh, 139) and getElementDimension(veh) == 0 and getElementInterior(veh) == 0 then
 
-									vehicleLocations[j] = exports.global:getElementZoneName(veh) 
+                                                                        vehicleLocations[j] = exports.global:getElementZoneName(veh) 
 
-								else
+                                                                else
 
-									vehicleLocations[j] = "Unknown"
+                                                                        vehicleLocations[j] = "Unknown"
 
-								end
+                                                                end
 
-								j = j + 1
+                                                                j = j + 1
 
-							end
+                                                        end
 
-							mysql:free_result(result)
+                                                        mysql:free_result(result)
 
-						end
+                                                end
 
 
 
-						if factionID == 4 then -- TTR Towstats
+                                                if factionID == 4 then -- TTR Towstats
 
-							-- this basically returns a count of towed vehicles, by week -> so week 0 (current week) = X, week -1 (last week) = Y, etc.
+                                                        -- this basically returns a count of towed vehicles, by week -> so week 0 (current week) = X, week -1 (last week) = Y, etc.
 
-							local result = mysql:query( "SELECT ceil(datediff(`date`, curdate() + INTERVAL 6-WEEKDAY(curdate()) DAY) / 7) AS week, c.charactername, count(vehicle) AS count FROM towstats t JOIN characters c ON t.character = c.id WHERE c.faction_id = 4 GROUP BY t.character, week ORDER BY t.character ASC, week DESC" )
+                                                        local result = mysql:query( "SELECT ceil(datediff(`date`, curdate() + INTERVAL 6-WEEKDAY(curdate()) DAY) / 7) AS week, c.charactername, count(vehicle) AS count FROM towstats t JOIN characters c ON t.character = c.id WHERE c.faction_id = 4 GROUP BY t.character, week ORDER BY t.character ASC, week DESC" )
 
-							if result then
+                                                        if result then
 
-								towstats = {}
+                                                                towstats = {}
 
-								while result do
+                                                                while result do
 
-									local row = mysql:fetch_assoc( result )
+                                                                        local row = mysql:fetch_assoc( result )
 
-									if not row then break end
+                                                                        if not row then break end
 
 
 
-									if not towstats[row.charactername] then
+                                                                        if not towstats[row.charactername] then
 
-										towstats[row.charactername] = {}
+                                                                                towstats[row.charactername] = {}
 
-									end
+                                                                        end
 
-									
+                                                                        
 
-									towstats[row.charactername][tonumber(row.week)] = tonumber(row.count)
+                                                                        towstats[row.charactername][tonumber(row.week)] = tonumber(row.count)
 
-								end
+                                                                end
 
-								mysql:free_result( result )
+                                                                mysql:free_result( result )
 
-							end
+                                                        end
 
-						end
+                                                end
 
-					end
+                                        end
 
 
 
-					setFactionProtectedData(source, "factionMenu", 1, false)
+                                        setFactionProtectedData(source, "factionMenu", 1, false)
 
-				
+                                        -- [Fix #56] push the type+rank permission list for the Tools tab
+                                        pcall(syncFactionPermissions, source)
 
-					local theTeam = exports.pool:getElement("team", factionID)
+                                        local theTeam = exports.pool:getElement("team", factionID)
 
-					triggerClientEvent(source, "showFactionMenu", source, motd, memberUsernames, memberRanks, hasPlayerAccessOverFaction(source, factionID) and memberPerks or {}, memberLeaders, memberOnline, memberLastLogin, --[[memberLocation,]] factionRanks,  factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels, vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, memberPhones, fromShowF, factionID)
+                                        triggerClientEvent(source, "showFactionMenu", source, motd, memberUsernames, memberRanks, hasPlayerAccessOverFaction(source, factionID) and memberPerks or {}, memberLeaders, memberOnline, memberLastLogin, --[[memberLocation,]] factionRanks,  factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels, vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, memberPhones, fromShowF, factionID)
 
-				end
+                                end
 
-			else
+                        else
 
-				outputChatBox("انت لست في وظيفة.", source)
+                                outputChatBox("انت لست في وظيفة.", source)
 
-			end
+                        end
 
-		else
+                else
 
-			triggerClientEvent(source, "hideFactionMenu", source)
+                        triggerClientEvent(source, "hideFactionMenu", source)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -676,55 +677,55 @@ end
 
 function callbackUpdateRanks(ranks, wages)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("غير مسموح ، آسف.", client)
+                outputChatBox("غير مسموح ، آسف.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	for key, value in ipairs(ranks) do
+        for key, value in ipairs(ranks) do
 
-		ranks[key] = mysql:escape_string(ranks[key])
+                ranks[key] = mysql:escape_string(ranks[key])
 
-	end
+        end
 
-	
+        
 
-	if (wages) then
+        if (wages) then
 
-		for i = 1, 20 do
+                for i = 1, 20 do
 
-			wages[i] = math.min(2500, math.max(0, tonumber(wages[i]) or 0))
+                        wages[i] = math.min(2500, math.max(0, tonumber(wages[i]) or 0))
 
-		end
+                end
 
-		
+                
 
-		mysql:query_free("UPDATE factions SET wage_1='" .. wages[1] .. "', wage_2='" .. wages[2] .. "', wage_3='" .. wages[3] .. "', wage_4='" .. wages[4] .. "', wage_5='" .. wages[5] .. "', wage_6='" .. wages[6] .. "', wage_7='" .. wages[7] .. "', wage_8='" .. wages[8] .. "', wage_9='" .. wages[9] .. "', wage_10='" .. wages[10] .. "', wage_11='" .. wages[11] .. "', wage_12='" .. wages[12] .. "', wage_13='" .. wages[13] .. "', wage_14='" .. wages[14] .. "', wage_15='" .. wages[15] .. "', wage_16='" .. wages[16] .. "', wage_17='" .. wages[17] .. "', wage_18='" .. wages[18] .. "', wage_19='" .. wages[19] .. "', wage_20='" .. wages[20] .. "' WHERE id='" .. factionID .. "'")
+                mysql:query_free("UPDATE factions SET wage_1='" .. wages[1] .. "', wage_2='" .. wages[2] .. "', wage_3='" .. wages[3] .. "', wage_4='" .. wages[4] .. "', wage_5='" .. wages[5] .. "', wage_6='" .. wages[6] .. "', wage_7='" .. wages[7] .. "', wage_8='" .. wages[8] .. "', wage_9='" .. wages[9] .. "', wage_10='" .. wages[10] .. "', wage_11='" .. wages[11] .. "', wage_12='" .. wages[12] .. "', wage_13='" .. wages[13] .. "', wage_14='" .. wages[14] .. "', wage_15='" .. wages[15] .. "', wage_16='" .. wages[16] .. "', wage_17='" .. wages[17] .. "', wage_18='" .. wages[18] .. "', wage_19='" .. wages[19] .. "', wage_20='" .. wages[20] .. "' WHERE id='" .. factionID .. "'")
 
-		setFactionProtectedData(theTeam, "wages", wages, false)
+                setFactionProtectedData(theTeam, "wages", wages, false)
 
-	end
+        end
 
-	
+        
 
-	mysql:query_free("UPDATE factions SET rank_1='" .. ranks[1] .. "', rank_2='" .. ranks[2] .. "', rank_3='" .. ranks[3] .. "', rank_4='" .. ranks[4] .. "', rank_5='" .. ranks[5] .. "', rank_6='" .. ranks[6] .. "', rank_7='" .. ranks[7] .. "', rank_8='" .. ranks[8] .. "', rank_9='" .. ranks[9] .. "', rank_10='" .. ranks[10] .. "', rank_11='" .. ranks[11] .. "', rank_12='" .. ranks[12] .. "', rank_13='" .. ranks[13] .. "', rank_14='" .. ranks[14] .. "', rank_15='" .. ranks[15] .. "', rank_16='" .. ranks[16] .. "', rank_17='" .. ranks[17] .. "', rank_18='" .. ranks[18] .. "', rank_19='" .. ranks[19] .. "', rank_20='" .. ranks[20] .. "' WHERE id='" .. factionID .. "'")
+        mysql:query_free("UPDATE factions SET rank_1='" .. ranks[1] .. "', rank_2='" .. ranks[2] .. "', rank_3='" .. ranks[3] .. "', rank_4='" .. ranks[4] .. "', rank_5='" .. ranks[5] .. "', rank_6='" .. ranks[6] .. "', rank_7='" .. ranks[7] .. "', rank_8='" .. ranks[8] .. "', rank_9='" .. ranks[9] .. "', rank_10='" .. ranks[10] .. "', rank_11='" .. ranks[11] .. "', rank_12='" .. ranks[12] .. "', rank_13='" .. ranks[13] .. "', rank_14='" .. ranks[14] .. "', rank_15='" .. ranks[15] .. "', rank_16='" .. ranks[16] .. "', rank_17='" .. ranks[17] .. "', rank_18='" .. ranks[18] .. "', rank_19='" .. ranks[19] .. "', rank_20='" .. ranks[20] .. "' WHERE id='" .. factionID .. "'")
 
-	setFactionProtectedData(theTeam, "ranks", ranks, false)
+        setFactionProtectedData(theTeam, "ranks", ranks, false)
 
-	
+        
 
-	outputChatBox("تم تحديث معلومات الفصيل بنجاح.", source, 0, 255, 0)
+        outputChatBox("تم تحديث معلومات الفصيل بنجاح.", source, 0, 255, 0)
 
-	showFactionMenu(source)
+        showFactionMenu(source)
 
 end
 
@@ -738,71 +739,71 @@ addEventHandler("cguiUpdateRanks", getRootElement(), callbackUpdateRanks)
 
 function callbackRespawnVehicles()
 
-	local theTeam = getPlayerTeam(source)
+        local theTeam = getPlayerTeam(source)
 
-	
+        
 
-	local factionCooldown = getElementData(theTeam, "cooldown")
+        local factionCooldown = getElementData(theTeam, "cooldown")
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("غير مسموح ، آسف.", client)
+                outputChatBox("غير مسموح ، آسف.", client)
 
-		return
+                return
 
-	end
+        end
 
-		
+                
 
-	if not (factionCooldown) then
+        if not (factionCooldown) then
 
-		for key, value in ipairs(exports.pool:getPoolElementsByType("vehicle")) do
+                for key, value in ipairs(exports.pool:getPoolElementsByType("vehicle")) do
 
-			local faction = getElementData(value, "faction")
+                        local faction = getElementData(value, "faction")
 
-			if (faction == factionID and not getVehicleOccupant(value, 0) and not getVehicleOccupant(value, 1) and not getVehicleOccupant(value, 2) and not getVehicleOccupant(value, 3) and not getVehicleTowingVehicle(value)) then
+                        if (faction == factionID and not getVehicleOccupant(value, 0) and not getVehicleOccupant(value, 1) and not getVehicleOccupant(value, 2) and not getVehicleOccupant(value, 3) and not getVehicleTowingVehicle(value)) then
 
-				respawnVehicle(value)
+                                respawnVehicle(value)
 
-				setElementInterior(value, getElementData(value, "interior"))
+                                setElementInterior(value, getElementData(value, "interior"))
 
-				setElementDimension(value, getElementData(value, "dimension"))
+                                setElementDimension(value, getElementData(value, "dimension"))
 
-				setVehicleLocked(value, true)
+                                setVehicleLocked(value, true)
 
-			end
+                        end
 
-		end
+                end
 
-		
+                
 
-		-- Send message to everyone in the faction
+                -- Send message to everyone in the faction
 
-		local teamPlayers = getPlayersInTeam(theTeam)
+                local teamPlayers = getPlayersInTeam(theTeam)
 
-		local username = getPlayerName(source)
+                local username = getPlayerName(source)
 
-		for k, v in ipairs(teamPlayers) do
+                for k, v in ipairs(teamPlayers) do
 
-			outputChatBox(username:gsub("_"," ") .. " قام برسبنة السيارات.", v, 255, 194, 14)
+                        outputChatBox(username:gsub("_"," ") .. " قام برسبنة السيارات.", v, 255, 194, 14)
 
-		end
+                end
 
 
 
-		setTimer(resetFactionCooldown, 60000, 1, theTeam)
+                setTimer(resetFactionCooldown, 60000, 1, theTeam)
 
-		setFactionProtectedData(theTeam, "cooldown", true, false)
+                setFactionProtectedData(theTeam, "cooldown", true, false)
 
-	else
+        else
 
-		outputChatBox("انتظر دقائق لكي تتمكن من الرسبنة مرة اخرى.", source, 255, 0, 0)
+                outputChatBox("انتظر دقائق لكي تتمكن من الرسبنة مرة اخرى.", source, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -814,7 +815,7 @@ addEventHandler("cguiRespawnVehicles", getRootElement(), callbackRespawnVehicles
 
 function resetFactionCooldown(theTeam)
 
-	setFactionProtectedData(theTeam, "cooldown")
+        setFactionProtectedData(theTeam, "cooldown")
 
 end
 
@@ -822,69 +823,69 @@ end
 
 function callbackRespawnOneVehicle(vehicleID)
 
-	local theTeam = getPlayerTeam(source)
+        local theTeam = getPlayerTeam(source)
 
-	local theTeamID = getElementData(theTeam, "id")
+        local theTeamID = getElementData(theTeam, "id")
 
-	local theVehicle = exports.pool:getElement("vehicle", tonumber(vehicleID))
+        local theVehicle = exports.pool:getElement("vehicle", tonumber(vehicleID))
 
-	if not hasPlayerAccessOverFaction(source, theTeamID) then
+        if not hasPlayerAccessOverFaction(source, theTeamID) then
 
-		outputChatBox("غير مسموح اسف", source, 255, 0, 0)
+                outputChatBox("غير مسموح اسف", source, 255, 0, 0)
 
-		return
+                return
 
-	end
+        end
 
-	if theVehicle then
+        if theVehicle then
 
-		local theVehicleID = getElementData(theVehicle, "faction")
+                local theVehicleID = getElementData(theVehicle, "faction")
 
-		if (theTeamID == theVehicleID and not getVehicleOccupant(theVehicle, 0) and not getVehicleOccupant(theVehicle, 1) and not getVehicleOccupant(theVehicle, 2) and not getVehicleOccupant(theVehicle, 3) and not getVehicleTowingVehicle(theVehicle)) then
+                if (theTeamID == theVehicleID and not getVehicleOccupant(theVehicle, 0) and not getVehicleOccupant(theVehicle, 1) and not getVehicleOccupant(theVehicle, 2) and not getVehicleOccupant(theVehicle, 3) and not getVehicleTowingVehicle(theVehicle)) then
 
-			if isElementAttached(theVehicle) then
+                        if isElementAttached(theVehicle) then
 
-				detachElements(theVehicle)
+                                detachElements(theVehicle)
 
-			end
+                        end
 
-			setFactionProtectedData(theVehicle, 'i:left')
+                        setFactionProtectedData(theVehicle, 'i:left')
 
-			setFactionProtectedData(theVehicle, 'i:right')
+                        setFactionProtectedData(theVehicle, 'i:right')
 
-			exports.logs:dbLog(source, 6, theVehicle, "FACTIONRESPAWN")
+                        exports.logs:dbLog(source, 6, theVehicle, "FACTIONRESPAWN")
 
-			respawnVehicle(theVehicle)
+                        respawnVehicle(theVehicle)
 
-			setElementInterior(theVehicle, getElementData(theVehicle, "interior"))
+                        setElementInterior(theVehicle, getElementData(theVehicle, "interior"))
 
-			setElementDimension(theVehicle, getElementData(theVehicle, "dimension"))
+                        setElementDimension(theVehicle, getElementData(theVehicle, "dimension"))
 
-			setVehicleLocked(theVehicle, true)
+                        setVehicleLocked(theVehicle, true)
 
-			outputChatBox("Vehicle Respawned.", source, 0, 255, 0)
+                        outputChatBox("Vehicle Respawned.", source, 0, 255, 0)
 
-			local teamPlayers = getPlayersInTeam(theTeam)
+                        local teamPlayers = getPlayersInTeam(theTeam)
 
-			local playerName = getPlayerName(source)
+                        local playerName = getPlayerName(source)
 
-			for k, v in ipairs(teamPlayers) do
+                        for k, v in ipairs(teamPlayers) do
 
-				outputChatBox(playerName:gsub("_"," ") .. " قام بعمل رسبنة للسيارات " .. vehicleID ..".", v, 255, 194, 14)
+                                outputChatBox(playerName:gsub("_"," ") .. " قام بعمل رسبنة للسيارات " .. vehicleID ..".", v, 255, 194, 14)
 
-			end
+                        end
 
-		else
+                else
 
-			outputChatBox("هذه السيارة مرسبنة.", source, 255, 0, 0)
+                        outputChatBox("هذه السيارة مرسبنة.", source, 255, 0, 0)
 
-		end
+                end
 
-	else
+        else
 
-		outputChatBox("يرجى تحديد السيارة التي سيتم رسبنتها.", source, 255, 0, 0)
+                outputChatBox("يرجى تحديد السيارة التي سيتم رسبنتها.", source, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -896,37 +897,37 @@ addEventHandler("cguiRespawnOneVehicle", getRootElement(), callbackRespawnOneVeh
 
 function callbackUpdateMOTD(motd)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
 
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	if (factionID~=-1) then
+        if (factionID~=-1) then
 
-		if mysql:query_free("UPDATE factions SET motd='" .. tostring(mysql:escape_string(motd)) .. "' WHERE id='" .. factionID .. "'") then
+                if mysql:query_free("UPDATE factions SET motd='" .. tostring(mysql:escape_string(motd)) .. "' WHERE id='" .. factionID .. "'") then
 
-			outputChatBox(" لقد قمت بتغيير الرسالة بنجاح الى'" .. motd .. "'", client, 0, 255, 0)
+                        outputChatBox(" لقد قمت بتغيير الرسالة بنجاح الى'" .. motd .. "'", client, 0, 255, 0)
 
-			setFactionProtectedData(theTeam, "motd", motd, false)
+                        setFactionProtectedData(theTeam, "motd", motd, false)
 
-		else
+                else
 
-			outputChatBox("خطأ.", client, 255, 0, 0)
+                        outputChatBox("خطأ.", client, 255, 0, 0)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -938,37 +939,37 @@ addEventHandler("cguiUpdateMOTD", getRootElement(), callbackUpdateMOTD)
 
 function callbackUpdateNote(note)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) or not note then
+        if not hasPlayerAccessOverFaction(client, factionID) or not note then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
 
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	if (factionID~=-1) then
+        if (factionID~=-1) then
 
-		if mysql:query_free("UPDATE factions SET note='" .. tostring(mysql:escape_string(note)) .. "' WHERE id='" .. factionID .. "'") then
+                if mysql:query_free("UPDATE factions SET note='" .. tostring(mysql:escape_string(note)) .. "' WHERE id='" .. factionID .. "'") then
 
-			outputChatBox("لقد غيرت ملاحظة قائد فصيلك بنجاح.", client, 0, 255, 0)
+                        outputChatBox("لقد غيرت ملاحظة قائد فصيلك بنجاح.", client, 0, 255, 0)
 
-			setFactionProtectedData(theTeam, "note", note, false)
+                        setFactionProtectedData(theTeam, "note", note, false)
 
-		else
+                else
 
-			outputChatBox("خطا.", client, 255, 0, 0)
+                        outputChatBox("خطا.", client, 255, 0, 0)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -980,37 +981,37 @@ addEventHandler("faction:note", getRootElement(), callbackUpdateNote)
 
 function callbackUpdateFNote(fnote)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) or not fnote then
+        if not hasPlayerAccessOverFaction(client, factionID) or not fnote then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
 
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	if (factionID~=-1) then
+        if (factionID~=-1) then
 
-		if mysql:query_free("UPDATE factions SET fnote='" .. tostring(mysql:escape_string(fnote)) .. "' WHERE id='" .. factionID .. "'") then
+                if mysql:query_free("UPDATE factions SET fnote='" .. tostring(mysql:escape_string(fnote)) .. "' WHERE id='" .. factionID .. "'") then
 
-			outputChatBox("لقد غيرت بنجاح ملاحظة فصيلك على نطاق الفصيل.", client, 0, 255, 0)
+                        outputChatBox("لقد غيرت بنجاح ملاحظة فصيلك على نطاق الفصيل.", client, 0, 255, 0)
 
-			setFactionProtectedData(theTeam, "fnote", fnote, false)
+                        setFactionProtectedData(theTeam, "fnote", fnote, false)
 
-		else
+                else
 
-			outputChatBox("خطأ.", client, 255, 0, 0)
+                        outputChatBox("خطأ.", client, 255, 0, 0)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -1022,101 +1023,101 @@ addEventHandler("faction:fnote", getRootElement(), callbackUpdateFNote)
 
 function callbackRemovePlayer(removedPlayerName)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
-
-
-
-	local targetFactionInfo = {getPlayerFaction(removedPlayerName)}
-
-	if targetFactionInfo[2] ~= factionID then
-
-		outputChatBox("لن يحدث , اسف", client)
-
-		return
-
-	end
-
-	
-
-	if mysql:query_free("UPDATE characters SET faction_id='-1', faction_leader='0', faction_rank='1', duty = 0 WHERE charactername='" .. mysql:escape_string(removedPlayerName) .. "'") then
-
-		local theTeam = getPlayerTeam(client)
-
-		local theTeamName = "None"
-
-		if (theTeam) then
-
-			theTeamName = getTeamName(theTeam)
-
-		end
-
-		
-
-		local username = getPlayerName(client)
-
-		
+        end
 
 
 
-		local removedPlayer = getPlayerFromName(removedPlayerName)
+        local targetFactionInfo = {getPlayerFaction(removedPlayerName)}
 
-		if (removedPlayer) then -- Player is online
+        if targetFactionInfo[2] ~= factionID then
 
-			if (getElementData(client, "factionMenu")==1) then
+                outputChatBox("لن يحدث , اسف", client)
 
-				triggerClientEvent(removedPlayer, "hideFactionMenu", getRootElement())
+                return
 
-			end
+        end
 
-			outputChatBox(username:gsub("_"," ").. " قام بطردك من الوظيفة '" .. tostring(theTeamName) .. "'", removedPlayer, 255, 0, 0)
+        
 
-			setPlayerTeam(removedPlayer, getTeamFromName("Citizen"))
+        if mysql:query_free("UPDATE characters SET faction_id='-1', faction_leader='0', faction_rank='1', duty = 0 WHERE charactername='" .. mysql:escape_string(removedPlayerName) .. "'") then
 
-			setFactionProtectedData(removedPlayer, "faction", -1, false)
+                local theTeam = getPlayerTeam(client)
 
-			setFactionProtectedData(removedPlayer, "factionleader", 0, false)
+                local theTeamName = "None"
 
-			setFactionProtectedData(targetPlayer, "factionleader", 0, false)
+                if (theTeam) then
 
-			triggerEvent("duty:offduty", removedPlayer)
+                        theTeamName = getTeamName(theTeam)
 
-			--triggerClientEvent(removedPlayer, "updateFactionInfo", removedPlayer, -1, 1)
+                end
 
-		end
+                
 
-		
+                local username = getPlayerName(client)
 
-		-- Send message to everyone in the faction
-
-		local teamPlayers = getPlayersInTeam(theTeam)
-
-		for k, v in ipairs(teamPlayers) do
-
-			if (v ~= removedPlayer) then
-
-				outputChatBox(username:gsub("_"," ") .. " قام بطرد " .. removedPlayerName:gsub("_", " ") .. " من الوضيفة '" .. tostring(theTeamName) .. "'.", v, 255, 194, 14)
-
-			end
-
-		end
+                
 
 
 
-	else
+                local removedPlayer = getPlayerFromName(removedPlayerName)
 
-		outputChatBox("حدث مشكلة في ازالة الاعب " .. removedPlayerName:gsub("_", " ") .. " من الوضيفة يرجى التكلم مع الادارة.", source, 255, 0, 0)
+                if (removedPlayer) then -- Player is online
 
-	end
+                        if (getElementData(client, "factionMenu")==1) then
+
+                                triggerClientEvent(removedPlayer, "hideFactionMenu", getRootElement())
+
+                        end
+
+                        outputChatBox(username:gsub("_"," ").. " قام بطردك من الوظيفة '" .. tostring(theTeamName) .. "'", removedPlayer, 255, 0, 0)
+
+                        setPlayerTeam(removedPlayer, getTeamFromName("Citizen"))
+
+                        setFactionProtectedData(removedPlayer, "faction", -1, false)
+
+                        setFactionProtectedData(removedPlayer, "factionleader", 0, false)
+
+                        setFactionProtectedData(targetPlayer, "factionleader", 0, false)
+
+                        triggerEvent("duty:offduty", removedPlayer)
+
+                        --triggerClientEvent(removedPlayer, "updateFactionInfo", removedPlayer, -1, 1)
+
+                end
+
+                
+
+                -- Send message to everyone in the faction
+
+                local teamPlayers = getPlayersInTeam(theTeam)
+
+                for k, v in ipairs(teamPlayers) do
+
+                        if (v ~= removedPlayer) then
+
+                                outputChatBox(username:gsub("_"," ") .. " قام بطرد " .. removedPlayerName:gsub("_", " ") .. " من الوضيفة '" .. tostring(theTeamName) .. "'.", v, 255, 194, 14)
+
+                        end
+
+                end
+
+
+
+        else
+
+                outputChatBox("حدث مشكلة في ازالة الاعب " .. removedPlayerName:gsub("_", " ") .. " من الوضيفة يرجى التكلم مع الادارة.", source, 255, 0, 0)
+
+        end
 
 end
 
@@ -1128,49 +1129,49 @@ addEventHandler("cguiKickPlayer", getRootElement(), callbackRemovePlayer)
 
 function callbackPerkEdit( perkIDTable, playerName)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local targetFactionInfo = {getPlayerFaction(playerName)}
+        local targetFactionInfo = {getPlayerFaction(playerName)}
 
-	if targetFactionInfo[2] ~= factionID then
+        if targetFactionInfo[2] ~= factionID then
 
-		outputChatBox("خطأ.", client)
+                outputChatBox("خطأ.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local jsonPerkIDTable = toJSON( perkIDTable )
+        local jsonPerkIDTable = toJSON( perkIDTable )
 
-	if mysql:query_free("UPDATE `characters` SET `faction_perks`='" .. mysql:escape_string(jsonPerkIDTable) .. "' WHERE `charactername`='" .. mysql:escape_string(playerName) .. "'") then
+        if mysql:query_free("UPDATE `characters` SET `faction_perks`='" .. mysql:escape_string(jsonPerkIDTable) .. "' WHERE `charactername`='" .. mysql:escape_string(playerName) .. "'") then
 
-		outputChatBox(" تم عمل ديوتي لـ "..playerName:gsub("_", " ")..".", client, 255, 0, 0)
+                outputChatBox(" تم عمل ديوتي لـ "..playerName:gsub("_", " ")..".", client, 255, 0, 0)
 
-		local targetPlayer = getPlayerFromName(playerName)
+                local targetPlayer = getPlayerFromName(playerName)
 
-		if targetPlayer then
+                if targetPlayer then
 
-			setElementData(targetPlayer, "factionPackages", perkIDTable)
+                        setElementData(targetPlayer, "factionPackages", perkIDTable)
 
-			outputChatBox(" تم تفعيل خاصية الديوتي لديك من قبل : "..getPlayerName(client):gsub("_", " ") .. ".", targetPlayer, 255, 0, 0)
+                        outputChatBox(" تم تفعيل خاصية الديوتي لديك من قبل : "..getPlayerName(client):gsub("_", " ") .. ".", targetPlayer, 255, 0, 0)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -1184,95 +1185,95 @@ addEventHandler("faction:perks:edit", getRootElement(), callbackPerkEdit)
 
 function callbackToggleLeader(playerName, isLeader)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("غير مسموح.", client)
+                outputChatBox("غير مسموح.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local targetFactionInfo = {getPlayerFaction(playerName)}
+        local targetFactionInfo = {getPlayerFaction(playerName)}
 
-	if targetFactionInfo[2] ~= factionID then
+        if targetFactionInfo[2] ~= factionID then
 
-		outputChatBox("خطأ.", client)
+                outputChatBox("خطأ.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	if (isLeader) then -- Make player a leader
+        if (isLeader) then -- Make player a leader
 
-		local username = getPlayerName(client)
+                local username = getPlayerName(client)
 
-		if mysql:query_free("UPDATE characters SET faction_leader='1' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
+                if mysql:query_free("UPDATE characters SET faction_leader='1' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
 
 
 
-			-- Send message to everyone in the faction
+                        -- Send message to everyone in the faction
 
-			exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " promoted " .. playerName:gsub("_", " ") .. " to leader of your faction '"..getTeamName(theTeam).."'.")
+                        exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " promoted " .. playerName:gsub("_", " ") .. " to leader of your faction '"..getTeamName(theTeam).."'.")
 
-			
+                        
 
-			local thePlayer = getPlayerFromName(playerName)
+                        local thePlayer = getPlayerFromName(playerName)
 
-			if(thePlayer) then -- Player is online, tell them
+                        if(thePlayer) then -- Player is online, tell them
 
-				setFactionProtectedData(thePlayer, "factionleader", 1, true)
+                                setFactionProtectedData(thePlayer, "factionleader", 1, true)
 
-			end
+                        end
 
-		else
+                else
 
-			outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " to faction leader, Contact an admin.", client, 255, 0, 0)
+                        outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " to faction leader, Contact an admin.", client, 255, 0, 0)
 
-		end
+                end
 
-	else
+        else
 
-		local username = getPlayerName(client)
+                local username = getPlayerName(client)
 
-		if mysql:query_free("UPDATE characters SET faction_leader='0' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
+                if mysql:query_free("UPDATE characters SET faction_leader='0' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
 
-			
+                        
 
-			local thePlayer = getPlayerFromName(playerName)
+                        local thePlayer = getPlayerFromName(playerName)
 
-			if(thePlayer) then -- Player is online, tell them
+                        if(thePlayer) then -- Player is online, tell them
 
-				if (getElementData(client, "factionMenu")==1) then
+                                if (getElementData(client, "factionMenu")==1) then
 
-					triggerClientEvent(thePlayer, "hideFactionMenu", getRootElement())
+                                        triggerClientEvent(thePlayer, "hideFactionMenu", getRootElement())
 
-				end
+                                end
 
-				setFactionProtectedData(thePlayer, "factionleader", 0, true)
+                                setFactionProtectedData(thePlayer, "factionleader", 0, true)
 
-			end
+                        end
 
-			
+                        
 
-			-- Send message to everyone in the faction
+                        -- Send message to everyone in the faction
 
-			exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " demoted " .. playerName:gsub("_", " ") .. " from leader to member of your faction '"..getTeamName(theTeam).."'.")
+                        exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " demoted " .. playerName:gsub("_", " ") .. " from leader to member of your faction '"..getTeamName(theTeam).."'.")
 
-		else
+                else
 
-			outputChatBox("Failed to demote " .. removedPlayerName:gsub("_", " ") .. " from faction leader, Contact an admin.", client, 255, 0, 0)
+                        outputChatBox("Failed to demote " .. removedPlayerName:gsub("_", " ") .. " from faction leader, Contact an admin.", client, 255, 0, 0)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -1284,55 +1285,55 @@ addEventHandler("cguiToggleLeader", getRootElement(), callbackToggleLeader)
 
 function callbackPromotePlayer(playerName, rankNum, oldRank, newRank)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local targetFactionInfo = {getPlayerFaction(playerName)}
+        local targetFactionInfo = {getPlayerFaction(playerName)}
 
-	if targetFactionInfo[2] ~= factionID then
+        if targetFactionInfo[2] ~= factionID then
 
-		outputChatBox("Newp, not going to happen, sorry.", client)
+                outputChatBox("Newp, not going to happen, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local username = getPlayerName(client)
+        local username = getPlayerName(client)
 
-	if mysql:query_free("UPDATE characters SET faction_rank='" .. rankNum .. "' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
+        if mysql:query_free("UPDATE characters SET faction_rank='" .. rankNum .. "' WHERE charactername='" .. mysql:escape_string(playerName) .. "'") then
 
-		local thePlayer = getPlayerFromName(playerName)
+                local thePlayer = getPlayerFromName(playerName)
 
-		if(thePlayer) then -- Player is online, set his rank
+                if(thePlayer) then -- Player is online, set his rank
 
-			setFactionProtectedData(thePlayer, "factionrank", rankNum, false)
+                        setFactionProtectedData(thePlayer, "factionrank", rankNum, false)
 
-		end
+                end
 
-		
+                
 
-		-- Send message to everyone in the faction
+                -- Send message to everyone in the faction
 
-		exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was promoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
+                exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was promoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
 
-	else
+        else
 
-		outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " in the faction, Contact an admin.", client, 255, 0, 0)
+                outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " in the faction, Contact an admin.", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -1344,59 +1345,59 @@ addEventHandler("cguiPromotePlayer", getRootElement(), callbackPromotePlayer)
 
 function callbackDemotePlayer(playerName, rankNum, oldRank, newRank)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local targetFactionInfo = {getPlayerFaction(playerName)}
+        local targetFactionInfo = {getPlayerFaction(playerName)}
 
-	if targetFactionInfo[2] ~= factionID then
+        if targetFactionInfo[2] ~= factionID then
 
-		outputChatBox("Newp, not going to happen, sorry.", client)
+                outputChatBox("Newp, not going to happen, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	local username = getPlayerName(client)
+        local username = getPlayerName(client)
 
-	local safename = mysql:escape_string(playerName)
+        local safename = mysql:escape_string(playerName)
 
-	
+        
 
-	if mysql:query_free("UPDATE characters SET faction_rank='" .. rankNum .. "' WHERE charactername='" .. safename .. "'") then
+        if mysql:query_free("UPDATE characters SET faction_rank='" .. rankNum .. "' WHERE charactername='" .. safename .. "'") then
 
-		local thePlayer = getPlayerFromName(playerName)
+                local thePlayer = getPlayerFromName(playerName)
 
-		if(thePlayer) then -- Player is online, tell them
+                if(thePlayer) then -- Player is online, tell them
 
-			setFactionProtectedData(thePlayer, "factionrank", rankNum, false)
+                        setFactionProtectedData(thePlayer, "factionrank", rankNum, false)
 
-		end
+                end
 
-		
+                
 
-		-- Send message to everyone in the faction
+                -- Send message to everyone in the faction
 
-		exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was demoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
+                exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was demoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
 
-	else
+        else
 
-		outputChatBox("Failed to demote " .. removedPlayerName .. " in the faction, Contact an admin.", client, 255, 0, 0)
+                outputChatBox("Failed to demote " .. removedPlayerName .. " in the faction, Contact an admin.", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -1408,57 +1409,57 @@ addEventHandler("cguiDemotePlayer", getRootElement(), callbackDemotePlayer)
 
 function callbackQuitFaction()
 
-	local username = getPlayerName(client)
+        local username = getPlayerName(client)
 
-	local safename = mysql:escape_string(username)
+        local safename = mysql:escape_string(username)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local theTeamName = getTeamName(theTeam)
+        local theTeamName = getTeamName(theTeam)
 
 
 
-	if theTeamName == "Los Santos Bus & Cab" then
+        if theTeamName == "Los Santos Bus & Cab" then
 
-		executeCommandHandler("quitjob", client)	
+                executeCommandHandler("quitjob", client)        
 
-	elseif mysql:query_free("UPDATE characters SET faction_id='-1', faction_leader='0', duty = 0, faction_perks='{}' WHERE charactername='" .. safename .. "'") then
+        elseif mysql:query_free("UPDATE characters SET faction_id='-1', faction_leader='0', duty = 0, faction_perks='{}' WHERE charactername='" .. safename .. "'") then
 
-		outputChatBox("You quit the faction '" .. theTeamName .. "'.", client)
+                outputChatBox("You quit the faction '" .. theTeamName .. "'.", client)
 
-		
+                
 
-		local newTeam = getTeamFromName("Citizen")
+                local newTeam = getTeamFromName("Citizen")
 
-		setPlayerTeam(client, newTeam)
+                setPlayerTeam(client, newTeam)
 
-		setFactionProtectedData(client, "faction", -1, false)
+                setFactionProtectedData(client, "faction", -1, false)
 
-		setFactionProtectedData(client, "factionrank", 1, false)
+                setFactionProtectedData(client, "factionrank", 1, false)
 
-		setFactionProtectedData(client, "factionleader", 0, false)
+                setFactionProtectedData(client, "factionleader", 0, false)
 
-		setFactionProtectedData(client, "factionphone", nil, false)
+                setFactionProtectedData(client, "factionphone", nil, false)
 
-		setFactionProtectedData(client, "factionPackages", {}, false)
+                setFactionProtectedData(client, "factionPackages", {}, false)
 
-		--triggerClientEvent(client, "updateFactionInfo", client, -1, 1)
+                --triggerClientEvent(client, "updateFactionInfo", client, -1, 1)
 
-		triggerEvent("duty:offduty", client)
+                triggerEvent("duty:offduty", client)
 
-		
+                
 
-		-- Send message to everyone in the faction
+                -- Send message to everyone in the faction
 
-		local factionID = getElementData(theTeam, "id")
+                local factionID = getElementData(theTeam, "id")
 
-		exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " left your faction '" .. theTeamName .. "'.")
+                exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " left your faction '" .. theTeamName .. "'.")
 
-	else
+        else
 
-		outputChatBox("Failed to quit the faction, Contact an admin.", client, 255, 0, 0)
+                outputChatBox("Failed to quit the faction, Contact an admin.", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -1470,83 +1471,83 @@ addEventHandler("cguiQuitFaction", getRootElement(), callbackQuitFaction)
 
 function callbackInvitePlayer(invitedPlayer)
 
-	local theTeam = getPlayerTeam(client)
+        local theTeam = getPlayerTeam(client)
 
-	local factionID = getElementData(theTeam, "id")
+        local factionID = getElementData(theTeam, "id")
 
-	if not hasPlayerAccessOverFaction(client, factionID) then
+        if not hasPlayerAccessOverFaction(client, factionID) then
 
-		outputChatBox("Not allowed, sorry.", client)
+                outputChatBox("Not allowed, sorry.", client)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	
+        
 
-	local invitedPlayerNick = getPlayerName(invitedPlayer)
+        local invitedPlayerNick = getPlayerName(invitedPlayer)
 
-	local safename = mysql:escape_string(invitedPlayerNick)
+        local safename = mysql:escape_string(invitedPlayerNick)
 
-	
+        
 
-	local targetTeam = getPlayerTeam(invitedPlayer)
+        local targetTeam = getPlayerTeam(invitedPlayer)
 
-	if (targetTeam~=nil) and (getTeamName(targetTeam)~="Citizen") then
+        if (targetTeam~=nil) and (getTeamName(targetTeam)~="Citizen") then
 
-		outputChatBox("الاعب موجود بالفاكشن بالفعل.", client, 255, 0, 0)
+                outputChatBox("الاعب موجود بالفاكشن بالفعل.", client, 255, 0, 0)
 
-		return
+                return
 
-	end
+        end
 
-	
+        
 
-	if mysql:query_free("UPDATE characters SET faction_leader = 0, faction_id = " .. factionID .. ", faction_rank = 1 WHERE charactername='" .. safename .. "'") then
+        if mysql:query_free("UPDATE characters SET faction_leader = 0, faction_id = " .. factionID .. ", faction_rank = 1 WHERE charactername='" .. safename .. "'") then
 
-		local theTeam = getPlayerTeam(client)
+                local theTeam = getPlayerTeam(client)
 
-		local theTeamName = getTeamName(theTeam)
+                local theTeamName = getTeamName(theTeam)
 
-		
+                
 
-		local targetTeam = getPlayerTeam(invitedPlayer)
+                local targetTeam = getPlayerTeam(invitedPlayer)
 
-		if (targetTeam~=nil) and (getTeamName(targetTeam)~="Citizen") then
+                if (targetTeam~=nil) and (getTeamName(targetTeam)~="Citizen") then
 
-			outputChatBox("Player is already in a faction.", client, 255, 0, 0)
+                        outputChatBox("Player is already in a faction.", client, 255, 0, 0)
 
-		else
+                else
 
-			setPlayerTeam(invitedPlayer, theTeam)
+                        setPlayerTeam(invitedPlayer, theTeam)
 
-			setFactionProtectedData(invitedPlayer, "faction", factionID, false)
+                        setFactionProtectedData(invitedPlayer, "faction", factionID, false)
 
-			outputChatBox("Player " .. invitedPlayerNick:gsub("_", " ") .. " الان عضو بالفاكشن '" .. tostring(theTeamName) .. "'.", client, 0, 255, 0)
+                        outputChatBox("Player " .. invitedPlayerNick:gsub("_", " ") .. " الان عضو بالفاكشن '" .. tostring(theTeamName) .. "'.", client, 0, 255, 0)
 
-			exports.factions:sendNotiToAllFactionMembers(factionID, invitedPlayerNick:gsub("_", " ") .. " انضم كعضو جديد في فصيلك '" .. tostring(theTeamName) .. "'.")				
+                        exports.factions:sendNotiToAllFactionMembers(factionID, invitedPlayerNick:gsub("_", " ") .. " انضم كعضو جديد في فصيلك '" .. tostring(theTeamName) .. "'.")                              
 
-			if	(invitedPlayer) then
+                        if      (invitedPlayer) then
 
-				triggerEvent("onPlayerJoinFaction", invitedPlayer, theTeam)
+                                triggerEvent("onPlayerJoinFaction", invitedPlayer, theTeam)
 
-				setFactionProtectedData(invitedPlayer, "factionrank", 1, false)
+                                setFactionProtectedData(invitedPlayer, "factionrank", 1, false)
 
-				setFactionProtectedData(client, "factionphone", nil, false)
+                                setFactionProtectedData(client, "factionphone", nil, false)
 
-				outputChatBox("تم تعيينك على فصيل '" .. tostring(theTeamName) .. "'.", invitedPlayer, 255, 194, 14)
+                                outputChatBox("تم تعيينك على فصيل '" .. tostring(theTeamName) .. "'.", invitedPlayer, 255, 194, 14)
 
-			end
+                        end
 
-		end
+                end
 
-	else
+        else
 
-		outputChatBox("اللاعب موجود بالفعل في فصيل.", client, 255, 0, 0)
+                outputChatBox("اللاعب موجود بالفعل في فصيل.", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -1558,7 +1559,7 @@ addEventHandler("cguiInvitePlayer", getRootElement(), callbackInvitePlayer)
 
 function hideFactionMenu()
 
-	setFactionProtectedData(client, "factionMenu", 0, false)
+        setFactionProtectedData(client, "factionMenu", 0, false)
 
 end
 
@@ -1570,211 +1571,211 @@ addEventHandler("factionmenu:hide", getRootElement(), hideFactionMenu)
 
 function getFactionFinance(factionID)
 
-	if not factionID then factionID = getElementData(client, "faction") end
+        if not factionID then factionID = getElementData(client, "faction") end
 
 
 
-	if hasPlayerAccessOverFaction(client, factionID) then
+        if hasPlayerAccessOverFaction(client, factionID) then
 
-		local bankThisWeek = {}
+                local bankThisWeek = {}
 
-		local bankPrevWeek = {}
+                local bankPrevWeek = {}
 
-		local transactions = {}
+                local transactions = {}
 
 
 
-		local query = mysql:query("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', WEEKOFYEAR(w.`time` - INTERVAL 1 hour) as 'week', WEEKOFYEAR(CURDATE() - INTERVAL 1 hour) as 'currentWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = '" .. mysql:escape_string(tostring(-factionID)) .. "' OR `to` = '" .. mysql:escape_string(tostring(-factionID)) .. "' ) ORDER BY id DESC")
+                local query = mysql:query("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', WEEKOFYEAR(w.`time` - INTERVAL 1 hour) as 'week', WEEKOFYEAR(CURDATE() - INTERVAL 1 hour) as 'currentWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = '" .. mysql:escape_string(tostring(-factionID)) .. "' OR `to` = '" .. mysql:escape_string(tostring(-factionID)) .. "' ) ORDER BY id DESC")
 
-		
+                
 
-		--outputConsole("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', WEEKOFYEAR(w.`time` - INTERVAL 1 hour) as 'week', WEEKOFYEAR(CURDATE() - INTERVAL 1 hour) as 'currentWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = " .. -factionID .. " OR `to` = " .. -factionID .. " ) ORDER BY id DESC")
+                --outputConsole("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', WEEKOFYEAR(w.`time` - INTERVAL 1 hour) as 'week', WEEKOFYEAR(CURDATE() - INTERVAL 1 hour) as 'currentWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = " .. -factionID .. " OR `to` = " .. -factionID .. " ) ORDER BY id DESC")
 
 
 
-		local mostRecentWeek = 0
+                local mostRecentWeek = 0
 
-		local currentWeek = 0
+                local currentWeek = 0
 
-		if query then
+                if query then
 
-			while true do
+                        while true do
 
-				row = mysql:fetch_assoc(query)
+                                row = mysql:fetch_assoc(query)
 
-				if not row then break end
+                                if not row then break end
 
-				
+                                
 
-				local id = tonumber(row["id"])
+                                local id = tonumber(row["id"])
 
-				local amount = tonumber(row["amount"])
+                                local amount = tonumber(row["amount"])
 
-				local time = row["newtime"]
+                                local time = row["newtime"]
 
-				local week = tonumber(row["week"])
+                                local week = tonumber(row["week"])
 
-				currentWeek = tonumber(row["currentWeek"])
+                                currentWeek = tonumber(row["currentWeek"])
 
-				if week > mostRecentWeek then mostRecentWeek = week end
+                                if week > mostRecentWeek then mostRecentWeek = week end
 
-				if not transactions[week] then transactions[week] = {} end
+                                if not transactions[week] then transactions[week] = {} end
 
-				local type = tonumber(row["type"])
+                                local type = tonumber(row["type"])
 
-				local reason = row["reason"]
+                                local reason = row["reason"]
 
-				if reason == nil then
+                                if reason == nil then
 
-					reason = ""
+                                        reason = ""
 
-				end
+                                end
 
-				
+                                
 
-				local from, to = "-", "-"
+                                local from, to = "-", "-"
 
-				if type(row["characterfrom"]) == "string" then
-					from = row["characterfrom"]:gsub("_", " ")
-				elseif tonumber(row["from"]) then
-					num = tonumber(row["from"]) 
+                                if type(row["characterfrom"]) == "string" then
+                                        from = row["characterfrom"]:gsub("_", " ")
+                                elseif tonumber(row["from"]) then
+                                        num = tonumber(row["from"]) 
 
-					if num < 0 then
+                                        if num < 0 then
 
-						from = getTeamName(exports.pool:getElement("team", -num)) or "-"
+                                                from = getTeamName(exports.pool:getElement("team", -num)) or "-"
 
-					elseif num == 0 and ( type == 6 or type == 7 ) then
+                                        elseif num == 0 and ( type == 6 or type == 7 ) then
 
-						from = "Government"
+                                                from = "Government"
 
-					end
+                                        end
 
-				end
+                                end
 
-				if type(row["characterto"]) == "string" then
-					to = row["characterto"]:gsub("_", " ")
-				elseif tonumber(row["to"]) and tonumber(row["to"]) < 0 then
-					to = getTeamName(exports.pool:getElement("team", -tonumber(row["to"])))
+                                if type(row["characterto"]) == "string" then
+                                        to = row["characterto"]:gsub("_", " ")
+                                elseif tonumber(row["to"]) and tonumber(row["to"]) < 0 then
+                                        to = getTeamName(exports.pool:getElement("team", -tonumber(row["to"])))
 
-				end
+                                end
 
-				
+                                
 
-				if tostring(row["from"]) == tostring(-factionID) and amount > 0 then
+                                if tostring(row["from"]) == tostring(-factionID) and amount > 0 then
 
-					amount = amount - amount - amount
+                                        amount = amount - amount - amount
 
-				end
+                                end
 
 
 
-				table.insert(transactions[week], { id = id, amount = amount, time = time, type = type, from = from, to = to, reason = reason, week = week })
+                                table.insert(transactions[week], { id = id, amount = amount, time = time, type = type, from = from, to = to, reason = reason, week = week })
 
-				--outputDebugString("transactions["..tostring(week).."]="..tostring(#transactions[week]))
+                                --outputDebugString("transactions["..tostring(week).."]="..tostring(#transactions[week]))
 
-			end
+                        end
 
-			mysql:free_result(query)
+                        mysql:free_result(query)
 
 
 
-			--outputDebugString("mostRecentWeek="..tostring(mostRecentWeek))
+                        --outputDebugString("mostRecentWeek="..tostring(mostRecentWeek))
 
-			bankThisWeek = transactions[currentWeek] or {}
+                        bankThisWeek = transactions[currentWeek] or {}
 
-			bankPrevWeek = transactions[currentWeek-1] or {}
+                        bankPrevWeek = transactions[currentWeek-1] or {}
 
 
 
-			--outputDebugString("server: bankThisWeek="..tostring(#bankThisWeek).." bankPrevWeek="..tostring(#bankPrevWeek))
+                        --outputDebugString("server: bankThisWeek="..tostring(#bankThisWeek).." bankPrevWeek="..tostring(#bankPrevWeek))
 
 
 
-			local faction = getPlayerTeam(client)
+                        local faction = getPlayerTeam(client)
 
-			local bankmoney = exports.global:getMoney(faction)
+                        local bankmoney = exports.global:getMoney(faction)
 
 
 
-			local vehicles = {}
+                        local vehicles = {}
 
-			local result = mysql:query("SELECT vehicle_shop_id FROM vehicles WHERE faction='" .. mysql:escape_string(tostring(factionID)) .. "' AND deleted=0 AND chopped=0")
+                        local result = mysql:query("SELECT vehicle_shop_id FROM vehicles WHERE faction='" .. mysql:escape_string(tostring(factionID)) .. "' AND deleted=0 AND chopped=0")
 
-			if result then
+                        if result then
 
-				while true do
+                                while true do
 
-					local row = mysql:fetch_assoc(result)
+                                        local row = mysql:fetch_assoc(result)
 
-					if not row then break end
+                                        if not row then break end
 
-					local vehicleShopID = tonumber(row["vehicle_shop_id"])
+                                        local vehicleShopID = tonumber(row["vehicle_shop_id"])
 
-					if vehicleShopID > 0 then
+                                        if vehicleShopID > 0 then
 
-						table.insert(vehicles, vehicleShopID)
+                                                table.insert(vehicles, vehicleShopID)
 
-					end
+                                        end
 
-				end
+                                end
 
-				mysql:free_result(result)
+                                mysql:free_result(result)
 
-			end
+                        end
 
 
 
-			local vehiclesvalue = 0
+                        local vehiclesvalue = 0
 
-			if not vehPrice then vehPrice = {} end
+                        if not vehPrice then vehPrice = {} end
 
-			for k,v in ipairs(vehicles) do
+                        for k,v in ipairs(vehicles) do
 
-				if vehPrice[v] then
+                                if vehPrice[v] then
 
-					local price = tonumber(vehPrice[v]) or 0
+                                        local price = tonumber(vehPrice[v]) or 0
 
-					vehiclesvalue = vehiclesvalue + price
+                                        vehiclesvalue = vehiclesvalue + price
 
-				else
+                                else
 
-					local result2 = mysql:query("SELECT vehprice FROM vehicles_shop WHERE id='"..mysql:escape_string(tostring(v)).."'")
+                                        local result2 = mysql:query("SELECT vehprice FROM vehicles_shop WHERE id='"..mysql:escape_string(tostring(v)).."'")
 
-					if result2 then
+                                        if result2 then
 
-						while true do
+                                                while true do
 
-							local row = mysql:fetch_assoc(result2)
+                                                        local row = mysql:fetch_assoc(result2)
 
-							if not row then break end
+                                                        if not row then break end
 
-							local price = tonumber(row["vehprice"]) or 0
+                                                        local price = tonumber(row["vehprice"]) or 0
 
-							vehPrice[v] = price
+                                                        vehPrice[v] = price
 
-							vehiclesvalue = vehiclesvalue + price
+                                                        vehiclesvalue = vehiclesvalue + price
 
-						end
+                                                end
 
-						mysql:free_result(result2)
+                                                mysql:free_result(result2)
 
-					end
+                                        end
 
-				end
+                                end
 
-			end
+                        end
 
 
 
-			triggerClientEvent(client, "factionmenu:fillFinance", getResourceRootElement(), factionID, bankThisWeek, bankPrevWeek, bankmoney, vehiclesvalue)
+                        triggerClientEvent(client, "factionmenu:fillFinance", getResourceRootElement(), factionID, bankThisWeek, bankPrevWeek, bankmoney, vehiclesvalue)
 
-		else
+                else
 
-			outputDebugString("Mysql error @ tellTransfers", 2)
+                        outputDebugString("Mysql error @ tellTransfers", 2)
 
-		end
+                end
 
-	end
+        end
 
 end
 
@@ -1790,59 +1791,59 @@ addEvent('factionmenu:setphone', true)
 
 addEventHandler('factionmenu:setphone', root,
 
-	function(playerName, number)
+        function(playerName, number)
 
-		local theTeam = getPlayerTeam(client)
+                local theTeam = getPlayerTeam(client)
 
-		local factionID = getElementData(theTeam, "id")
+                local factionID = getElementData(theTeam, "id")
 
-		if not hasPlayerAccessOverFaction(client, factionID) then
+                if not hasPlayerAccessOverFaction(client, factionID) then
 
-			outputChatBox("Not allowed, sorry.", client)
+                        outputChatBox("Not allowed, sorry.", client)
 
-			return
+                        return
 
-		end
+                end
 
-		
+                
 
-		local targetFactionInfo = {getPlayerFaction(playerName)}
+                local targetFactionInfo = {getPlayerFaction(playerName)}
 
-		if targetFactionInfo[2] ~= factionID then
+                if targetFactionInfo[2] ~= factionID then
 
-			outputChatBox("Newp, not going to happen, sorry.", client)
+                        outputChatBox("Newp, not going to happen, sorry.", client)
 
-			return
+                        return
 
-		end
+                end
 
-		
+                
 
-		local username = getPlayerName(client)
+                local username = getPlayerName(client)
 
-		local safename = mysql:escape_string(playerName)
+                local safename = mysql:escape_string(playerName)
 
-		
+                
 
-		if mysql:query_free("UPDATE characters SET faction_phone=" .. (tonumber(number) or "NULL") .. " WHERE charactername='" .. safename .. "'") then
+                if mysql:query_free("UPDATE characters SET faction_phone=" .. (tonumber(number) or "NULL") .. " WHERE charactername='" .. safename .. "'") then
 
-			local thePlayer = getPlayerFromName(playerName)
+                        local thePlayer = getPlayerFromName(playerName)
 
-			if(thePlayer) then -- Player is online, tell them
+                        if(thePlayer) then -- Player is online, tell them
 
-				setFactionProtectedData(thePlayer, "factionphone", tonumber(number) or nil, false)
+                                setFactionProtectedData(thePlayer, "factionphone", tonumber(number) or nil, false)
 
-			end
+                        end
 
-		end
+                end
 
-	end)
+        end)
 
 
 
 function isLeapYear(year)
 
-	return year%4==0 and (year%100~=0 or year%400==0)
+        return year%4==0 and (year%100~=0 or year%400==0)
 
 end
 
@@ -1850,73 +1851,73 @@ local lastDayOfMonth = {31,28,31,30,31,30,31,31,30,31,30,31}
 
 function fromDatetime(string)
 
-	local split1 = exports.global:split(string, " ")
+        local split1 = exports.global:split(string, " ")
 
-	local date = split1[1]
+        local date = split1[1]
 
-	local time = split1[2]
-
-
-
-	local datesplit = exports.global:split(date, "-")
-
-	local year = tonumber(datesplit[1])
-
-	local month = tonumber(datesplit[2])
-
-	local day = tonumber(datesplit[3])
+        local time = split1[2]
 
 
 
-	local timesplit = exports.global:split(date, ":")
+        local datesplit = exports.global:split(date, "-")
 
-	local hour = tonumber(timesplit[1])
+        local year = tonumber(datesplit[1])
 
-	local minute = tonumber(timesplit[2])
+        local month = tonumber(datesplit[2])
 
-	local second = tonumber(timesplit[3])
-
-
-
-	--calculate yearday
-
-	local prevdays = 0
-
-	local addmonth = 1
-
-	while true do
-
-		if addmonth >= month then break end
-
-		if addmonth == 2 and isLeapYear(year) then
-
-			prevdays = prevdays + lastDayOfMonth[addmonth] + 1
-
-		else
-
-			prevdays = prevdays + lastDayOfMonth[addmonth]
-
-		end
-
-		addmonth = addmonth + 1
-
-	end
-
-	local yearday = prevdays + day
+        local day = tonumber(datesplit[3])
 
 
 
-	local time = { year = year, month = month, day = day, hour = hour, minute = minute, second = second, yearday = yearday }
+        local timesplit = exports.global:split(date, ":")
 
-	return time
+        local hour = tonumber(timesplit[1])
+
+        local minute = tonumber(timesplit[2])
+
+        local second = tonumber(timesplit[3])
+
+
+
+        --calculate yearday
+
+        local prevdays = 0
+
+        local addmonth = 1
+
+        while true do
+
+                if addmonth >= month then break end
+
+                if addmonth == 2 and isLeapYear(year) then
+
+                        prevdays = prevdays + lastDayOfMonth[addmonth] + 1
+
+                else
+
+                        prevdays = prevdays + lastDayOfMonth[addmonth]
+
+                end
+
+                addmonth = addmonth + 1
+
+        end
+
+        local yearday = prevdays + day
+
+
+
+        local time = { year = year, month = month, day = day, hour = hour, minute = minute, second = second, yearday = yearday }
+
+        return time
 
 end
 
 function getWeekNumFromYearDay(yearday)
 
-	local weekNum = math.floor(yearday / 7)
+        local weekNum = math.floor(yearday / 7)
 
-	return weekNum
+        return weekNum
 
 end
 
@@ -1930,19 +1931,19 @@ addEvent("fetchDutyInfo", true)
 
 addEventHandler("fetchDutyInfo", resourceRoot, function(factionID)
 
-	if not factionID then factionID = getElementData(client, "faction") end
+        if not factionID then factionID = getElementData(client, "faction") end
 
 
 
-	local elementInfo = getElementData(resourceRoot, "DutyGUI")
+        local elementInfo = getElementData(resourceRoot, "DutyGUI")
 
-	elementInfo[client] = factionID
+        elementInfo[client] = factionID
 
-	setElementData(resourceRoot, "DutyGUI", elementInfo)
+        setElementData(resourceRoot, "DutyGUI", elementInfo)
 
 
 
-	triggerClientEvent(client, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID)
+        triggerClientEvent(client, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID)
 
 end)
 
@@ -1952,15 +1953,15 @@ addEvent("Duty:Grab", true)
 
 addEventHandler("Duty:Grab", resourceRoot, function(factionID)
 
-	if not factionID then factionID = getElementData(client, "faction") end
+        if not factionID then factionID = getElementData(client, "faction") end
 
 
 
-	local t = getAllowList(factionID)
+        local t = getAllowList(factionID)
 
 
 
-	triggerClientEvent(client, "gotAllow", resourceRoot, t)
+        triggerClientEvent(client, "gotAllow", resourceRoot, t)
 
 end)
 
@@ -1970,51 +1971,51 @@ addEvent("Duty:GetPackages", true)
 
 addEventHandler("Duty:GetPackages", resourceRoot, function(factionID)
 
-	factionID = tonumber(factionID)
+        factionID = tonumber(factionID)
 
 
 
-	triggerClientEvent(client, "Duty:GotPackages", resourceRoot, custom[factionID])
+        triggerClientEvent(client, "Duty:GotPackages", resourceRoot, custom[factionID])
 
 
 
-	end)
+        end)
 
 
 
 function refreshClient(message, factionID, dontSendToClient)
 
-	for k,v in pairs(getElementData(resourceRoot, "DutyGUI")) do
+        for k,v in pairs(getElementData(resourceRoot, "DutyGUI")) do
 
-		if dontSendToClient then
+                if dontSendToClient then
 
-			if v == factionID and k~=dontSendToClient then
+                        if v == factionID and k~=dontSendToClient then
 
-				triggerClientEvent(k, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID, message)
+                                triggerClientEvent(k, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID, message)
 
-			end
+                        end
 
-		else
+                else
 
-			if v == factionID then
+                        if v == factionID then
 
-				triggerClientEvent(k, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID, message)
+                                triggerClientEvent(k, "importDutyData", resourceRoot, custom[tonumber(factionID)], locations[tonumber(factionID)], factionID, message)
 
-			end
+                        end
 
-		end
+                end
 
-	end
+        end
 
-	local resource = getResourceRootElement(getResourceFromName("duty"))
+        local resource = getResourceRootElement(getResourceFromName("duty"))
 
-	if resource then
+        if resource then
 
-		setElementData(resource, "factionDuty", custom)
+                setElementData(resource, "factionDuty", custom)
 
-		setElementData(resource, "factionLocations", locations)
+                setElementData(resource, "factionLocations", locations)
 
-	end
+        end
 
 end
 
@@ -2022,11 +2023,11 @@ end
 
 function disconnectThem()
 
-	local t = getElementData(resourceRoot, "DutyGUI") 
+        local t = getElementData(resourceRoot, "DutyGUI") 
 
-	t[source] = nil
+        t[source] = nil
 
-	setElementData(resourceRoot, "DutyGUI", t)
+        setElementData(resourceRoot, "DutyGUI", t)
 
 end
 
@@ -2036,39 +2037,39 @@ addEventHandler("onPlayerQuit", getRootElement(), disconnectThem)
 
 function addDuty(dutyItems, finalLocations, dutyNewSkins, name, factionID, dutyID)
 
-	local dutyItems = dutyItems or {}
+        local dutyItems = dutyItems or {}
 
-	local finalLocations = finalLocations or {}
+        local finalLocations = finalLocations or {}
 
-	local dutyNewSkins = dutyNewSkins or {}
+        local dutyNewSkins = dutyNewSkins or {}
 
-	if dutyID == 0 then
+        if dutyID == 0 then
 
-		local index = getElementData(resourceRoot, "maxcindex")+1
+                local index = getElementData(resourceRoot, "maxcindex")+1
 
-		mysql:query_free("INSERT INTO duty_custom SET id="..index..", factionID="..mysql:escape_string(factionID)..", name='"..mysql:escape_string(name).."', skins='"..mysql:escape_string(toJSON(dutyNewSkins)).."', locations='"..mysql:escape_string(toJSON(finalLocations)).."', items='"..mysql:escape_string(toJSON(dutyItems)).."'")
+                mysql:query_free("INSERT INTO duty_custom SET id="..index..", factionID="..mysql:escape_string(factionID)..", name='"..mysql:escape_string(name).."', skins='"..mysql:escape_string(toJSON(dutyNewSkins)).."', locations='"..mysql:escape_string(toJSON(finalLocations)).."', items='"..mysql:escape_string(toJSON(dutyItems)).."'")
 
-		setElementData(resourceRoot, "maxcindex", index)
+                setElementData(resourceRoot, "maxcindex", index)
 
-		custom[tonumber(factionID)][index] = { index, name, dutyNewSkins, finalLocations, dutyItems }
+                custom[tonumber(factionID)][index] = { index, name, dutyNewSkins, finalLocations, dutyItems }
 
-		refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added duty '"..name.."'.", factionID, false)
+                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added duty '"..name.."'.", factionID, false)
 
-		exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added duty "..name.." Database ID #"..index)
+                exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added duty "..name.." Database ID #"..index)
 
-	else
+        else
 
-		mysql:query_free("UPDATE duty_custom SET name='"..mysql:escape_string(name).."', skins='"..mysql:escape_string(toJSON(dutyNewSkins)).."', locations='"..mysql:escape_string(toJSON(finalLocations)).."', items='"..mysql:escape_string(toJSON(dutyItems)).."' WHERE id="..dutyID)
+                mysql:query_free("UPDATE duty_custom SET name='"..mysql:escape_string(name).."', skins='"..mysql:escape_string(toJSON(dutyNewSkins)).."', locations='"..mysql:escape_string(toJSON(finalLocations)).."', items='"..mysql:escape_string(toJSON(dutyItems)).."' WHERE id="..dutyID)
 
-		table.remove(custom[tonumber(factionID)], dutyID)
+                table.remove(custom[tonumber(factionID)], dutyID)
 
-		custom[tonumber(factionID)][dutyID] = { dutyID, name, dutyNewSkins, finalLocations, dutyItems }
+                custom[tonumber(factionID)][dutyID] = { dutyID, name, dutyNewSkins, finalLocations, dutyItems }
 
-		refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised duty ID #"..dutyID..".", factionID, false)
+                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised duty ID #"..dutyID..".", factionID, false)
 
-		exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised duty "..name.." Database ID #"..dutyID)
+                exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised duty "..name.." Database ID #"..dutyID)
 
-	end
+        end
 
 end
 
@@ -2080,69 +2081,69 @@ addEventHandler("Duty:AddDuty", resourceRoot, addDuty)
 
 function addLocation(x, y, z, r, i, d, name, factionID, index)
 
-	local interiorElement = exports.pool:getElement("interior", d) or d == 0
+        local interiorElement = exports.pool:getElement("interior", d) or d == 0
 
-	if interiorElement then
+        if interiorElement then
 
-		local interiorF = 0
+                local interiorF = 0
 
-		if isElement(interiorElement) then
+                if isElement(interiorElement) then
 
-			interiorStatus = getElementData(interiorElement, "status")
+                        interiorStatus = getElementData(interiorElement, "status")
 
-			interiorF = interiorStatus[7]
+                        interiorF = interiorStatus[7]
 
-		end
+                end
 
 
 
-		if tonumber(interiorF) == tonumber(factionID) or d == 0 then
+                if tonumber(interiorF) == tonumber(factionID) or d == 0 then
 
-			if not index then -- Index is used if the event is from a edit
+                        if not index then -- Index is used if the event is from a edit
 
-				local newIndex = getElementData(resourceRoot, "maxlindex")+1
+                                local newIndex = getElementData(resourceRoot, "maxlindex")+1
 
-				mysql:query_free("INSERT INTO duty_locations SET id="..newIndex..", factionID="..mysql:escape_string(factionID)..", name='".. mysql:escape_string(name) .."', x="..mysql:escape_string(x)..", y="..mysql:escape_string(y)..", z="..mysql:escape_string(z)..", radius="..mysql:escape_string(r)..", dimension="..mysql:escape_string(d)..", interior="..mysql:escape_string(i))
+                                mysql:query_free("INSERT INTO duty_locations SET id="..newIndex..", factionID="..mysql:escape_string(factionID)..", name='".. mysql:escape_string(name) .."', x="..mysql:escape_string(x)..", y="..mysql:escape_string(y)..", z="..mysql:escape_string(z)..", radius="..mysql:escape_string(r)..", dimension="..mysql:escape_string(d)..", interior="..mysql:escape_string(i))
 
-				setElementData(resourceRoot, "maxlindex", newIndex)
+                                setElementData(resourceRoot, "maxlindex", newIndex)
 
-				exports.duty:createDutyColShape(x, y, z, r, i, d, factionID, newIndex)
+                                exports.duty:createDutyColShape(x, y, z, r, i, d, factionID, newIndex)
 
-				locations[tonumber(factionID)][newIndex] = { newIndex, name, x, y, z, r, d, i, nil, nil }
+                                locations[tonumber(factionID)][newIndex] = { newIndex, name, x, y, z, r, d, i, nil, nil }
 
-				refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added location '"..name.."'.", factionID, false)
+                                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added location '"..name.."'.", factionID, false)
 
-				exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added location, Name:"..name.." Database ID:"..newIndex.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
+                                exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added location, Name:"..name.." Database ID:"..newIndex.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
 
-			else
+                        else
 
-				mysql:query_free("UPDATE duty_locations SET name='".. mysql:escape_string(name) .."', x="..mysql:escape_string(x)..", y="..mysql:escape_string(y)..", z="..mysql:escape_string(z)..", radius="..mysql:escape_string(r)..", dimension="..mysql:escape_string(d)..", interior="..mysql:escape_string(i).." WHERE id="..index)
+                                mysql:query_free("UPDATE duty_locations SET name='".. mysql:escape_string(name) .."', x="..mysql:escape_string(x)..", y="..mysql:escape_string(y)..", z="..mysql:escape_string(z)..", radius="..mysql:escape_string(r)..", dimension="..mysql:escape_string(d)..", interior="..mysql:escape_string(i).." WHERE id="..index)
 
-				table.remove(locations[factionID], index)
+                                table.remove(locations[factionID], index)
 
-				exports.duty:destroyDutyColShape(factionID, index)
+                                exports.duty:destroyDutyColShape(factionID, index)
 
-				exports.duty:createDutyColShape(x, y, z, r, i, d, factionID, index)
+                                exports.duty:createDutyColShape(x, y, z, r, i, d, factionID, index)
 
-				locations[tonumber(factionID)][index] = { index, name, x, y, z, r, d, i, nil, nil }
+                                locations[tonumber(factionID)][index] = { index, name, x, y, z, r, d, i, nil, nil }
 
-				refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised location ID #"..index..".", factionID, false)
+                                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised location ID #"..index..".", factionID, false)
 
-				exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised location ID #"..index.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
+                                exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised location ID #"..index.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
 
-			end
+                        end
 
-		else
+                else
 
-			outputChatBox("The interior you entered must be owned by the faction to be added as a duty location.", client, 255, 0, 0)
+                        outputChatBox("The interior you entered must be owned by the faction to be added as a duty location.", client, 255, 0, 0)
 
-		end
+                end
 
-	else
+        else
 
-		outputChatBox("Server could not find the interior you entered!", client, 255, 0, 0)
+                outputChatBox("Server could not find the interior you entered!", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -2154,37 +2155,37 @@ addEventHandler("Duty:AddLocation", resourceRoot, addLocation)
 
 function addVehicle(vehicleID, factionID)
 
-	local element = exports.pool:getElement("vehicle", vehicleID)
+        local element = exports.pool:getElement("vehicle", vehicleID)
 
-	if element then
+        if element then
 
-		if getElementData(element, "faction") == factionID then
+                if getElementData(element, "faction") == factionID then
 
-		    local newIndex = getElementData(resourceRoot, "maxlindex")+1
+                    local newIndex = getElementData(resourceRoot, "maxlindex")+1
 
-			mysql:query_free("INSERT INTO duty_locations SET id="..newIndex..", factionID="..mysql:escape_string(factionID)..", name='VEHICLE', vehicleid="..mysql:escape_string(vehicleID)..", model="..getElementModel(element))
+                        mysql:query_free("INSERT INTO duty_locations SET id="..newIndex..", factionID="..mysql:escape_string(factionID)..", name='VEHICLE', vehicleid="..mysql:escape_string(vehicleID)..", model="..getElementModel(element))
 
-			setElementData(resourceRoot, "maxlindex", newIndex)
+                        setElementData(resourceRoot, "maxlindex", newIndex)
 
-			locations[tonumber(factionID)][newIndex] = { newIndex, "VEHICLE", nil, nil, nil, nil, nil, nil, tonumber(vehicleID), getElementModel(element) }
+                        locations[tonumber(factionID)][newIndex] = { newIndex, "VEHICLE", nil, nil, nil, nil, nil, nil, tonumber(vehicleID), getElementModel(element) }
 
-			refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added vehicle #"..vehicleID..".", factionID, false)
+                        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added vehicle #"..vehicleID..".", factionID, false)
 
-			exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added Vehicle #"..vehicleID.." Database ID:"..newIndex)
+                        exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added Vehicle #"..vehicleID.." Database ID:"..newIndex)
 
-			--outputChatBox("Added vehicle "..vehicleID.." successfully.", client, 0, 255, 0)
+                        --outputChatBox("Added vehicle "..vehicleID.." successfully.", client, 0, 255, 0)
 
-		else
+                else
 
-			outputChatBox("You can only add faction vehicles as duty locations.", client, 255, 0, 0)
+                        outputChatBox("You can only add faction vehicles as duty locations.", client, 255, 0, 0)
 
-		end
+                end
 
-	else
+        else
 
-		outputChatBox("Error finding your vehicle, did you type the ID in right?", client, 255, 0, 0)
+                outputChatBox("Error finding your vehicle, did you type the ID in right?", client, 255, 0, 0)
 
-	end
+        end
 
 end
 
@@ -2196,19 +2197,19 @@ addEventHandler("Duty:AddVehicle", resourceRoot, addVehicle)
 
 function removeLocation(removeID, factionID)
 
-	locations[tonumber(factionID)][tonumber(removeID)] = nil
+        locations[tonumber(factionID)][tonumber(removeID)] = nil
 
-	exports.duty:destroyDutyColShape(factionID, removeID)
+        exports.duty:destroyDutyColShape(factionID, removeID)
 
-	mysql:query_free("DELETE FROM duty_locations WHERE id="..removeID)
+        mysql:query_free("DELETE FROM duty_locations WHERE id="..removeID)
 
-	exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Removed Location #"..removeID)
+        exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Removed Location #"..removeID)
 
-	--outputChatBox("Duty Location removed!", client, 0, 255, 0)
+        --outputChatBox("Duty Location removed!", client, 0, 255, 0)
 
 
 
-	refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed location "..removeID..".", factionID, client)
+        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed location "..removeID..".", factionID, client)
 
 end
 
@@ -2220,17 +2221,17 @@ addEventHandler("Duty:RemoveLocation", resourceRoot, removeLocation)
 
 function removeDuty(removeID, factionID)
 
-	custom[tonumber(factionID)][tonumber(removeID)] = nil
+        custom[tonumber(factionID)][tonumber(removeID)] = nil
 
-	mysql:query_free("DELETE FROM duty_custom WHERE id="..removeID)
+        mysql:query_free("DELETE FROM duty_custom WHERE id="..removeID)
 
-	exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Removed duty #"..removeID)
+        exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Removed duty #"..removeID)
 
-	--outputChatBox("Custom Duty Loadout removed!", client, 0, 255, 0)
+        --outputChatBox("Custom Duty Loadout removed!", client, 0, 255, 0)
 
 
 
-	refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed duty "..removeID..".", factionID, client)
+        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed duty "..removeID..".", factionID, client)
 
 end
 

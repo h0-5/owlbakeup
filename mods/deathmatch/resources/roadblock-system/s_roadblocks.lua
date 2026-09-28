@@ -161,25 +161,18 @@ addCommandHandler("rbs", onRoadblockStart, false, false)
 function isRoadblockEditAllowed(thePlayer)
 	local factionType = getElementData(getPlayerTeam(thePlayer), "type")
 	local factionID = getElementData(getPlayerTeam(thePlayer), "id")
-	
-	--[[local factionTable = getElementData(thePlayer, "factiontable")
-	for k,v in ipairs(factionTable) do
-		local factionID = v[1]
-		local theTeam, factionType
-		for k2,v2 in ipairs(exports.pool:getPoolElementsByType("team")) do
-			local teamID = tonumber(getElementData(v2, "id"))
-			if(teamID == factionID) then
-				theTeam = v2
-				factionType = tonumber(getElementData(v2, "type"))
-			end
-		end
-		if(roadblocks[-factionType] and #roadblocks[-factionType] > 0 or roadblocks[factionID] and #roadblocks[factionID] > 0) then
-			return true
-		end
+
+	-- [Fix #56] faction type + rank permission layer (old client
+	-- faction_permissions: type 2 Law -> "rbs", min rank 3 / leader).
+	-- If faction-system is stopped the pcall fails and the legacy
+	-- type/factionID check below stays authoritative (Fix #46 class).
+	local okPerm, hasPerm = pcall(function()
+		return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "rbs")
+	end)
+	if okPerm and hasPerm == false then
+		return false
 	end
-	return false
-	--]]
-	
+
 	if(roadblocks[-factionType] and #roadblocks[-factionType] > 0 or roadblocks[factionID] and #roadblocks[factionID] > 0) then
 		return true
 	else

@@ -506,16 +506,22 @@ end
 
 --------------------------------------------------------------------------------
 -- STATUS HUD GEOMETRY (old client row + Fix #19 frame/logo/money spec)
---   ring_x(i) = PANEL_X + PAD_L + LOGO_SIZE + LOGO_GAP + (S+G)*i  (health first)
---   ring_y    = vertically centered in the frame
---   shield    = same column as cleanness, 150*scale below the ring row
+--   ring_x(i) = PANEL_X + PAD_L + (S+G)*i  (health first)
+--   ring_y    = 6 (top row); clock + date below, INSIDE the frame (Fix #33)
+--   shield    = same column as cleanness, 150*scale below the panel
 --------------------------------------------------------------------------------
 local PANEL_PAD_L = 12
-local LOGO_SIZE  = 40
-local LOGO_GAP   = 14
+-- [Fix #33 - user] "حطهم بنفس مستطيل حق حلات فوق بس بدون اللوغو":
+-- the logo is REMOVED from the panel; the clock + date now LIVE INSIDE the
+-- status rectangle, right-aligned under the rings, pulled close together
+-- (clock slightly lower, date slightly higher).
 local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 318
-local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 16
-local PANEL_H = 56
+local PANEL_W = PANEL_PAD_L + ROW_W + 16            -- logo space reclaimed
+local CLOCK_SCALE = 1.3
+local DATE_SCALE   = 0.85
+local CLOCK_LINE_H = 30
+local DATE_LINE_H  = 22
+local PANEL_H = 6 + RING_SIZE + 8 + CLOCK_LINE_H + 2 + DATE_LINE_H + 8
 -- [Fix #32 - user] "ارفع مكانه باعلى الشاشة لكن مب لازق بحواف الشاشة":
 -- rest at the top but with real margins - no longer glued to the edges
 local PANEL_MARGIN_X = 14
@@ -547,6 +553,24 @@ local zoneLabelColor = tocolor(255, 255, 255, 255)
 --------------------------------------------------------------------------------
 local lastPulsePaint = 0
 local PANEL_RT_PAD = 2
+local lastClockText = ""   -- [Fix #33] repaint the RT once per minute
+
+local function getCurrentTime()
+        local t = getRealTime()
+        local h = t.hour % 12
+        if h == 0 then h = 12 end
+        local suffix = t.hour < 12 and "AM" or "PM"
+        return string.format("%d:%02d %s", h, t.minute, suffix)
+end
+
+local function getCurrentDate()
+        local t = getRealTime()
+        return string.format("%02d-%02d-%04d", t.monthday, t.month + 1, t.year + 1900)
+end
+
+local function statusTexts()
+        return getCurrentTime(), getCurrentDate()
+end
 
 local function destroyPanelRT()
         if isElement(panelRT) then destroyElement(panelRT) end
@@ -566,18 +590,23 @@ local function pulseForPaint()
         return math.abs(math.sin(getTickCount() / 300)) * 230
 end
 
+local function drawStatusClock(x, y, w, postGUI)
+        -- clock + date INSIDE the panel (Fix #33), right-aligned, close
+        local clockText, dateText = statusTexts()
+        outlineText(clockText, x + 12, y + 6 + RING_SIZE + 8, w - 16, CLOCK_LINE_H,
+                tocolor(255, 255, 255, 255), CLOCK_SCALE, fontHudLarge(), "right", "top", postGUI)
+        outlineText(dateText, x + 12, y + 6 + RING_SIZE + 8 + CLOCK_LINE_H + 2, w - 16, DATE_LINE_H,
+                tocolor(255, 255, 255, 210), DATE_SCALE, fontHudLarge(), "right", "top", postGUI)
+end
+
 local function repaintPanelRT()
         if not ensurePanelRT() then return false end
         dxSetRenderTarget(panelRT, true)
         local ox, oy = PANEL_RT_PAD, PANEL_RT_PAD -- draw offset inside the RT
         drawStatusFrame(ox, oy, PANEL_W, PANEL_H, false)
-        if tex.logo then
-                dxDrawImage(ox + PANEL_PAD_L, oy + (PANEL_H - LOGO_SIZE) / 2,
-                        LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235))
-        end
-        local ringY = oy + (PANEL_H - RING_SIZE) / 2
+        local ringY = oy + 6
         local S, G = RING_SIZE, RING_GAP
-        local firstX = ox + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
+        local firstX = ox + PANEL_PAD_L
         for i = 0, 6 do
                 local def = RING_DEFS[i + 1]
                 local ring = rings[def.id]
@@ -585,36 +614,37 @@ local function repaintPanelRT()
                 local cx, cy = x + S / 2, ringY + S / 2
                 local value = ring and ring.value or 0
                 local shown = def.id == "urine" and (100 - value) or value
-                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, false)
+                drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 165, false)
                 if shown > 0.25 then
                         drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
                                 def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, false)
                 end
                 local icon = tex[def.icon]
                 if icon then
-                        local a = 220
+                        local a = 255
                         if def.id == "health" then
-                                a = getRingValue("health") > 10 and 220 or pulseForPaint()
+                                a = getRingValue("health") > 10 and 255 or pulseForPaint()
                         elseif def.id == "sleep" or def.id == "sleepy" then
-                                a = getRingValue("sleepy") < 90 and 220 or pulseForPaint()
+                                a = getRingValue("sleepy") < 90 and 255 or pulseForPaint()
                         elseif def.id == "thirsty" then
-                                a = getRingValue("thirsty") > 5 and 220 or pulseForPaint()
+                                a = getRingValue("thirsty") > 5 and 255 or pulseForPaint()
                         elseif def.id == "hungry" then
-                                a = getRingValue("hungry") > 5 and 220 or pulseForPaint()
+                                a = getRingValue("hungry") > 5 and 255 or pulseForPaint()
                         elseif def.id == "toilet" then
-                                a = getRingValue("urine") < 90 and 220 or pulseForPaint()
+                                a = getRingValue("urine") < 90 and 255 or pulseForPaint()
                         elseif def.id == "fatigue" then
-                                a = getRingValue("fatigue") < 90 and 220 or pulseForPaint()
+                                a = getRingValue("fatigue") < 90 and 255 or pulseForPaint()
                         elseif def.id == "shower" then
-                                a = getRingValue("cleanness") > 5 and 220 or pulseForPaint()
+                                a = getRingValue("cleanness") > 5 and 255 or pulseForPaint()
                         end
-                        local dw, dh = iconDrawSize(def.icon, S * 0.62)
+                        local dw, dh = iconDrawSize(def.icon, S * 0.66)
                         local ix = x + S / 2 - dw / 2
                         local iy = ringY + S / 2 - dh / 2
                         dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
                                 tocolor(def.tint[1], def.tint[2], def.tint[3], a))
                 end
         end
+        drawStatusClock(ox, oy, PANEL_W, false)
         dxSetRenderTarget()
         panelRTDirty = false
         return true
@@ -647,19 +677,6 @@ function showStatusHud(state)
         statusHud.visible = state
 end
 
-local function getCurrentTime()
-        local t = getRealTime()
-        local h = t.hour % 12
-        if h == 0 then h = 12 end
-        local suffix = t.hour < 12 and "AM" or "PM"
-        return string.format("%d:%02d %s", h, t.minute, suffix)
-end
-
-local function getCurrentDate()
-        local t = getRealTime()
-        return string.format("%02d-%02d-%04d", t.monthday, t.month + 1, t.year + 1900)
-end
-
 --------------------------------------------------------------------------------
 -- MONEY (Fix #19): no background rectangle at all. The green $ dot hugs the
 -- amount and the whole slot is FLEXIBLE — it smoothly widens as the money
@@ -673,6 +690,10 @@ local function formatMoney(n)
 end
 
 local moneyFlex = nil   -- smoothed text width driving the icon position
+local lastTopRightBottom = nil   -- [Fix #33] published for the reports list
+
+local MONEY_SCALE = 1.45   -- [Fix #33 - user] "الفلوس كبرها"
+local MONEY_ROW_H = 34
 
 local function drawMoneyBlock(rightX, y, postGUI)
         -- Fix #23: this server keeps money in elementData "money" (custom economy),
@@ -680,29 +701,29 @@ local function drawMoneyBlock(rightX, y, postGUI)
         local money = tonumber(getElementData(localPlayer, "money"))
                 or getPlayerMoney(localPlayer) or 0
         local coins = tonumber(getElementData(localPlayer, "bios:coins"))
-        local rowH = 28
+        local rowH = MONEY_ROW_H
 
         -- row 1: money (green dot, old client colors, no background)
-        -- Fix #21: amount big enough to read at a glance
+        -- Fix #21: amount big enough to read at a glance / Fix #33: bigger
         local text = formatMoney(money)
-        local tw = dxGetTextWidth(text, 1.15, fontDefault()) or 0
+        local tw = dxGetTextWidth(text, MONEY_SCALE, fontDefault()) or 0
         if not moneyFlex then moneyFlex = tw end
         moneyFlex = moneyFlex + (tw - moneyFlex) * 0.12   -- flexible slot
         local cy = y + rowH / 2
-        local iconCX = rightX - moneyFlex - 12 - 10
-        drawSmoothDisc(iconCX, cy, 10, 0, 255, 133, 255, postGUI)
-        dxDrawText("$", iconCX - 10, cy - 11, iconCX + 10, cy + 11,
-                tocolor(8, 40, 26, 255), 0.85, fontDefault(), "center", "center", false, false, postGUI)
-        dxDrawText(text, iconCX + 12, y, rightX, y + rowH,
-                tocolor(255, 255, 255, 255), 1.15, fontDefault(), "right", "center", false, false, postGUI)
+        local iconCX = rightX - moneyFlex - 12 - 11
+        drawSmoothDisc(iconCX, cy, 11, 0, 255, 133, 255, postGUI)
+        dxDrawText("$", iconCX - 11, cy - 12, iconCX + 11, cy + 12,
+                tocolor(8, 40, 26, 255), 1.0, fontDefault(), "center", "center", false, false, postGUI)
+        dxDrawText(text, iconCX + 13, y, rightX, y + rowH,
+                tocolor(255, 255, 255, 255), MONEY_SCALE, fontDefault(), "right", "center", false, false, postGUI)
         local bottom = y + rowH
 
         -- row 2: coins (red dot) — only while the coins system exists
         if coins then
                 local r2y = y + rowH + 10
-                drawSmoothDisc(iconCX, r2y + rowH / 2, 10, 255, 45, 45, 255, postGUI)
-                dxDrawText(tostring(coins), iconCX + 12, r2y, rightX, r2y + rowH,
-                        tocolor(255, 255, 255, 210), 0.95, fontHud(), "right", "center", false, false, postGUI)
+                drawSmoothDisc(iconCX, r2y + rowH / 2, 11, 255, 45, 45, 255, postGUI)
+                dxDrawText(tostring(coins), iconCX + 13, r2y, rightX, r2y + rowH,
+                        tocolor(255, 255, 255, 210), 1.1, fontHud(), "right", "center", false, false, postGUI)
                 bottom = r2y + rowH
         end
         return bottom - y
@@ -728,9 +749,14 @@ local function statusHudDrawImpl()
                 or (getRingValue("urine") >= 90) or (getRingValue("fatigue") >= 90)
                 or (getRingValue("cleanness") <= 5)
 
-        -- [Fix #30 - FPS] the frame + logo + 7 rings + icons live in a render
-        -- target that is repainted ONLY on value changes / slide-in / blink
-        -- steps. One dxDrawImage per frame instead of ~25 shader draws.
+        -- [Fix #30 - FPS] the frame + rings + icons + clock/date live in a
+        -- render target repainted ONLY on value changes / slide-in / blink
+        -- steps / minute flip. One dxDrawImage per frame instead of ~30 draws.
+        local clockText = getCurrentTime()
+        if clockText ~= lastClockText then
+                lastClockText = clockText
+                panelRTDirty = true
+        end
         local rtPainted = false
         if (panelRTDirty or animating or (anyCritical and nowTick - lastPulsePaint > 120)) then
                 lastPulsePaint = nowTick
@@ -743,13 +769,9 @@ local function statusHudDrawImpl()
         else
                 -- no render target (creation failed): direct draw fallback
                 drawStatusFrame(PANEL_X, panelY, PANEL_W, PANEL_H, postGUI)
-                if tex.logo then
-                        dxDrawImage(PANEL_X + PANEL_PAD_L, panelY + (PANEL_H - LOGO_SIZE) / 2,
-                                LOGO_SIZE, LOGO_SIZE, tex.logo, 0, 0, 0, tocolor(255, 255, 255, 235), postGUI)
-                end
-                local ringY = panelY + (PANEL_H - RING_SIZE) / 2
+                local ringY = panelY + 6
                 local S, G = RING_SIZE, RING_GAP
-                local firstX = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP
+                local firstX = PANEL_X + PANEL_PAD_L
                 for i = 0, 6 do
                         local def = RING_DEFS[i + 1]
                         local ring = rings[def.id]
@@ -757,43 +779,44 @@ local function statusHudDrawImpl()
                         local cx, cy = x + S / 2, ringY + S / 2
                         local value = ring and ring.value or 0
                         local shown = def.id == "urine" and (100 - value) or value
-                        drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
+                        drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 165, postGUI)
                         if shown > 0.25 then
                                 drawSmoothRing(cx, cy, S, S / 2 - RING_STROKE / 2 - 0.5, RING_STROKE,
                                         def.tint[1], def.tint[2], def.tint[3], 255, shown / 100, postGUI)
                         end
                         local icon = tex[def.icon]
                         if icon then
-                                local a = 220
+                                local a = 255
                                 if def.id == "health" then
-                                        a = getRingValue("health") > 10 and 220 or pulse
+                                        a = getRingValue("health") > 10 and 255 or pulse
                                 elseif def.id == "sleep" or def.id == "sleepy" then
-                                        a = getRingValue("sleepy") < 90 and 220 or pulse
+                                        a = getRingValue("sleepy") < 90 and 255 or pulse
                                 elseif def.id == "thirsty" then
-                                        a = getRingValue("thirsty") > 5 and 220 or pulse
+                                        a = getRingValue("thirsty") > 5 and 255 or pulse
                                 elseif def.id == "hungry" then
-                                        a = getRingValue("hungry") > 5 and 220 or pulse
+                                        a = getRingValue("hungry") > 5 and 255 or pulse
                                 elseif def.id == "toilet" then
-                                        a = getRingValue("urine") < 90 and 220 or pulse
+                                        a = getRingValue("urine") < 90 and 255 or pulse
                                 elseif def.id == "fatigue" then
-                                        a = getRingValue("fatigue") < 90 and 220 or pulse
+                                        a = getRingValue("fatigue") < 90 and 255 or pulse
                                 elseif def.id == "shower" then
-                                        a = getRingValue("cleanness") > 5 and 220 or pulse
+                                        a = getRingValue("cleanness") > 5 and 255 or pulse
                                 end
-                                local dw, dh = iconDrawSize(def.icon, S * 0.62)
+                                local dw, dh = iconDrawSize(def.icon, S * 0.66)
                                 local ix = x + S / 2 - dw / 2
                                 local iy = ringY + S / 2 - dh / 2
                                 dxDrawImage(ix, iy, dw, dh, icon, 0, 0, 0,
                                         tocolor(def.tint[1], def.tint[2], def.tint[3], a), postGUI)
                         end
                 end
+                drawStatusClock(PANEL_X, panelY, PANEL_W, postGUI)
         end
 
         -- shield ring: old client draws it under the last column while > 0
         if getRingValue("shield") > 0 then
                 local S, G = RING_SIZE, RING_GAP
-                local x = PANEL_X + PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + (S + G) * 6
-                local y = panelY + (PANEL_H - RING_SIZE) / 2 + 150 * SCALE
+                local x = PANEL_X + PANEL_PAD_L + (S + G) * 6
+                local y = panelY + PANEL_H + 150 * SCALE
                 local cx, cy = x + S / 2, y + S / 2
                 drawSmoothDisc(cx, cy, S / 2 - RING_STROKE + 0.5, 10, 6, 20, 130, postGUI)
                 if getRingValue("shield") > 0.25 then
@@ -810,21 +833,14 @@ local function statusHudDrawImpl()
                 end
         end
 
-        -- clock + date (old formats, right aligned under the frame)
-        if not CONFIG.hideClock then
-                -- Fix #30 (user) "كبرو بس لسا ماوصلو للشكل المطلوب" -> #32:
-                -- bigger again: 1.7 scale clock, 1.15 date
-                local textY = panelY + PANEL_H + 10
-                outlineText(getCurrentTime(), sx - 440, textY, 426, 82,
-                        tocolor(255, 255, 255, 255), 1.7, fontHudLarge(), "right", "top", postGUI)
-                outlineText(getCurrentDate(), sx - 440, textY + 84, 426, 56,
-                        tocolor(255, 255, 255, 210), 1.15, fontHudLarge(), "right", "top", postGUI)
-                -- flexible money block (no background)
-                local mh = drawMoneyBlock(sx - 14, textY + 146, postGUI)
-                moneyBlockBottom = textY + 146 + mh
-        else
-                local mh = drawMoneyBlock(sx - 10, panelY + PANEL_H + 8, postGUI)
-                moneyBlockBottom = panelY + PANEL_H + 8 + mh
+        -- [Fix #33] money sits right under the panel (clock+date live inside
+        -- the panel now); its bottom is published for the reports list so the
+        -- panel can dock UNDER the money instead of overlapping the stack
+        local mh = drawMoneyBlock(sx - 14, panelY + PANEL_H + 8, postGUI)
+        moneyBlockBottom = panelY + PANEL_H + 8 + mh
+        if math.abs((tonumber(lastTopRightBottom) or 0) - moneyBlockBottom) >= 1 then
+                lastTopRightBottom = moneyBlockBottom
+                setElementData(localPlayer, "hud:topRightBottom", moneyBlockBottom, false)
         end
 
         -- zone label, bottom-left above the radar (old client)

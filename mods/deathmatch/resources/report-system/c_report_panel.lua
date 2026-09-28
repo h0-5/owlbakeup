@@ -82,7 +82,12 @@ addEventHandler("onClientRender", root, function()
         local rows = 0
         for _ in reportText:gmatch("\n") do rows = rows + 1 end
         local h = math.max(50, rows * ROW_H + 40)
-        local x, y = sx - panelW - 14, 170
+        -- [Fix #33 - user] "قائمة ريبورتات خليها تحت الفلوس": dock the list
+        -- UNDER the money block (the hud publishes its bottom edge) instead
+        -- of overlapping the clock/date/money stack
+        local moneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
+        local y = moneyBottom and (moneyBottom + 8) or 170
+        local x, y = sx - panelW - 14, y
         drawRoundRect8(x, y, panelW, h, tocolor(0, 0, 0, 200))
         dxDrawText(reportText, x + 10, y + 10, x + panelW - 10, y + h - 10,
                 tocolor(0, 255, 60, 255), 1, "default-bold", "left", "top",

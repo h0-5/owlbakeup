@@ -12,7 +12,15 @@
 local sx, sy = guiGetScreenSize()
 local localPlayer = getLocalPlayer()
 
-local NAMETAG_DISTANCE = 8
+-- [Fix #33] 8u was follow-distance only - names were invisible in every
+-- normal situation (the user read that as "the feature does not exist").
+-- 20u matches how close you actually are when you expect to read a name.
+local NAMETAG_DISTANCE = 20
+
+-- [Fix #33] self-diagnostics: any error inside this handler used to kill the
+-- draw silently EVERY FRAME (and eat FPS with error logging). Wrap it and
+-- surface the first error in chat so it can never hide again.
+local nametagErrorShown = false
 
 local playersHud = {}   -- [player] = { name, color, icons, hidden }
 local typing = {}       -- [player] = true while chatting
@@ -68,9 +76,23 @@ end
 --------------------------------------------------------------------------------
 -- cache rebuild (old client updatePlayersHud)
 --------------------------------------------------------------------------------
+local function isOne(v)
+        return v == true or v == "1" or tonumber(v) == 1
+end
+
+local function localIsStaff()
+        local idx = tonumber(getElementData(localPlayer, "rank:index"))
+        if idx then return true end
+        return (tonumber(getElementData(localPlayer, "admin_level")) or 0) > 0
+                or (tonumber(getElementData(localPlayer, "account:gmlevel")) or 0) > 0
+end
+
 local function buildPlayerEntry(player)
-        local hidden = getElementData(player, "hiddenadmin") == 1
-                or getElementData(player, "admin:hideadmin")
+        -- [Fix #33] robust across every way the server stores these flags
+        -- (number 1, DB string "1", boolean true)
+        local hidden = isOne(getElementData(player, "hiddenadmin"))
+                or getElementData(player, "admin:hideadmin") == true
+                or getElementData(player, "admin:hideadmin") == "1"
 
         local masked = getElementData(player, "fakename")
         local name = masked and "Unknown Person"
@@ -93,13 +115,13 @@ local function buildPlayerEntry(player)
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        if getElementData(player, "duty_admin") == 1
-                and not getElementData(player, "admin:hideadmin") then
+        if isOne(getElementData(player, "duty_admin"))
+                and not isOne(getElementData(player, "admin:hideadmin")) then
                 table.insert(icons, "admin_badge")
         end
         -- [Fix #32] supporters get their badge above the head too (F4 supduty)
-        if getElementData(player, "duty_supporter") == 1
-                and not getElementData(player, "admin:hideadmin") then
+        if isOne(getElementData(player, "duty_supporter"))
+                and not isOne(getElementData(player, "admin:hideadmin")) then
                 table.insert(icons, "support_badge")
         end
         if getElementData(player, "temp:heart") then
@@ -207,7 +229,23 @@ end)
 local WaitTyping = 0
 
 addEventHandler("onClientRender", root, function()
-        if isPlayerMapVisible() then return end
+        if nametagErrorShown then return end
+        local ok, err = pcall(drawNametags)
+        if not ok and not nametagErrorShown then
+                nametagErrorShown = true
+                outputChatBox("[Nametags] " .. tostring(err), 255, 100, 100, false)
+        end
+end, false, "high-2")
+
+local function isPlayerMapVisibleSafe()
+        -- old-client global; guarded so a missing implementation can never
+        -- abort the whole draw loop (nil-safe regardless of load order)
+        if isPlayerMapVisible and isPlayerMapVisible() then return true end
+        return false
+end
+
+function drawNametags()
+        if isPlayerMapVisibleSafe() then return end
         if not isHudShowing or not isHudShowing() then return end
         if not getHudSetting or getHudSetting("tagmode") == false then return end
         if getElementData(localPlayer, "loggedin") ~= 1
@@ -219,7 +257,8 @@ addEventHandler("onClientRender", root, function()
         local now = getTickCount()
 
         for player, entry in pairs(playersHud) do
-                if player ~= localPlayer and isElement(player) and entry and not entry.hidden then
+                if player ~= localPlayer and isElement(player) and entry
+                        and (not entry.hidden or localIsStaff()) then
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then
@@ -264,6 +303,12 @@ addEventHandler("onClientRender", root, function()
                                                                         nameText = nameText .. " (" .. tostring(pid) .. ")"
                                                                 end
                                                         end
+                                                        -- [Fix #33] staff viewers keep seeing hidden admins
+                                                        -- (with a suffix) exactly like the old client's
+                                                        -- admintag view; regular players see nothing
+                                                        if entry.hidden then
+                                                                nameText = nameText .. " (Hidden)"
+                                                        end
                                                         outlineText(nameText, sX - 120, baseY - 22, 240, 18,
                                                                 entry.color, 1, fontDefault(), "center", "top")
 
@@ -288,7 +333,10 @@ addEventHandler("onClientRender", root, function()
                         end
                 end
         end
-end, false, "high-2")
+end
+-- drawNametags ends here; the pcall'd onClientRender handler above is the
+-- only registration (Fix #33: one-time error report instead of a silent
+-- every-frame abort that also ate FPS)
 
 --------------------------------------------------------------------------------
 -- startup

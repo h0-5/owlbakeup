@@ -10,6 +10,15 @@
 local localPlayer = getLocalPlayer()
 local peds = {}
 
+-- [Fix #33] per-ped look-at throttle: the old client let named peds glance
+-- at you, but calling setPedLookAt EVERY FRAME per ped resets the ped's
+-- look-at task 60x/sec (CPU churn). Once per 2.5s is the same effect.
+local lastLookAt = {}
+
+-- [Fix #33] one-time error report: a silent per-frame abort killed NPC names
+-- AND logged an error every frame (FPS). Wrap the draw, show it once.
+local pedNameErrorShown = false
+
 local function rebuildList()
         peds = {}
         for _, ped in ipairs(getElementsByType("ped", root, true)) do
@@ -47,23 +56,40 @@ addEventHandler("onClientElementStreamOut", root, function()
         for i = #peds, 1, -1 do
                 if peds[i] == source then table.remove(peds, i) end
         end
+        lastLookAt[source] = nil
 end)
 
 addEventHandler("onClientPedQuit", root, function()
         for i = #peds, 1, -1 do
                 if peds[i] == source then table.remove(peds, i) end
         end
+        lastLookAt[source] = nil
 end)
 
 setTimer(rebuildList, 3000, 0)
 addEventHandler("onClientResourceStart", resourceRoot, rebuildList)
 
 addEventHandler("onClientRender", root, function()
+        if pedNameErrorShown then return end
+        local ok, err = pcall(drawPedsName)
+        if not ok and not pedNameErrorShown then
+                pedNameErrorShown = true
+                outputChatBox("[NPC names] " .. tostring(err), 255, 100, 100, false)
+        end
+end, false, "high-2")
+
+local function isPlayerMapVisibleSafe()
+        if isPlayerMapVisible and isPlayerMapVisible() then return true end
+        return false
+end
+
+function drawPedsName()
         if getElementData(localPlayer, "loggedin") ~= 1
                 and not getElementData(localPlayer, "character:id") then return end
-        if isPlayerMapVisible() then return end
+        if isPlayerMapVisibleSafe() then return end
 
         local camX, camY, camZ = getCameraMatrix()
+        local now = getTickCount()
         for i = 1, #peds do
                 local ped = peds[i]
                 if isElement(ped) and isElementOnScreen(ped) then
@@ -74,7 +100,12 @@ addEventHandler("onClientRender", root, function()
                                         local dist = getDistanceBetweenPoints3D(camX, camY, camZ, hx, hy, hz)
                                         if dist <= 15 then
                                                 -- old client: peds glance at you while named
-                                                setPedLookAt(ped, hx, hy, hz, -1, 500)
+                                                -- [Fix #33] throttled - the task must not be reset
+                                                -- every frame
+                                                if (lastLookAt[ped] or 0) + 2500 < now then
+                                                        lastLookAt[ped] = now
+                                                        setPedLookAt(ped, hx, hy, hz, -1, 500)
+                                                end
                                                 if isLineOfSightClear(camX, camY, camZ, hx, hy, hz,
                                                         true, false, false, true, false, false, false) then
                                                         local sX, sY = getScreenFromWorldPosition(hx, hy, hz)
@@ -92,4 +123,6 @@ addEventHandler("onClientRender", root, function()
                         end
                 end
         end
-end, false, "high-2")
+end
+-- drawPedsName ends here; the pcall'd onClientRender handler above is the
+-- only registration (Fix #33)

@@ -335,6 +335,11 @@ end
 -- is off duty / plain (reference: the dimmed row still shows its orange
 -- rank text). No donor/VIP override here.
 function getRankColorRaw(p, rankName)
+        -- [Fix #33 - user] "فعلت الهدن وضل لون اسم شخصية ذي ماهو": a HIDDEN
+        -- admin must read as a plain player in the name + rank cells too -
+        -- their rank:color was still leaking onto the name and giving them
+        -- away. Plain white for hidden, exactly like off-duty staff.
+        if isHidden(p) then return PLAIN_COLOR end
         -- [Fix #31 - user] color source = the STAFF SYSTEM only:
         --   1) the live per-member rank:color pushed by staff_manager
         --   2) the full staff_roles color table pushed by s_tab.lua

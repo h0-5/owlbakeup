@@ -361,7 +361,12 @@ function MainMenuKey()
         -- selection and 0 on quit — accept either so F1 works on both stacks
         if getElementData(localPlayer, "character:id")
                 or getElementData(localPlayer, "loggedin") == 1 then
-                showSideBar(not state.state)
+                -- [Fix #33] a half-closed previous frame could leave state.state
+                -- stuck true with NO render handler running -> F1 then toggled
+                -- an invisible menu and looked dead. Trust the real draw state.
+                local reallyOpen = state.state
+                        and isEventHandlerAdded("onClientRender", root, main_menu_draw)
+                showSideBar(not reallyOpen)
         end
 end
 bindKey("F1", "down", MainMenuKey)
@@ -395,7 +400,13 @@ function getMenuElement()
         return menu
 end
 
-function showSideBar(show, openSection)
+--[=[ Fix #33 ] the open/close is pcall-wrapped: any error used to leave the
+-- menu permanently dead (state flipped, window half-built, handler missing)
+-- with NO trace. Now the first error is shown in chat, the half-built window
+-- is dropped and one clean rebuild+retry runs immediately. ]=]
+local uiBuilt = false -- rebuild guard (declared BEFORE its users - Fix #33)
+
+local function showSideBarInner(show, openSection)
         -- [Fix #32] if the UIKit window was ever lost (a UIKit restart, or
         -- the old draw-list wipe when another resource stopped), rebuild it
         -- on demand instead of pressing F1 into nothing
@@ -424,11 +435,29 @@ function showSideBar(show, openSection)
         end
 end
 
+function showSideBar(show, openSection)
+        local ok, err = pcall(showSideBarInner, show, openSection)
+        if not ok then
+                outputChatBox("#ff6b6b[F1] " .. tostring(err), 255, 107, 107, true)
+                uiBuilt = false
+                if UI.window.MainMenu and isElement(UI.window.MainMenu) then
+                        destroyElement(UI.window.MainMenu)
+                end
+                UI.window.MainMenu = nil
+                pcall(showSideBarInner, show, openSection)
+        end
+end
+
 --[[ ===================== UIKit construction (old design) ===================== ]]
 
-local uiBuilt = false -- rebuild guard (see UIKitReady)
+-- [Fix #33] the uiBuilt guard lives right above showSideBarInner (both it
+-- and buildMainMenuUI must share the SAME local)
 
-function UIKitReady()
+-- [Fix #33] F1 has been reported dead on the live server twice. Any runtime
+-- error inside the ~900-line build silently aborted it and the menu never
+-- came back. The whole build is now pcall-wrapped; the FIRST error is
+-- printed in chat (so it can be reported) and the next F1 retries cleanly.
+local function buildMainMenuUI()
         -- only one live panel per UIKit lifetime: both onClientUIReady and
         -- onClientUIKitReady fire on some start orders (and UIKit may restart
         -- while main-menu is up). A COMPLETED build is kept, an ABORTED one
@@ -1339,6 +1368,18 @@ function UIKitReady()
         end)
 
         uiBuilt = true
+end
+
+function UIKitReady()
+        local ok, err = pcall(buildMainMenuUI)
+        if not ok then
+                uiBuilt = false
+                if UI.window.MainMenu and isElement(UI.window.MainMenu) then
+                        destroyElement(UI.window.MainMenu)
+                end
+                UI.window.MainMenu = nil
+                outputChatBox("#ff6b6b[F1] UI build error: #ffffff" .. tostring(err), 255, 107, 107, true)
+        end
 end
 
 function updateLeaderboard(kind)

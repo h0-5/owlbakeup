@@ -331,7 +331,21 @@ UI.getDrawFunction["ui-combobox"] = function(arg0)
       end
     end
   end
-  UI.HoveredElement = isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height + UI.DB[arg0].data.items[forvar18].item_height) and arg0 or UI.HoveredElement
+  -- [Fix #54] forvar18 above is loop-local, so referencing it HERE (outside
+  -- the loop) read a global nil -> items[nil].item_height -> "attempt to
+  -- index field '?' (a nil value)" on EVERY combobox draw (x414 while the
+  -- character-create window was open). Hover region = the box plus the OPEN
+  -- dropdown's visible rows, computed from shown_items instead.
+  local extraH = 0
+  local shown = UI.DB[arg0].data.shown_items
+  if UI.DB[arg0].data.visible and shown and shown[2] > 0 and #UI.DB[arg0].data.items > 0 then
+    local firstI = math.max(shown[1] or 1, 1)
+    local lastI = math.min(shown[2], #UI.DB[arg0].data.items)
+    if lastI >= firstI and UI.DB[arg0].data.items[firstI] then
+      extraH = (lastI - firstI + 1) * UI.DB[arg0].data.items[firstI].item_height
+    end
+  end
+  UI.HoveredElement = isMouseInPosition(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height + extraH) and arg0 or UI.HoveredElement
   dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width - UI.DB[arg0].dimensions.width / 8, UI.DB[arg0].dimensions.height, tocolor(dxGetColor(UI.DB[arg0].colors[1])), 5, {
     up = {left = true, right = false},
     down = {

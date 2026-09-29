@@ -125,7 +125,8 @@ local CAMERA_POINTS = {
 }
 
 local function drawBackground()
-        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 180), true)
+        -- [Fix #54 - user] تخفيف التغميق: 180 -> 120 (login was too dark)
+        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 120), true)
 end
 
 local function showLoading(on)

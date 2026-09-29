@@ -66,6 +66,8 @@ local function applyPreviewModel()
         local array = currentSkinArray()
         currentSelectedSkin = math.max(1, math.min(currentSelectedSkin, #array))
         setElementModel(lobby.showPed, array[currentSelectedSkin] or 0)
+        -- [Fix #54] keep the preview facing the camera after model swaps
+        if type(faceShowPedToCamera) == "function" then faceShowPedToCamera() end
 end
 
 local function changeSkin(diff)
@@ -241,6 +243,8 @@ function lobbyCreation(state)
                         setPedRotation(lobby.showPed, spot[4])
                         local anim = getRandomAnim(2)
                         if anim then setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false) end
+                        -- [Fix #54] face the camera, not the spot's raw rotation
+                        if type(faceShowPedToCamera) == "function" then faceShowPedToCamera() end
                 end
                 applyPreviewModel()
 
@@ -256,6 +260,8 @@ function lobbyCreation(state)
                         setElementModel(lobby.showPed, tonumber(char[9]) or 0)
                         local anim = getRandomAnim(tonumber(char[3]) == 1 and 4 or 2)
                         if anim then setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false) end
+                        -- [Fix #54] keep facing the camera after the model swap
+                        if type(faceShowPedToCamera) == "function" then faceShowPedToCamera() end
                 end
         end
 end

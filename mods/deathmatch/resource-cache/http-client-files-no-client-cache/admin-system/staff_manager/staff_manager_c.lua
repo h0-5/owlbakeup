@@ -141,6 +141,22 @@ local function pickerOpen()
         local ok, v = pcall(colorPicker.isPickerVisible)
         return (ok and v == true) or false
 end
+-- [Fix #54] the isPickerVisible guard alone is racy: UIKit's pipeline runs
+-- BEFORE this resource's raw handlers (UIKit starts first), so the Confirm
+-- click's onClientUIClick closes the picker before our onClientClick sees
+-- it - the guard passed and panelHitTest selected the rank row behind the
+-- Confirm button. Two deterministic latches: (1) a click whose DOWN landed
+-- while the picker was open is dead for its whole click, (2) any raw click
+-- within 350ms of the picker closing is dead too.
+local pickerClickLatch = false
+local function pickerRecentlyClosed()
+        if type(colorPicker) ~= "table"
+                or type(colorPicker.wasRecentlyClosed) ~= "function" then
+                return false
+        end
+        local ok, v = pcall(colorPicker.wasRecentlyClosed, 350)
+        return (ok and v == true) or false
+end
 local pickerTargetRoleID = nil -- rank whose color dialog is open (restored on confirm)
 local rawRankRowText = nil    -- Fix #25: that row's name text (selection may race)
 local regSeq = 0              -- registration order = painter order
@@ -943,10 +959,21 @@ local function panelHitTest(ax, ay)
 end
 
 addEventHandler("onClientClick", root, function(button, state, ax, ay)
-        if button ~= "left" or state ~= "up" or not uiBuilt then return end
-        -- [Fix #34] modal color picker: the raw path must not reach the panel
-        -- through (or around) the picker window
-        if pickerOpen() then return end
+        if button ~= "left" or not uiBuilt then return end
+        -- [Fix #54] latch the whole click: if its DOWN landed while the
+        -- picker was open (or the picker just closed on this very click),
+        -- the UP must never reach the panel - the rank row sits right
+        -- behind the Confirm/Cancel buttons.
+        if state == "down" then
+                if pickerOpen() or pickerRecentlyClosed() then
+                        pickerClickLatch = true
+                end
+                return
+        end
+        if state ~= "up" then return end
+        local blocked = pickerOpen() or pickerClickLatch or pickerRecentlyClosed()
+        pickerClickLatch = false
+        if blocked then return end
         local hitEl, info = panelHitTest(ax, ay)
         if hitEl and info then
                 panelDispatch(hitEl, info, ax, ay)
@@ -955,7 +982,7 @@ end)
 
 addEventHandler("onClientDoubleClick", root, function(button, ax, ay)
         if button ~= "left" or not uiBuilt then return end
-        if pickerOpen() then return end
+        if pickerOpen() or pickerRecentlyClosed() then return end
         local hitEl, info = panelHitTest(ax, ay)
         if hitEl and info and info.kind == "grid" and hitEl == UI.gridlist.permissions then
                 local idx = panelGridRowAt(info, hitEl, ay)

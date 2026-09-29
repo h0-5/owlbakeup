@@ -444,6 +444,11 @@ addEventHandler("factionmenu:hide", root, function()
         factionUIHide()
 end)
 
+addEvent("hideFactionMenu", true)
+addEventHandler("hideFactionMenu", root, function()
+        factionUIHide()
+end)
+
 addEventHandler("onClientPlayerWasted", localPlayer, function()
         if F.visible then factionUIHide() end
 end)
@@ -469,6 +474,7 @@ end)
 -- data flow (server contract unchanged)
 -- ===========================================================================
 
+addEvent("showFactionMenu", true)
 addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders,
         memberOnline, memberLastLogin, factionRanks, factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels,
         vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, membersPhone, fromShowF, factionID)

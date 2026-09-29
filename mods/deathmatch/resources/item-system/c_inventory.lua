@@ -25,7 +25,9 @@ local scale = sy / 1080
 local localPlayer = getLocalPlayer()
 
 -- old client palette -------------------------------------------------------
-local COL_BACKDROP_A = 235
+-- [Fix #54 - user] تخفيف التغميق: the backdrop used to run 235->197 (nearly
+-- opaque); 140->102 keeps the panel readable while the world stays visible.
+local COL_BACKDROP_A = 140
 local COL_PANEL      = tocolor(0, 8, 20, 225)
 local COL_PANEL_EDGE = tocolor(255, 255, 255, 25)
 local COL_SLOT_OUT   = tocolor(255, 255, 255, 10)
@@ -435,6 +437,9 @@ end
 -- world item hover detection (kept from the working inventory)
 function getHoverElement()
         local cursorX, cursorY, absX, absY, absZ = getCursorPosition()
+        -- [Fix #54] pointing at the sky leaves the world coords false/nil -
+        -- processLineOfSight would log "Bad argument ... argument 4, got nil"
+        if not (absX and absY and absZ) then return false end
         local cameraX, cameraY, cameraZ = getWorldFromScreenPosition(cursorX, cursorY, 0.1)
 
         for _, acceptProtected in ipairs({ false, true }) do
@@ -599,24 +604,20 @@ addEventHandler("onClientRender", root, function()
 
         hoverWorldItem = false
         if cursorOverPanel then return end
-        local cx, cy, wx, wy, wz = getCursorPosition()
-        -- [Fix #53] processLineOfSight needs SIX numbers, but a multi-return
-        -- call in NON-final position keeps only its first value in Lua:
-        -- getWorldFromScreenPosition() collapsed to one number, argument 5
-        -- was always missing ("Bad argument ... argument 5, got none"), the
-        -- ray never ran, hoverWorldItem could never be set and floor pickup
-        -- never fired (user: "dropped an item, cannot pick it up"). Split the
-        -- call; also hitElement is the 4th return value (the 5th is normalX).
-        local wx2, wy2, wz2 = getWorldFromScreenPosition(cx, cy, 0.1)
-        if not (wx2 and wy2 and wz2 and wx and wy and wz) then return end
-        local hitX, hitY, hitZ, element = processLineOfSight(wx2, wy2, wz2, wx, wy, wz)
-        if element and getElementParent(getElementParent(element)) == getResourceRootElement(getResourceFromName("item-world")) then
-                local x, y, z = getElementPosition(localPlayer)
-                local eX, eY, eZ = getElementPosition(element)
-                if getDistanceBetweenPoints3D(x, y, z, eX, eY, eZ) <= 5 then
-                        hoverWorldItem = element
-                end
-        end
+        -- [Fix #54] THE floor-pickup killer (clientscript.log:
+        -- "getElementParent ... got number '12.3984375'"): this inline ray
+        -- destructured processLineOfSight with FOUR values, but the FIRST
+        -- return is `hit` (bool) - so `element` was actually hitZ, a world
+        -- coordinate. getElementParent(number) errored every tick, the item
+        -- check never passed and hoverWorldItem never got set, so clicking a
+        -- dropped item did nothing (even after Fix #53 repaired the
+        -- argument count). getHoverElement() (from the working inventory)
+        -- destructures all five returns correctly AND keeps the 0.34-unit
+        -- near-miss fallback when the ray hits the ground next to a small
+        -- item - it existed all along but was never called.
+        local _, _, wx, wy, wz = getCursorPosition()
+        if not (wx and wy and wz) then return end
+        hoverWorldItem = getHoverElement() or false
 end)
 
 -- show / hide ------------------------------------------------------------------

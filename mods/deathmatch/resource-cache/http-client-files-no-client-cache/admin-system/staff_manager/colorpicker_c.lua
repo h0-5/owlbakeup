@@ -152,10 +152,27 @@ function colorPicker.openSelect(r, g, b, a)
         return true
 end
 
-function colorPicker.closeSelect()
+-- [Fix #54] every hide path stamps the close time. The UIKit pipeline runs
+-- BEFORE this resource's raw onClientClick (UIKit starts first in
+-- mtaserver.conf), so it can close the picker via onClientUIClick while the
+-- SAME physical click's raw handlers are still queued - by the time the
+-- staff panel's raw handler runs, isPickerVisible() is already false and its
+-- modal guard lets the click fall through to the rank row behind Confirm.
+-- The staff panel blocks raw clicks for 350ms after this stamp.
+local pickerClosedTick = 0
+local function hidePicker()
         if UI.window.picker and isElement(UI.window.picker) then
                 eui:uiSetVisible(UI.window.picker, false)
         end
+        pickerClosedTick = getTickCount()
+end
+function colorPicker.wasRecentlyClosed(ms)
+        return pickerClosedTick > 0
+                and (getTickCount() - pickerClosedTick) < (ms or 350)
+end
+
+function colorPicker.closeSelect()
+        hidePicker()
 end
 
 function colorPicker.RGBToHex(red, green, blue, alpha)
@@ -199,11 +216,11 @@ addEventHandler("onClientUIClick", root, function()
         end
         if source == UI.button.ok then
                 commitHexFromEdit() -- [Fix #50] never drop a typed code
-                eui:uiSetVisible(UI.window.picker, false)
+                hidePicker()
                 triggerEvent("onClientColorPickerConfirm", localPlayer,
                         cpColor.r, cpColor.g, cpColor.b, cpColor.a)
         elseif source == UI.button.cancel then
-                eui:uiSetVisible(UI.window.picker, false)
+                hidePicker()
         end
 end)
 
@@ -260,12 +277,12 @@ local function applyPick(kind, payload)
                         ("#%02X%02X%02X"):format(cpColor.r, cpColor.g, cpColor.b))
         elseif kind == "ok" then
                 commitHexFromEdit() -- [Fix #50] never drop a typed code
-                eui:uiSetVisible(UI.window.picker, false)
+                hidePicker()
                 pcall(eui.uiFlashPress, eui, UI.button.ok)
                 triggerEvent("onClientColorPickerConfirm", localPlayer,
                         cpColor.r, cpColor.g, cpColor.b, cpColor.a)
         elseif kind == "cancel" then
-                eui:uiSetVisible(UI.window.picker, false)
+                hidePicker()
         end
 end
 

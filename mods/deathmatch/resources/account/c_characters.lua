@@ -157,6 +157,20 @@ local function getCamPoint(spot)
         return px, py, spot[3] + 0.6
 end
 
+-- [Fix #54 - user] "الشخصية تظهر مواجهة الكاميرا": spot rotation + the
+-- (sin, cos) offset did NOT line up with MTA's real ped facing
+-- (animation-system's proven look-at: rot = deg(atan2(dy, dx)) - 90), so the
+-- preview ped showed its side/back. Face the camera directly instead - the
+-- same formula the working animation-system uses.
+function faceShowPedToCamera()
+        if not isElement(lobby.showPed) then return end
+        local camX, camY = getCameraMatrix()
+        local px, py = getElementPosition(lobby.showPed)
+        local dx, dy = camX - px, camY - py
+        if dx == 0 and dy == 0 then return end
+        setPedRotation(lobby.showPed, (math.deg(math.atan2(dy, dx)) - 90) % 360)
+end
+
 -- ===========================================================================
 -- UIKit build
 -- ===========================================================================
@@ -272,6 +286,8 @@ local function applyPedForCharacter()
                 if anim then
                         setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false)
                 end
+                -- [Fix #54] last authority on facing: model/anim must not decide it
+                faceShowPedToCamera()
         end
 end
 
@@ -413,6 +429,7 @@ function selectTab(id)
                                 local anim = getRandomAnim(tonumber(char[3]) == 1 and 4 or 2)
                                 if anim then setPedAnimation(lobby.showPed, anim[1], anim[2], -1, true, false, false, false) end
                         end
+                        faceShowPedToCamera()
                 end
                 refreshCharacterDetails()
                 eui:uiSetVisible(UI.window.CharacterInfo, #lobby.currentCharacters > 0)
@@ -447,8 +464,10 @@ end
 function lobby.draw()
         if not lobby.selection_status then return end
 
-        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 180), true)
-        dxDrawImage(0, 0, sx, sy, BG_TEXTURE, 0, 0, 0, tocolor(0, 3, 8, 255), true)
+        -- [Fix #54 - user] تخفيف التغميق: 180 -> 120 rect, gradient tint
+        -- 255 -> 170 (the character preview was buried under the dark)
+        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 120), true)
+        dxDrawImage(0, 0, sx, sy, BG_TEXTURE, 0, 0, 0, tocolor(0, 3, 8, 170), true)
 
         -- logo (left, vertically centered) + account name (top-right)
         local logoSize = 100 * s

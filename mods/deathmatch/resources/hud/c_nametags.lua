@@ -136,17 +136,20 @@ local function buildPlayerEntry(player)
         end
 
         -- badge icons above the head (old client icons row)
+        -- [Fix #54 - user] "الشارة تختفي لو طفي الدوتي أو hideadmin": the
+        -- badge follows duty_admin/duty_supporter AND the REAL hide key the
+        -- server uses ("hiddenadmin" 0/1) - the old "admin:hideadmin" check
+        -- never matched anything server-side, so hidden admins kept their
+        -- badge.
         local icons = {}
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        if isOne(getElementData(player, "duty_admin"))
-                and not isOne(getElementData(player, "admin:hideadmin")) then
+        if isOne(getElementData(player, "duty_admin")) and not hidden then
                 table.insert(icons, "admin_badge")
         end
         -- [Fix #32] supporters get their badge above the head too (F4 supduty)
-        if isOne(getElementData(player, "duty_supporter"))
-                and not isOne(getElementData(player, "admin:hideadmin")) then
+        if isOne(getElementData(player, "duty_supporter")) and not hidden then
                 table.insert(icons, "support_badge")
         end
         if getElementData(player, "temp:heart") then
@@ -183,8 +186,8 @@ end
 local CACHE_KEYS = {
         ["rank:color"] = true, ["fakename"] = true,
         ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
-        ["character:name"] = true, ["duty_admin"] = true, ["temp:heart"] = true,
-        ["hud:badges"] = true,
+        ["character:name"] = true, ["duty_admin"] = true, ["duty_supporter"] = true,
+        ["temp:heart"] = true, ["hud:badges"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key, _, _value)
         if CACHE_KEYS[key] and isElement(source) and getElementType(source) == "player" then

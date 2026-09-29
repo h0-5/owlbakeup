@@ -56,9 +56,20 @@ function uiCreateGridList(arg0, arg1, arg2, arg3, arg4, arg5)
   uiSetVisible(UI.DB[element].data.scrollbar, false)
   return (element)
 end
+-- [Fix #54] bilingual column/cell text: the faction panel passes { en, ar }
+-- tables to uiGridListAddColumn exactly like every other UIKit text element
+-- (labels/buttons store both languages and resolve at draw time via the
+-- global `language`). The decompiled gridlist asserted a plain string, so
+-- F3 threw on EVERY AddColumn and every SetItem* cascaded "no such column".
+local function gridResolveText(t)
+  if type(t) == "table" then
+    return (language and t[language]) or t.en or t.ar or ""
+  end
+  return t
+end
 function uiGridListAddColumn(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListAddColumn' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
-  assert(type(arg1) == "string", "Bad argument @ 'uiGridListAddColumn' [Expected string at argument 2, got " .. type(arg1) .. "]")
+  assert(type(arg1) == "string" or type(arg1) == "table", "Bad argument @ 'uiGridListAddColumn' [Expected string or bilingual {en, ar} table at argument 2, got " .. type(arg1) .. "]")
   assert(type(arg2) == "number", "Bad argument @ 'uiGridListAddColumn' [Expected number at argument 3, got " .. type(arg2) .. "]")
   table.insert(UI.DB[arg0].data.columns, {
     text = arg1,
@@ -204,7 +215,7 @@ end
 function uiGridListGetColumnText(arg0, arg1)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetColumnText' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
   assert(UI.DB[arg0].data.columns[arg1], "Bad argument @ 'uiGridListGetColumnText' [There's no such column index]")
-  return UI.DB[arg0].data.columns[arg1].text
+  return gridResolveText(UI.DB[arg0].data.columns[arg1].text)
 end
 function uiGridListGetColumnColor(arg0, arg1)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetColumnColor' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -216,7 +227,7 @@ function uiGridListGetItemText(arg0, arg1, arg2)
   assert(UI.DB[arg0].data.columns[arg2], "Bad argument @ 'uiGridListGetItemText' [There's no such column index]")
   assert(UI.DB[arg0].data.rows[arg1 + 1], "Bad argument @ 'uiGridListGetItemText' [There's no such row index]")
   local cell = UI.DB[arg0].data.rows[arg1 + 1][arg2]
-  return cell and cell.text or ""
+  return gridResolveText(cell and cell.text or "")
 end
 function uiGridListGetItemData(arg0, arg1, arg2)
   assert(isUIElement(arg0, "gridlist"), "Bad argument @ 'uiGridListGetItemData' [Expected ui-gridlist at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
@@ -322,7 +333,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       columnX[forvar17] = UI.DB[arg0].dimensions.x + columnOffset
       columnOffset = columnOffset + forvar18.width * UI.DB[arg0].dimensions.width
       if UI.DB[arg0].properties.columns_names_visible.value == "True" then
-        dxDrawText(forvar18.text, columnX[forvar17] + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, columnX[forvar17] + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI) -- [Vortex fix] header x = columnX (the decompiled draw used the gridlist left edge for EVERY column -> all headers stacked on top of each other)
+        dxDrawText(gridResolveText(forvar18.text), columnX[forvar17] + (UI.DB[arg0].align.X == "left" and 5 or 0), UI.DB[arg0].dimensions.y, columnX[forvar17] + forvar18.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + UI.DB[arg0].properties.column_height.value, forvar18.color or tocolor(255, 255, 255, 255), UI.DB[arg0].properties.column_font_scale.value, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, _, UI.postGUI) -- [Vortex fix] header x = columnX (the decompiled draw used the gridlist left edge for EVERY column -> all headers stacked on top of each other)
       end
     end
     if UI.DB[arg0].properties.columns_names_visible.value == "True" then
@@ -375,7 +386,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
           if UI.DB[arg0].data.selected_row == forvar19 - 1 then
             cellColor = tocolor(255, 255, 255, 255)
           end
-          dxDrawText(forvar25.text, columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, cellColor, UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
+          dxDrawText(gridResolveText(forvar25.text), columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, cellColor, UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
         end
       end
     end

@@ -303,10 +303,15 @@ local visibleItems = {}        -- resolved strip list
 function isHudShowing() return hudSettings.showhud end
 function getHudSetting(key) return hudSettings[key] or false end
 
--- [Fix #52] meta.xml exported isActive but no function ever existed, so every
--- caller (chat icon, notifications, admin overlay, report box) raised
--- "failed to call 'hud:isActive'" every frame.
-function isActive() return hudSettings.showhud end
+-- [export] hud:isActive - other resources gate their overlays on this
+-- (admin overlay, report box, chat icon, notifications). Mirrors the HUD's
+-- own draw gate: showhud on + logged in (or character picked).
+function isActive()
+        if not hudSettings.showhud then return false end
+        if getElementData(localPlayer, "loggedin") == 1 then return true end
+        if getElementData(localPlayer, "character:id") then return true end
+        return false
+end
 
 function setHudSetting(key, value)
         for _, item in ipairs(hudItems) do
@@ -520,16 +525,19 @@ end
 --   slightly-black rectangle right below the panel, close together, date
 --   bigger than before and in the SAME font colour as the clock.
 --------------------------------------------------------------------------------
-local PANEL_PAD_L = 12
-local LOGO_SIZE  = 40
+local PANEL_PAD_L = 14
+local LOGO_SIZE  = 55
 local LOGO_GAP   = 14
 local ROW_W = 7 * RING_SIZE + 6 * RING_GAP          -- 318
 local PANEL_W = PANEL_PAD_L + LOGO_SIZE + LOGO_GAP + ROW_W + 16
 -- clock/date rectangle (its own panel, no logo inside it)
-local CLOCK_SCALE = 1.3
-local DATE_SCALE   = 1.05
-local CLOCK_LINE_H = 36
-local DATE_LINE_H  = 27
+-- [Fix #54 - user] image 2: same shape, much smaller font -> flatter rect.
+-- Measured off the shot at 1080p: clock ~24px, date ~17px, box ~59 tall.
+-- hud-large base = 35 * (1080/972) ~= 39px -> scales 0.6 / 0.45.
+local CLOCK_SCALE = 0.45
+local DATE_SCALE   = 0.3
+local CLOCK_LINE_H = 30
+local DATE_LINE_H  = 15
 -- [Fix #47 - user] strict rectangle per the reference shot: a little wider
 -- so the right-aligned text floats over the fade zone like Image 1
 local CLOCK_RECT_W = 172

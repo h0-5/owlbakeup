@@ -489,21 +489,8 @@ local function filteredList()
         return out
 end
 
-addEventHandler("onClientClick", root, function(button, buttonState)
-        if not state or button ~= "left" or buttonState ~= "down" then return end
-        -- Fix #29: collapse/expand chevron (reference header button)
-        if clickInRect(chevronBox.x, chevronBox.y, chevronBox.w, chevronBox.h) then
-                collapsed = not collapsed
-                return
-        end
-        if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
-                if not searchActive then createSearchEdit() end
-                if not cursorOn then
-                        cursorOn = true
-                        showCursor(true)
-                end
-        end
-end)
+-- [Fix #54] the left-click handler lives BELOW toggle() (it calls it) -
+-- Lua closures only capture locals that exist at creation time.
 
 --[[ [Fix #31 - user] THE SEARCH = the old client's search, 1:1.
 
@@ -886,6 +873,37 @@ local function toggle(show)
                 searchActive = false
         end
 end
+
+-- left click: chevron / search box / dismiss. Lives after toggle() on
+-- purpose (it calls toggle - Lua only captures locals that exist at
+-- closure creation time).
+addEventHandler("onClientClick", root, function(button, buttonState)
+        if not state or button ~= "left" or buttonState ~= "down" then return end
+        -- Fix #29: collapse/expand chevron (reference header button)
+        if clickInRect(chevronBox.x, chevronBox.y, chevronBox.w, chevronBox.h) then
+                collapsed = not collapsed
+                return
+        end
+        if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
+                if not searchActive then createSearchEdit() end
+                if not cursorOn then
+                        cursorOn = true
+                        showCursor(true)
+                end
+                return
+        end
+        -- [Fix #54 - user] "كليك يسار يخفي الكيرسر، ولو كان ما ماسك تاب
+        -- يخفي اللوحة": any other left click dismisses the cursor, and if
+        -- TAB is not being held the board closes with it (search-active
+        -- used to pin the board open with a cursor until ESC).
+        if cursorOn then
+                cursorOn = false
+                showCursor(false)
+        end
+        if not getKeyState("tab") then
+                toggle(false)
+        end
+end)
 
 -- Fix #24 (user): the board shows while TAB is HELD and disappears the
 -- moment the finger lifts. It stays open only when the search box is

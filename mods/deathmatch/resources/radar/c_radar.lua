@@ -200,7 +200,7 @@ local function drawMinimapContent()
         -- radar areas (turf etc.): outlined within 600u (old rule)
         local mx, my, _ = getElementPosition(localPlayer)
         for _, area in ipairs(getElementsByType("radararea")) do
-                local axp, ayp = getRadarAreaPosition(area)
+                local axp, ayp = getElementPosition(area)
                 local asx, asy = getRadarAreaSize(area)
                 local cxp, cyp = axp + asx / 2, ayp + asy / 2
                 if getDistanceBetweenPoints2D(mx, my, cxp, cyp) <= 600 then
@@ -383,7 +383,7 @@ local function bigMapDraw()
 
         -- radar areas filled + optional "text" (old)
         for _, area in ipairs(getElementsByType("radararea")) do
-                local axp, ayp = getRadarAreaPosition(area)
+                local axp, ayp = getElementPosition(area)
                 local asx, asy = getRadarAreaSize(area)
                 local x1, y1 = bigMapWorldPoint(axp, ayp + asy)
                 local x2, y2 = bigMapWorldPoint(axp + asx, ayp)

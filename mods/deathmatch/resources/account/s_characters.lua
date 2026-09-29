@@ -257,7 +257,7 @@ function spawnCharacter(characterID, remoteAccountID, theAdmin, targetAccountNam
                 local spawnClient = client
                 setTimer(function()
                         if not isElement(spawnClient) then return end
-                        local stillFrozen = getElementFrozen(spawnClient)
+                        local stillFrozen = isElementFrozen(spawnClient)
                         local stillInvisible = getElementAlpha(spawnClient) == 0
                         if stillFrozen or stillInvisible then
                                 if stillFrozen then setElementFrozen(spawnClient, false) end

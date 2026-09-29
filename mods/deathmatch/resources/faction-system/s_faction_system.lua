@@ -1621,7 +1621,7 @@ function getFactionFinance(factionID)
 
                                 if not transactions[week] then transactions[week] = {} end
 
-                                local type = tonumber(row["type"])
+                                local txType = tonumber(row["type"])
 
                                 local reason = row["reason"]
 
@@ -1644,7 +1644,7 @@ function getFactionFinance(factionID)
 
                                                 from = getTeamName(exports.pool:getElement("team", -num)) or "-"
 
-                                        elseif num == 0 and ( type == 6 or type == 7 ) then
+                                        elseif num == 0 and ( txType == 6 or txType == 7 ) then
 
                                                 from = "Government"
 
@@ -1669,7 +1669,7 @@ function getFactionFinance(factionID)
 
 
 
-                                table.insert(transactions[week], { id = id, amount = amount, time = time, type = type, from = from, to = to, reason = reason, week = week })
+                                table.insert(transactions[week], { id = id, amount = amount, time = time, type = txType, from = from, to = to, reason = reason, week = week })
 
                                 --outputDebugString("transactions["..tostring(week).."]="..tostring(#transactions[week]))
 

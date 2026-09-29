@@ -179,12 +179,13 @@ UI.getDrawFunction["ui-tabpanel"] = function(arg0)
 end
 function updateVisibility()
   if getElementType(source) == "ui-tab" and getElementType(getElementParent(source)) == "ui-tabpanel" then
+    local visible = {}
     for forvar4, forvar5 in ipairs(getElementChildren(getElementParent(source), "ui-tab")) do
-      if (eventName == "onClientElementDestroy" and forvar5 ~= source or eventName == "onClientUIVisibilityChange") and UI.DB[forvar5].visible then
-        table.insert({}, forvar5)
+      if (eventName == "onClientElementDestroy" and forvar5 ~= source or eventName == "onClientUIVisibilityChange") and UI.DB[forvar5] and UI.DB[forvar5].visible then
+        table.insert(visible, forvar5)
       end
     end
-    UI.DB[getElementParent(source)].data.visible_tabs = {}
+    UI.DB[getElementParent(source)].data.visible_tabs = visible
   end
 end
 addEventHandler("onClientElementDestroy", resourceRoot, updateVisibility)

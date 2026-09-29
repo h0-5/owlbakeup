@@ -609,6 +609,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         showCursor(true)
 end)
 
+addEvent("faction:permissions:sync", true)
 addEventHandler("faction:permissions:sync", localPlayer, function(perms, typeName)
         F.tools = perms or {}
         F.toolsType = typeName or {}

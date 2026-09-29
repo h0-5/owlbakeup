@@ -181,7 +181,7 @@ function uiMenuGetRowCount(arg0)
 end
 function uiMenuGetSelectedRow(arg0)
   assert(isUIElement(arg0, "menu"), "Bad argument @ 'uiMenuSetSelectedRow' [Expected ui-menu at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
-  assert(UI.DB[arg0].data.rows[row], "Bad argument @ 'uiMenuSetSelectedRow' [There's no such row index]")
+  assert(UI.DB[arg0].data.rows[UI.DB[arg0].data.selected_row], "Bad argument @ 'uiMenuGetSelectedRow' [There's no such row index]")
   return UI.DB[arg0].data.selected_row
 end
 function uiMenuSetSelectedRow(arg0, arg1)
@@ -252,9 +252,7 @@ UI.getDrawFunction["ui-menu"] = function(arg0)
         dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.selected_row_color.value, 5)
         dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y - anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear")) / 2, 2, anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear"), UI.DB[arg0].properties.selection_color.value, UI.postGUI)
       else
-        if UI.DB[arg0].data.hovered_row == forvar16 then
-        end
-        if 0 < bitExtract(UI.DB[arg0].properties.hovered_row_color.value, 24, 8) then
+        if UI.DB[arg0].data.hovered_row == forvar16 and 0 < bitExtract(UI.DB[arg0].properties.hovered_row_color.value, 24, 8) then
           dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.hovered_row_color.value, 5)
         end
       end

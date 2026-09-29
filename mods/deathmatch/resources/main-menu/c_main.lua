@@ -448,9 +448,10 @@ addCommandHandler("menu", MainMenuKey, false, false)
 -- F2 = reports hub (opens the same sidebar directly on the reports section)
 function ReportsMenuKey()
         if getElementData(localPlayer, "character:id")
-                or getElementData(localPlayer, "loggedin") == 1 then
+                or getElementData(localPlayer, "account:character:id")
+                or tonumber(getElementData(localPlayer, "loggedin")) == 1 then
                 local wasOpen = state.state
-                showSideBar(not wasOpen, "reports")
+                showSideBar(not wasOpen, "report")
         end
 end
 bindKey("F2", "down", ReportsMenuKey)

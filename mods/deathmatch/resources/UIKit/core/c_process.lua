@@ -102,7 +102,7 @@ function UI.drawing()
             UI.isDraw[el] = true
             anyDrawn = true
           end
-          UI.TempDisabled[el] = UI.DB[el].properties.Disabled.value == "True" or UI.TempDisabled[el]
+          UI.TempDisabled[el] = UI.DB[el].properties.Disabled.value == "True"
         end
       end
       if not UI.isDraw[el] then

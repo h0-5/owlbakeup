@@ -1,53 +1,36 @@
-<meta>
-	<info author="UG MTA Scripting Team" type="script" description="Spike System"/>
-
-	<script src="s_job_system.lua" type="server"/>
-	<script src="c_job_system.lua" type="client"/>
-	<!--<script src="s_job_commands.lua" type="server"/>-->
-	
-	<script src="s_job_framework.lua" type="server"/>
-	<script src="c_job_framework.lua" type="client"/>
-	
-	<!--
-	<script src="trucker/s_trucker_job.lua" type="server"/>
-	<script src="trucker/c_trucker_job.lua" type="client"/>
-	-->
-
-	<script src="fishing/s_fishing_job.lua" type="server"/>
-	<script src="fishing/c_fishing_job.lua" type="client"/>
-	
-	<script src="photographer/s_photographer_job.lua" type="server"/>
-	<script src="photographer/c_photographer_job.lua" type="client"/>
-
-	<script src="mechanic/s_mechanic_job.lua" type="server"/>
-	<script src="mechanic/s_mechanic_previews.lua" type="server"/>
-	<script src="mechanic/c_mechanic_job.lua" type="client"/>
-	
-	<script src="taxi/s_taxi_job.lua" type="server"/>
-	<script src="taxi/c_taxi_job.lua" type="client"/>
-
-	<script src="taximeter/g_taximeter.lua" type="server"/>
-	<script src="taximeter/g_taximeter.lua" type="client"/>
-	<script src="taximeter/s_taximeter.lua" type="server"/>
-	<script src="taximeter/c_taximeter.lua" type="client"/>	
-	<file src="taximeter/images/base_driver.png" />
-	<file src="taximeter/images/base_pax.png" />
-	<file src="taximeter/images/btn.png" />
-	<file src="taximeter/images/btn_on.png" />
-	<file src="taximeter/images/btn_active.png" />
-
-	<script src="bus/g_bus_routes.lua" type="client"/>
-	<script src="bus/g_bus_routes.lua" type="server"/>
-	<script src="bus/c_bus_job.lua" type="client"/>
-	<script src="bus/s_bus_job.lua" type="server"/>
-	
-	<script src="locksmith/s_locksmith_job.lua" type="server"/>
-	<script src="locksmith/c_locksmith_job.lua" type="client"/>
-	<export function="fetchJobInfoForOnePlayer" type="server"/>
-
-	<script src="jobs_g.lua" type="client"/>
-	<script src="jobs_g.lua" type="server"/>
-
-	<export function="getJobTitleFromID" type="server"/>
-	<export function="getJobTitleFromID" type="client"/>
+<meta>
+        <info author="Owl Gaming (job core + taxi ported 1:1 from the old-client decompiles - owlbakeup Fix #61)" type="script" description="Owl job system: jobs center / current job UI + Taxi Driver" />
+
+        <!-- ============================ OWL CORE ============================ -->
+        <script src="g_shared_owl.lua" type="client" cache="false" />
+        <script src="s_job_owl.lua" type="server" />
+        <script src="c_job_owl.lua" type="client" cache="false" />
+        <file src="briefcase.png" />
+
+        <!-- ======================== OWL JOBS (ported) ======================= -->
+        <script src="taxi/s_taxi_owl.lua" type="server" />
+        <script src="taxi/c_taxi_owl.lua" type="client" cache="false" />
+        <file src="taxi/images/pin.png" />
+
+        <!-- ===================== LEGACY SUB-JOBS (dormant) ==================
+             fishing / photographer / mechanic / locksmith / bus come from the
+             UG base and stay loadable; taking them is no longer possible
+             (the UG core was retired) until their Owl equivalents land. -->
+        <script src="fishing/s_fishing_job.lua" type="server" />
+        <script src="fishing/c_fishing_job.lua" type="client" />
+
+        <script src="photographer/s_photographer_job.lua" type="server" />
+        <script src="photographer/c_photographer_job.lua" type="client" />
+
+        <script src="mechanic/s_mechanic_job.lua" type="server" />
+        <script src="mechanic/s_mechanic_previews.lua" type="server" />
+        <script src="mechanic/c_mechanic_job.lua" type="client" />
+
+        <script src="locksmith/s_locksmith_job.lua" type="server" />
+        <script src="locksmith/c_locksmith_job.lua" type="client" />
+
+        <script src="bus/g_bus_routes.lua" type="client" />
+        <script src="bus/g_bus_routes.lua" type="server" />
+        <script src="bus/c_bus_job.lua" type="client" />
+        <script src="bus/s_bus_job.lua" type="server" />
 </meta>

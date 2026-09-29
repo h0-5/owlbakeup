@@ -1,0 +1,14 @@
+<meta>
+	<info author="Owl Gaming (decompiled by Owl Decompiler v1.0 - ported by owlbakeup Fix #61)" type="script" description="Player level + EXP system (XP bar, level-up screen, F1 awards tab). Server rebuilt from the client contract - the Owl server was never in the dump." />
+
+	<min_mta_version client="1.5.8" server="1.5.8" />
+
+	<script src="s_level.lua" type="server" />
+	<script src="c_level.lua" type="client" cache="false" />
+
+	<file src="rank.png" />
+
+	<export function="addExp" type="server" />
+	<export function="getPlayerLevel" type="client" />
+	<export function="getRequiredExp" type="client" />
+</meta>

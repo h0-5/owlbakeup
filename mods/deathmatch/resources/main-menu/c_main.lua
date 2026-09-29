@@ -81,6 +81,7 @@ local SECTIONS = {
         { id = "report",         en = "Report",         ar = "البلاغات",           icon = "icons/reportpanel.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/discord.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
+        { id = "jobs",           en = "Jobs",            ar = "الوظائف",            icon = "icons/menu_suitcase.png" },
 }
 
 --[[ report types — MUST stay in report-system/g_reports.lua order ]]

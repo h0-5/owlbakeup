@@ -118,8 +118,17 @@ function scrollGridList(arg0, arg1)
   end
   local db = UI.DB[arg1 or getElementParent(source)]
   local rows = db.data.rows
-  local scrolled = calcRowsHeight(arg1 or getElementParent(source)) / 100 * (tonumber(arg0) or 0)
+  -- [Fix #77] the old mapping was scrolled = calcRowsHeight()/100*p with
+  -- acc starting at 2+column_height: calcRowsHeight EXCLUDES the column
+  -- header, so for the first wheel notches (p <= ~8%) scrolled <= acc and
+  -- row_i never left 1 (thumb moved, rows didn't); near 100% it overshot
+  -- and findLastRow emptied the list from the bottom instead of scrolling.
+  -- Map p over the real scrollable range [acc .. content - viewport].
+  local gl = arg1 or getElementParent(source)
   local acc = 2 + db.properties.column_height.value
+  local viewport = db.dimensions.height - db.properties.column_height.value - 2
+  local bottom = math.max(acc, calcRowsHeight(gl) - viewport)
+  local scrolled = acc + (bottom - acc) / 100 * (tonumber(arg0) or 0)
   local newI = math.max(1, #rows)
   for forvar8 = 1, #rows do
     local rowCell = rows[forvar8] and rows[forvar8][1]

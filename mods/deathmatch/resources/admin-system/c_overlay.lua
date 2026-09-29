@@ -114,7 +114,6 @@ addEventHandler( "onClientPlayerQuit", getRootElement(), updateGUI )
 function drawText ( )
 	if show and exports.hud:isActive() then
 		if ( getPedWeapon( localPlayer ) ~= 43 or not getControlState( "aim_weapon" ) ) then
-			dxDrawRectangle(0, sy-25, sx, 25, tocolor(0, 0, 0, 100), false)
 			dxDrawText( textString, 5, sy-19, sx, sy, tocolor ( 255, 255, 255, 255 ), 1, "default")
 		end
 	end

@@ -179,7 +179,7 @@ local function runSetup()
                 WHERE Color IS NULL OR Color = '' OR Color = '{}'
                         OR Color NOT LIKE '[[%']=])
         if bad and tonumber(bad.n) and tonumber(bad.n) > 0 then
-                if ddl("UPDATE staff_roles SET Color='[255,255,255,255]' WHERE Color IS NULL OR Color = '' OR Color = '{}' OR Color NOT LIKE '[['",
+                if ddl("UPDATE staff_roles SET Color='[[255,255,255,255]]' WHERE Color IS NULL OR Color = '' OR Color = '{}' OR Color NOT LIKE '[[%'",
                         "UPDATE staff_roles colors") then
                         dbg("repaired " .. tonumber(bad.n) .. " rank color(s) -> white")
                         table.insert(SETUP_REPORT.lines, "rank colors repaired: " .. tonumber(bad.n))

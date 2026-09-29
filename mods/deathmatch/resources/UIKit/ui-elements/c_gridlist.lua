@@ -393,13 +393,22 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
   end
 end
 function MouseWheel(arg0, arg1)
-  if not isUIElement(UI.HoveredElement, "gridlist") then
+  local hovered = UI.HoveredElement
+  if not isUIElement(hovered, "gridlist") then
+    -- [Vortex wheel fix] hover is only refreshed on draw/click; when the
+    -- wheel arrives right after a section/panel switch it can still point
+    -- at the OLD element, so every wheel handler silently no-oped. Re-resolve
+    -- the topmost element under the cursor (same as the click path does).
+    hovered = UI.refreshHover() or false
+    UI.HoveredElement = hovered
+  end
+  if not isUIElement(hovered, "gridlist") then
     return
   end
-  if isElement(UI.DB[UI.HoveredElement].data.scrollbar) then
+  if isElement(UI.DB[hovered].data.scrollbar) then
     -- [Vortex fix] +-5% per notch (same step the memo uses) so long lists
     -- like the 44-row permissions table are navigable by wheel
-    uiScrollBarSetScrollPosition(UI.DB[UI.HoveredElement].data.scrollbar, (tonumber(UI.DB[UI.DB[UI.HoveredElement].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -5 or 5))
+    uiScrollBarSetScrollPosition(UI.DB[hovered].data.scrollbar, (tonumber(UI.DB[UI.DB[hovered].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -5 or 5))
   end
 end
 bindKey("mouse_wheel_up", "both", MouseWheel)

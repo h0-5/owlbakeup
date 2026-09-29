@@ -588,12 +588,19 @@ local function broadcastRankChange(action, target, toRank, isNegative)
         -- colored actor, rank name in its panel color when known
         local rankColor = ""
         if toRank and mysql then
-                local q = mysql:query("SELECT ColorCode FROM staff_roles WHERE LevelName = '"
+                local q = mysql:query("SELECT Color FROM staff_roles WHERE LevelName = '"
                         .. mysql:escape_string(tostring(toRank)) .. "' LIMIT 1")
                 if q then
                         local row = mysql:fetch_assoc(q)
-                        if row and row.ColorCode and tostring(row.ColorCode) ~= "" then
-                                rankColor = "#" .. tostring(row.ColorCode):gsub("^#", "")
+                        if row and row.Color and tostring(row.Color) ~= "" then
+                                local c = fromJSON(tostring(row.Color)) or {}
+                                if type(c[1]) == "table" then
+                                        c = c[1]
+                                end
+                                local cr, cg, cb = tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+                                if cr and cg and cb then
+                                        rankColor = ("#%02X%02X%02X"):format(cr, cg, cb)
+                                end
                         end
                         mysql:free_result(q)
                 end

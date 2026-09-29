@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-user-select: none; user-select: none; }
+  html, body {
+    width: 100%; min-height: 100%;
+    background: #0b5c48;
+    background-image: radial-gradient(rgba(255,255,255,0.035) 1px, transparent 1.6px);
+    background-size: 26px 26px;
+    font-family: "Segoe UI", Tahoma, Arial, sans-serif;
+    direction: rtl;
+    overflow-x: hidden;
+  }
+  .message-row { display: flex; padding: 2px 8px; width: 100%; }
+  .message-row.sent     { justify-content: flex-start; }
+  .message-row.received { justify-content: flex-end; }
+  .message {
+    max-width: 78%;
+    padding: 6px 10px;
+    margin: 3px 0;
+    border-radius: 10px;
+    font-size: 13px;
+    line-height: 1.45;
+    color: #f2f2f2;
+    background: #1f2c34;
+    word-wrap: break-word;
+    white-space: pre-wrap;
+    box-shadow: 0 1px 1px rgba(0,0,0,0.25);
+  }
+  .message-row.sent .message { background: #005c4b; color: #e9ffec; }
+  .message.red { background: #7a2b2b; color: #ffd7d7; }
+  .message.location {
+    color: #6fd6ff;
+    text-decoration: underline;
+    cursor: pointer;
+  }
+  .message-row.sent .message.location { color: #8fe3ff; }
+</style>
+</head>
+<body></body>
+</html>

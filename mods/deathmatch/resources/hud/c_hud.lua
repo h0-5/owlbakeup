@@ -907,10 +907,25 @@ local function statusHudDrawImpl()
                 setElementData(localPlayer, "hud:topRightBottom", moneyBlockBottom, false)
         end
 
-        -- zone label, bottom-left above the radar (old client)
-        outlineText(zoneText:gsub("#%x%x%x%x%x%x", ""), 18, sy - 226, 460, 22,
-                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "top", postGUI)
-        outlineText(zoneLabel, 18, sy - 202, 460, 22, zoneLabelColor, 1, fontHud(), "left", "top", postGUI)
+        -- zone banner, docked above the minimap (Fix #55: the old-client
+        -- reference shot shows two dark pills with a colored side bar:
+        -- "City | Zone" in white, SAFE/DANGER ZONE in its status color;
+        -- geometry = the radar's own rect so they always dock flush)
+        local mapY = sy - 175 * (sy / 1080) - 25
+        local locText = zoneText:gsub("#%x%x%x%x%x%x", "")
+        local locW = math.max(dxGetTextWidth(locText, 1, fontHud()) + 26, 90)
+        local zoneW = math.max(dxGetTextWidth(zoneLabel, 1, fontHud()) + 26, 80)
+        local pillH = 24
+        local safeY = mapY - pillH - 6
+        local locY = safeY - pillH - 6
+        dxDrawRoundedRectangle(15, locY, locW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+        dxDrawRectangle(15, locY + 4, 3, pillH - 8, tocolor(153, 255, 0, 255), postGUI)
+        outlineText(locText, 15 + 12, locY, locW - 12, pillH,
+                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "center", postGUI)
+        dxDrawRoundedRectangle(15, safeY, zoneW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+        dxDrawRectangle(15, safeY + 4, 3, pillH - 8, zoneLabelColor, postGUI)
+        outlineText(zoneLabel, 15 + 12, safeY, zoneW - 12, pillH,
+                zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
 end
 statusHudDraw = statusHudDrawImpl
 

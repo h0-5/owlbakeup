@@ -1,0 +1,45 @@
+<meta>
+	<info author="Owl Development" type="script" description="Owl iPhone - new phone system (ported from old client v1.0)" version="1.0" />
+
+	<!-- server -->
+	<script src="phone_s.lua" type="server" cache="false" />
+
+	<!-- client -->
+	<script src="phone_c.lua" type="client" cache="false" />
+
+	<!-- images -->
+	<file src="IMG/white_screen.png" />
+	<file src="IMG/wallpaper3.png" />
+	<file src="IMG/iPhone2.png" />
+	<file src="IMG/whatsapp_wallpaper.png" />
+	<file src="IMG/Phone.png" />
+	<file src="IMG/Contacts.png" />
+	<file src="IMG/Messages.png" />
+	<file src="IMG/Settings.png" />
+	<file src="IMG/Wallet.png" />
+	<file src="IMG/Notes.png" />
+	<file src="IMG/taxi.png" />
+	<file src="IMG/Safari.png" />
+	<file src="IMG/WhatsApp.png" />
+	<file src="IMG/Flights.png" />
+	<file src="IMG/electricity.png" />
+	<file src="IMG/health.png" />
+	<file src="IMG/traffic_tickets.png" />
+	<file src="IMG/activities.png" />
+	<file src="IMG/icons/accept_call.png" />
+	<file src="IMG/icons/decline_call.png" />
+	<file src="IMG/icons/left-arrow.png" />
+	<file src="IMG/icons/location.png" />
+	<file src="IMG/icons/plus.png" />
+
+	<!-- whatsapp chat renderer -->
+	<file src="html/whatsapp.html" />
+
+	<!-- sounds -->
+	<file src="sounds/send.mp3" />
+	<file src="sounds/notification.mp3" />
+	<file src="sounds/iphone_ringtone.mp3" />
+
+	<!-- other systems may push SMS -->
+	<export function="sendSystemSMS" type="server" />
+</meta>

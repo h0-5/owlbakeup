@@ -25,16 +25,21 @@
 ========================================================================= ]]
 
 local localPlayer = getLocalPlayer()
-local eui = exports.UIKit
+-- [Fix #52] same load-time UIKit call death as c_characters.lua (account
+-- starts before UIKit in mtaserver.conf): the whole creation UI died at
+-- load, so CREATE CHARACTER was a dead tab. Lazy resolution instead.
+local eui = nil
+local REF_SX, REF_SY = 1728, 972
 
-local REF_SX, REF_SY = (function()
-        -- [Fix #52] top-level UIKit call died if UIKit had not started yet,
-        -- killing this whole script (create-character never registered).
-        local ok, x, y = pcall(function() return eui:uiGetReferenceScreenSize() end)
-        if ok and tonumber(x) then return tonumber(x), tonumber(y) end
-        return 1728, 972
-end)()
-
+local function ensureUIKit()
+        if eui then return true end
+        local ok, exportsTable = pcall(function() return exports.UIKit end)
+        if ok and exportsTable then
+                eui = exportsTable
+                return true
+        end
+        return false
+end
 local UI = { window = {}, label = {}, edit = {}, button = {}, scrollbar = {}, switch = {}, combobox = {}, memo = {} }
 local built = false
 local creationOpen = false
@@ -99,8 +104,12 @@ end
 -- ===========================================================================
 
 local function buildUI()
-        if built then return end
-        built = true
+        if built then return true end
+        if not ensureUIKit() then return false end -- [Fix #52] UIKit not up yet
+        local okRef, refW, refH = pcall(function() return eui:uiGetReferenceScreenSize() end)
+        if okRef and tonumber(refW) and tonumber(refH) then
+                REF_SX, REF_SY = tonumber(refW), tonumber(refH)
+        end
 
         -- create character window (300x630, right side)
         UI.window.create_character = eui:uiCreateRectangle(REF_SX - 450, false, 300, 630, "bg_default", true, true, true, true)
@@ -169,6 +178,11 @@ local function buildUI()
         for _, lang in ipairs(languageItems) do
                 eui:uiComboBoxAddItem(UI.combobox.Language, lang)
         end
+
+        -- [Fix #52] built flips true only AFTER the whole build succeeds
+        -- (a mid-build error must leave it false so the next open rebuilds)
+        built = true
+        return true
 end
 
 -- ===========================================================================
@@ -217,7 +231,16 @@ end)
 -- ===========================================================================
 
 function lobbyCreation(state)
-        buildUI()
+        -- [Fix #52] a failed/deferred buildUI must not crash the tab switch
+        if not built then
+                local okBuild, buildErr = pcall(buildUI)
+                if not built then
+                        if not okBuild then
+                                outputChatBox("[Characters] Create UI build failed: " .. tostring(buildErr), 255, 100, 100, false)
+                        end
+                        return
+                end
+        end
         creationOpen = state
         if state then
                 eui:uiSetText(UI.edit.Name, "")

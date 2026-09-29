@@ -906,6 +906,11 @@ function useItem(itemSlot, additional)
 			if getResourceState(getResourceFromName("xmas")) == "running" then
 				setTimer(triggerClientEvent, 7000, 1, "xmas:santaSound", getRootElement(), "hoho", source)
 			end
+		elseif (itemID==2) then -- [Fix #54] Cellphone -> the new phone-system
+			local phoneRes = getResourceFromName("phone-system")
+			if phoneRes and getResourceState(phoneRes) == "running" then
+				triggerClientEvent(source, "phone:itemUse", source)
+			end
 		elseif (itemID==214) then
 			triggerEvent('sendAme', source, "takes a ".. itemName ..".")
 			takeItemFromSlot(source, itemSlot)

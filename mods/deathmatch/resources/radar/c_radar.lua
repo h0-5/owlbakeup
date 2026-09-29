@@ -307,40 +307,63 @@ local function drawMinimap()
 end
 
 --------------------------------------------------------------------------------
--- BIG MAP (F11)
+-- BIG MAP (F11)  -- old client layout: sidebar on the LEFT (x=65*scale,
+-- w=300*scale), the map fills the rest of the screen; drag-pan, wheel zoom
+-- (start 3, range 0.9..3 - old), mouse2 toggles the cursor, double-click GPS
 --------------------------------------------------------------------------------
 local BIG = {
-        zoom = 1,
-        minZoom = 1,
-        maxZoom = 3,
-        mapH = 0,                  -- drawn map height in px (sy at zoom 1)
+        zoom = 3,                  -- old initial zoom
+        minZoom = 0.9,             -- old wheel-out floor
+        maxZoom = 3,               -- old wheel-in ceiling
+        mapH = 0,                  -- drawn map size in px (square)
         offX = 0,                  -- top-left of the drawn map on screen
         offY = 0,
         dragging = false,
         dragX = 0,
         dragY = 0,
-        anchorX = 0,
-        anchorY = 0,
-        hovered = false,
+        hovered = false,           -- hovered blip element (sidebar preview)
+        listStart = 1,             -- sidebar list scroll (old list_row_start)
+        listHover = nil,           -- hovered sidebar row name
         sidebarList = {},
 }
+
+local function bigMapArea()
+        -- old geometry: sidebar_x = 60*scale + 5*scale, sidebar_y = 65*scale,
+        -- sidebar_w = 300*scale, sidebar_h = sy - 130*scale
+        return 65 * SCALE, 65 * SCALE, 300 * SCALE, sy - 130 * SCALE
+end
 
 local function bigMapSize()
         BIG.mapH = sy * BIG.zoom
 end
 
 local function bigMapClamp()
+        -- keep the map inside the area right of the sidebar; when it is
+        -- bigger than the area it must always cover it (no dead gaps)
         bigMapSize()
-        local minX = sx - 300 * SCALE - BIG.mapH
-        BIG.offX = math.min(math.max(BIG.offX, minX), sx - 300 * SCALE)
-        BIG.offY = math.min(math.max(BIG.offY, sy - BIG.mapH), 0)
+        local _, _, sbw = bigMapArea()
+        local areaX, areaW = 65 * SCALE + sbw, sx - (65 * SCALE + sbw)
+        if BIG.mapH >= areaW then
+                BIG.offX = math.min(math.max(BIG.offX, areaX + areaW - BIG.mapH), areaX)
+        else
+                BIG.offX = math.min(math.max(BIG.offX, areaX), areaX + areaW - BIG.mapH)
+        end
+        if BIG.mapH >= sy then
+                BIG.offY = math.min(math.max(BIG.offY, sy - BIG.mapH), 0)
+        else
+                BIG.offY = math.min(math.max(BIG.offY, 0), sy - BIG.mapH)
+        end
 end
 
 local function bigMapCenterOnPlayer()
+        -- old centerRadarWithPlayerLocation(): the player sits centered in
+        -- the VISIBLE map area (the screen region right of the sidebar)
         bigMapSize()
         local px, py = getElementPosition(localPlayer)
         local mx, my = worldToMapPx(px, py, BIG.mapH)
-        BIG.offX = (sx - 300 * SCALE) / 2 - mx
+        local _, _, sbw = bigMapArea()
+        local areaX = 65 * SCALE + sbw
+        BIG.offX = areaX + (sx - areaX) / 2 - mx
         BIG.offY = sy / 2 - my
         bigMapClamp()
 end
@@ -351,7 +374,19 @@ local function bigMapToWorld(cursX, cursY)
 end
 
 local function bigMapIsHover(cursX, cursY)
-        return cursX >= 0 and cursX <= sx - 300 * SCALE and cursY >= 0 and cursY <= sy
+        -- old isHoverMap(): cursor over the map area (right of the sidebar);
+        -- isMouseInPosition required a showing cursor (old)
+        if not isCursorShowing() or not cursX then return false end
+        local _, _, sbw = bigMapArea()
+        local areaX = 65 * SCALE + sbw
+        return cursX >= areaX and cursX <= sx and cursY >= 0 and cursY <= sy
+end
+
+local function bigMapListMaxVisible()
+        -- how many 30*scale rows fit under the list top (old 80*scale gap)
+        local _, sby, _, sbh = bigMapArea()
+        local listTop = sby + 50 * SCALE + 50 * SCALE + 80 * SCALE
+        return math.max(1, math.floor((sby + sbh - listTop) / (32 * SCALE)))
 end
 
 local function bigMapWorldPoint(wx, wy)
@@ -367,18 +402,15 @@ local function bigMapDraw()
                         tocolor(255, 255, 255, 255), false)
         end
 
-        -- 20x20 grid with labels (old)
+        -- 20x20 grid with labels (old: lines span the drawn map, labels at
+        -- the map left/top edges - MTA clips off-screen draws)
         for i = 1, 19 do
                 local gy = BIG.offY + BIG.mapH / 20 * i
-                if gy > 0 and gy < sy then
-                        dxDrawRectangle(0, gy, sx - 300 * SCALE, 1, tocolor(0, 0, 0, 50), false)
-                        dxDrawText(tostring(i), 5, gy + 2, 60, gy + 20, tocolor(0, 0, 0, 255), 1, "default-bold", "left", "top", false, false, false, false, true)
-                end
+                dxDrawRectangle(BIG.offX, gy, BIG.mapH, 1, tocolor(0, 0, 0, 50), false)
+                dxDrawText(tostring(i), BIG.offX + 5, gy, BIG.offX + BIG.mapH / 20, gy + 20, tocolor(0, 0, 0, 255), 1, "default-bold", "left", "top", false, false, false, false, true)
                 local gx = BIG.offX + BIG.mapH / 20 * i
-                if gx > 0 and gx < sx - 300 * SCALE then
-                        dxDrawRectangle(gx, 0, 1, sy, tocolor(0, 0, 0, 50), false)
-                        dxDrawText(tostring(20 + i), gx + 5, 2, gx + 60, 22, tocolor(0, 0, 0, 255), 1, "default-bold", "left", "top", false, false, false, false, true)
-                end
+                dxDrawRectangle(gx, BIG.offY, 1, BIG.mapH, tocolor(0, 0, 0, 50), false)
+                dxDrawText(tostring(20 + i), gx + 5, BIG.offY, gx + BIG.mapH / 20 * (i + 1), BIG.offY + 20, tocolor(0, 0, 0, 255), 1, "default-bold", "left", "top", false, false, false, false, true)
         end
 
         -- radar areas filled + optional "text" (old)
@@ -406,7 +438,7 @@ local function bigMapDraw()
         end
 
         -- blips + tooltips + sidebar list collection
-        local hoveredName = nil
+        local hoveredThisFrame = false
         local seen = {}
         BIG.sidebarList = {}
         local cursX, cursY = -1, -1
@@ -431,12 +463,12 @@ local function bigMapDraw()
                         end
                         if cursX >= wx - size / 2 and cursX <= wx + size / 2
                                 and cursY >= wy - size / 2 and cursY <= wy + size / 2 then
+                                hoveredThisFrame = true
                                 if BIG.hovered ~= blip then
                                         BIG.hovered = blip
                                         pcall(playSound, ":assets/sounds/plastic-bubble-click.wav")
                                 end
                                 if name then
-                                        hoveredName = name
                                         local tw = dxGetTextWidth(name, 1, fontMap) + 10
                                         local th = dxGetFontHeight(1, fontMap) + 10
                                         dxDrawRectangle(wx - tw / 2, wy - size / 2 - th - 3, tw, th,
@@ -450,6 +482,8 @@ local function bigMapDraw()
                                 iconPath(blip), 0, 0, 0, blipColor(blip), false)
                 end
         end
+        -- old: hovered_blip resets once the cursor leaves every blip
+        if not hoveredThisFrame then BIG.hovered = false end
 
         -- player arrow (old big-map color)
         local pwx, pwy = bigMapWorldPoint(px, py)
@@ -468,31 +502,39 @@ local function bigMapDraw()
             end
         end
 
-        -- sidebar (old: 300px dark panel on the right)
-        local sbx = sx - 300 * SCALE
-        local sby = 60 * SCALE + 5 * SCALE
-        local sbw = 300 * SCALE
-        local sbh = sy - 60 * SCALE * 2 - 10 * SCALE
+        -- sidebar (old: dark panel on the LEFT - hovered blip preview or the
+        -- logo, then the wheel-scrollable named-blip list)
+        local sbx, sby, sbw, sbh = bigMapArea()
         dxDrawRectangle(sbx, sby, sbw, sbh, tocolor(1, 6, 13, 230), false)
         dxDrawRectangle(sbx + sbw, sby + (sbh - sbh / 1.5) / 2, 1, sbh / 1.5, themePrimary, false)
-        dxDrawText("MAP", sbx + 15 * SCALE, sby + 12 * SCALE, sbx + sbw - 15 * SCALE,
-                sby + 40 * SCALE, tocolor(255, 255, 255, 220), 1, fontMapLarge, "left", "center")
         if BIG.hovered and isElement(BIG.hovered) then
                 local size = 50 * SCALE
                 local hx = sbx + (sbw - size) / 2
                 dxDrawImage(hx, sby + 50 * SCALE, size, size, iconPath(BIG.hovered), 0, 0, 0,
                         blipColor(BIG.hovered), false)
                 local nm = getElementData(BIG.hovered, "blip:name")
-                if nm then
+                if nm and nm ~= "" then
                         dxDrawText(nm, sbx, sby + 50 * SCALE + size + 10, sbx + sbw,
                                 sby + 50 * SCALE + size + 40, blipColor(BIG.hovered), 1,
                                 fontMapLarge, "center", "center")
                 end
+        else
+                -- old fallback: the logo when no blip is hovered
+                if fileExists(":assets/images/logo.png") then
+                        local logoSize = 75 * SCALE
+                        dxDrawImage(sbx + (sbw - logoSize) / 2, sby + 50 * SCALE, logoSize, logoSize,
+                                ":assets/images/logo.png", 0, 0, 0, tocolor(255, 255, 255), false)
+                end
         end
         -- named blip list (click a row = route to the nearest blip with that name)
-        local rowY = sby + 50 * SCALE + 80 * SCALE
-        for idx, item in ipairs(BIG.sidebarList) do
-                if rowY + 30 * SCALE > sy then break end
+        BIG.listHover = nil
+        local listTop = sby + 50 * SCALE + 50 * SCALE + 80 * SCALE
+        local maxStart = math.max(1, #BIG.sidebarList - bigMapListMaxVisible() + 1)
+        BIG.listStart = math.min(math.max(BIG.listStart, 1), maxStart)
+        local rowY = listTop
+        for idx = BIG.listStart, #BIG.sidebarList do
+                local item = BIG.sidebarList[idx]
+                if rowY + 30 * SCALE > sby + sbh then break end
                 local rowH = 30 * SCALE
                 local hoveredRow = isCursorShowing()
                         and getCursorPosition() and
@@ -503,12 +545,12 @@ local function bigMapDraw()
                                 tocolor(104, 102, 255, 60), false)
                         BIG.listHover = item.name
                 end
-                local iconSize = 22 * SCALE
-                dxDrawImage(sbx + 25 * SCALE, rowY + (rowH - iconSize) / 2, iconSize, iconSize,
+                local iconSize = 30 * SCALE
+                dxDrawImage(sbx + 25 * SCALE, rowY, iconSize, iconSize,
                         item.icon, 0, 0, 0, item.color, false)
-                dxDrawText(item.name, sbx + 25 * SCALE + iconSize + 12 * SCALE, rowY,
+                dxDrawText(item.name, sbx + 75 * SCALE, rowY,
                         sbx + sbw - 10 * SCALE, rowY + rowH, item.color, 1, fontMap, "left", "center")
-                rowY = rowY + rowH + 2 * SCALE
+                rowY = rowY + rowH
         end
 
         -- zone tooltip at the cursor (old "City | Zone")
@@ -528,8 +570,9 @@ local function bigMapDraw()
                 end
         end
 
-        -- white corner brackets (old)
-        local bx, by, bw, bh = 10, 10, sx - 300 * SCALE - 20, sy - 20
+        -- white corner brackets (old) framing the map area
+        local _, _, sbw2 = bigMapArea()
+        local bx, by, bw, bh = 65 * SCALE + sbw2 + 10, 10, sx - (65 * SCALE + sbw2) - 20, sy - 20
         dxDrawRectangle(bx, by, 20, 1, tocolor(255, 255, 255))
         dxDrawRectangle(bx, by, 1, 20, tocolor(255, 255, 255))
         dxDrawRectangle(bx + bw - 20, by, 20, 1, tocolor(255, 255, 255))
@@ -671,8 +714,18 @@ function showRadar(state, dispatchElements)
                         end
                 end
         else
-                forcePlayerMap(false)
+                if RADAR.mapVisible then
+                        -- quitting also tears the big map down (old client drew
+                        -- both maps from ONE render handler, so it died with it)
+                        removeEventHandler("onClientRender", root, bigMapDraw)
+                        BIG.dragging = false
+                        BIG.hovered = false
+                        BIG.listStart = 1
+                        showCursor(false)
+                        showChat(true)
+                end
                 RADAR.mapVisible = false
+                forcePlayerMap(false)
                 if RADAR.visible then
                         removeEventHandler("onClientRender", root, drawMinimap)
                         if isElement(rt) then destroyElement(rt) end
@@ -688,18 +741,19 @@ function setRadarDispatchElements(elements)
 end
 
 local function toggleBigMap(state)
-        BIG.mapVisible = state
+        -- ONE flag (old var0.mapVisible on the radar state) - everything
+        -- (F11 toggle, drag, wheel, double-click) reads RADAR.mapVisible
+        RADAR.mapVisible = state
         if state then
                 bigMapCenterOnPlayer()
                 addEventHandler("onClientRender", root, bigMapDraw, false)
-                bindKey("mouse2", "down", function()
-                        if RADAR.mapVisible then showCursor(not isCursorShowing()) end
-                end)
                 forcePlayerMap(false)
                 showChat(false)
         else
                 removeEventHandler("onClientRender", root, bigMapDraw)
-                unbindKey("mouse2", "down")
+                BIG.dragging = false
+                BIG.hovered = false
+                BIG.listStart = 1
                 showCursor(false)
                 showChat(true)
         end
@@ -709,9 +763,18 @@ addEventHandler("onClientKey", root, function(key, press)
         if key == "F11" and press and RADAR.visible then
                 toggleBigMap(not RADAR.mapVisible)
                 cancelEvent()
+        elseif RADAR.mapVisible and press and key == "mouse2" then
+                -- old var0.key: mouse2 toggles the cursor while the map is open
+                showCursor(not isCursorShowing())
+                cancelEvent()
         elseif RADAR.mapVisible and press and (key == "mouse_wheel_up" or key == "mouse_wheel_down") then
-                if bigMapIsHover(getCursorPosition() and getCursorPosition() * sx or 0,
-                        getCursorPosition() and getCursorPosition() * sy or 0) then
+                -- old var0.key: wheel over the map zooms, wheel over the
+                -- sidebar scrolls the blip list
+                local cx, cy = false, false
+                if isCursorShowing() then
+                        cx, cy = getCursorPosition()
+                end
+                if bigMapIsHover(cx and cx * sx or nil, cy and cy * sy or nil) then
                         local before = BIG.zoom
                         if key == "mouse_wheel_up" then
                                 BIG.zoom = math.min(BIG.maxZoom, BIG.zoom + 0.1)
@@ -721,6 +784,13 @@ addEventHandler("onClientKey", root, function(key, press)
                         if before ~= BIG.zoom then
                                 bigMapClamp()
                         end
+                else
+                        local maxStart = math.max(1, #BIG.sidebarList - bigMapListMaxVisible() + 1)
+                        if key == "mouse_wheel_down" then
+                                BIG.listStart = math.min(maxStart, BIG.listStart + 1)
+                        else
+                                BIG.listStart = math.max(1, BIG.listStart - 1)
+                        end
                 end
                 cancelEvent()
         end
@@ -729,12 +799,14 @@ end)
 addEventHandler("onClientClick", root, function(button, state, absX, absY)
         if button ~= "left" or not RADAR.mapVisible then return end
         if state == "down" then
-                if bigMapIsHover(absX, absY) then
+                -- old drag: cursor showing + mouse1 held over the map area
+                if isCursorShowing() and bigMapIsHover(absX, absY) then
                         BIG.dragging = true
                         BIG.dragX = absX - BIG.offX
                         BIG.dragY = absY - BIG.offY
                 end
         else
+                if BIG.dragging then BIG.justDragged = true end
                 BIG.dragging = false
         end
 end)
@@ -761,6 +833,7 @@ end)
 -- sidebar row click = route to the nearest blip with the row name (old)
 addEventHandler("onClientClick", root, function(button, state, absX, absY)
         if button ~= "left" or state ~= "up" or not RADAR.mapVisible then return end
+        if BIG.justDragged then BIG.justDragged = false return end
         if BIG.listHover then
                 local best, bestD = nil, math.huge
                 for _, blip in ipairs(getElementsByType("blip")) do

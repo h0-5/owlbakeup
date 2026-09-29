@@ -14,6 +14,8 @@ local noMenuFor = {
 local noPickupFor = {
 	[81] = true, --fridge
 	[103] = true, --shelf
+	[169] = true, --keypad: opened via the keypad interface, never picked up
+
 }
 local noPropertiesFor = {
 	
@@ -112,7 +114,8 @@ function clickObject(button, state, absX, absY, wx, wy, wz, element)
 					if not rcMenu then rcMenu = rightclick:create(itemName) end
 					row.pickup = rightclick:addrow("Pick Up")
 					addEventHandler("onClientGUIClick", row.pickup,  function (button, state)
-						triggerServerEvent("moveWorldItemToElement", localPlayer, element, localPlayer)
+						-- [Fix #61] was moveWorldItemToElement, whose server handler is a hard "if true then return ... Disabled" kill-switch, so this row silently did nothing. pickupItem is the canonical pickup chain (distance/permission/alt-alt checks, money+weapon handling, animation).
+						triggerServerEvent("pickupItem", localPlayer, element)
 					end, false)
 				end
 				if not noPropertiesFor[itemID] and itemworld:canEditItemProperties(localPlayer, element) then

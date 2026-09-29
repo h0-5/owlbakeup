@@ -842,6 +842,14 @@ function pickupItem(object, leftammo)
 	end
 	local itemValue = getElementData(object, "itemValue") or 1
 
+	-- [Fix #61 weight guard] the right-click "Pick Up" menu row has no client-side hasSpaceForItem pre-check (the inventory left-click path does); without this, a full inventory would delete+destroy the world item and then fail giveItem = item loss.
+	if itemID and itemID > 0 and not hasSpaceForItem(source, itemID, itemValue) then
+		outputChatBox("Your Inventory is full.", source, 255, 0, 0)
+		acChange(object, "transfering", nil)
+		return false
+	end
+
+
 	--ANTI ALT-ALT / MAXIME
 	if ((itemID >= 31) and itemID <= 43) or itemBannedByAltAltChecker[itemID] then
 		local hoursPlayedTo = getElementData( source, "hoursplayed" ) 

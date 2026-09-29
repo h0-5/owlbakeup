@@ -1195,7 +1195,9 @@ function resumeThreads()
 
 
 
-		killTimer(threadTimer)
+		if threadTimer and isTimer(threadTimer) then
+			killTimer(threadTimer)
+		end
 
 
 

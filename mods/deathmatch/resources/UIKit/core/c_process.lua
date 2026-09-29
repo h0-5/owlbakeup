@@ -527,10 +527,14 @@ addEventHandler("onClientCharacter", root, function(arg0)
       return
     end
     if uiEditGetShadedText(UI.FocusElement) then
+      -- [Fix #76] same reset-before-use bug as removeText: capture the
+      -- selection first, otherwise the typed char was inserted against the
+      -- already-reset {1,1} shading (prepended to the full text)
+      local sh1, sh2 = UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2]
       UI.DB[UI.FocusElement].data.shading = {1, 1}
-      uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. arg0 .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[2], utfLen(UI.DB[UI.FocusElement].text)))
+      uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, sh1 - 1) .. arg0 .. utfSub(UI.DB[UI.FocusElement].text, sh2, utfLen(UI.DB[UI.FocusElement].text)))
       triggerEvent("onClientUIChanged", UI.FocusElement)
-      uiEditSetCaretIndex(UI.FocusElement, utfLen(utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. arg0) + 1)
+      uiEditSetCaretIndex(UI.FocusElement, utfLen(utfSub(UI.DB[UI.FocusElement].text, 1, sh1 - 1) .. arg0) + 1)
     else
       if UI.DB[UI.FocusElement].data.maxlength ~= -1 and utfLen(utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.caret - 1) .. arg0 .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.caret, utfLen(UI.DB[UI.FocusElement].text))) > UI.DB[UI.FocusElement].data.maxlength then
         uiSetText(UI.FocusElement, utfSub(utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.caret - 1) .. arg0 .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.caret, utfLen(UI.DB[UI.FocusElement].text)), 1, UI.DB[UI.FocusElement].data.maxlength))
@@ -710,9 +714,14 @@ function removeText(arg0, arg1)
     if UI.DB[UI.FocusElement].text then
       if arg1 == "down" then
         if uiEditGetShadedText(UI.FocusElement) then
+          -- [Fix #76] capture the selection BEFORE resetting it: the old code
+          -- reset shading to {1,1} first and then sliced with the reset values,
+          -- so backspace on a selection deleted NOTHING and pinned the caret at
+          -- 1 (deletion looked dead in every panel once text was selected)
+          local sh1, sh2 = UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2]
           UI.DB[UI.FocusElement].data.shading = {1, 1}
-          uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[2], utfLen(UI.DB[UI.FocusElement].text)))
-          uiEditSetCaretIndex(UI.FocusElement, UI.DB[UI.FocusElement].data.shading[1])
+          uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, sh1 - 1) .. utfSub(UI.DB[UI.FocusElement].text, sh2, utfLen(UI.DB[UI.FocusElement].text)))
+          uiEditSetCaretIndex(UI.FocusElement, sh1)
           triggerEvent("onClientUIChanged", UI.FocusElement)
         elseif arg0 == "backspace" then
           uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, math.max(0, UI.DB[UI.FocusElement].data.caret - 2)) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.caret, utfLen(UI.DB[UI.FocusElement].text)))
@@ -1001,6 +1010,37 @@ function cancelBindsOnTyping(arg0, arg1)
   return
 end
 addEventHandler("onClientKey", root, cancelBindsOnTyping)
+-- [Fix #76 - user] "أي مود أي لوحة فيها كتابة ضيف امكانية الحذف": text keys
+-- were bindKey-only, and binds are suppressed in several input modes (the
+-- login screen's guiSetInputEnabled(true) is the known case), so backspace /
+-- delete / arrows / enter silently died there while typing kept working.
+-- onClientKey fires in EVERY input mode; the original binds are kept and a
+-- per key+state dedup collapses both sources for the same physical press so
+-- nothing ever double-fires.
+local lastTextKey, lastTextState, lastTextTick = false, false, 0
+addEventHandler("onClientKey", root, function(key, state)
+  if key ~= "backspace" and key ~= "delete"
+    and key ~= "arrow_l" and key ~= "arrow_r" and key ~= "arrow_u" and key ~= "arrow_d"
+    and key ~= "enter" and key ~= "num_enter" then
+    return
+  end
+  -- chatbox input and real MTA gui edits own the key in these cases
+  if isChatBoxOpen() or guiGetFocusedElement() then
+    return
+  end
+  local now = getTickCount()
+  if key == lastTextKey and state == lastTextState and now - lastTextTick < 60 then
+    return
+  end
+  lastTextKey, lastTextState, lastTextTick = key, state, now
+  if key == "backspace" or key == "delete" then
+    removeText(key, state)
+  elseif key == "enter" or key == "num_enter" then
+    acceptedEvent(key, state)
+  else
+    moveCaret(key, state)
+  end
+end)
 addEventHandler("onClientUITextChange", resourceRoot, function()
   if isUIElement(source, "label") then
   end

@@ -335,25 +335,34 @@ local WORDMARK_LEN = 560 -- Fix #26: bigger wordmark (user)
      (the RT is drawn from the same "high-2" handler). ]]
 local chromeRT = false
 local chromeDirty = true
+-- [Fix #76] true only after the RT actually painted WITHOUT error. The old
+-- code set chromeDirty=false even when the paint pcall failed, so a partial
+-- RT (strip but no gradient/logo/wordmark) was drawn forever: a bare black
+-- line on the left while the logo+name flashed during the live animation and
+-- vanished the moment the menu settled.
+local chromePainted = false
 
-local function drawChromeLive()
+local function drawChromeLive(postGUI)
+        local pg = postGUI ~= false
         -- dark veil over the game
-        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), true)
+        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), pg)
         -- branding strip sliding in from the left
-        dxDrawRectangle(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), true)
+        dxDrawRectangle(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), pg)
         if bgGradient then
-                dxDrawImage(state.sideX, 0, sx, sy, bgGradient, 0, 0, 0, tocolor(0, 3, 8, state.alpha), true)
+                dxDrawImage(state.sideX, 0, sx, sy, bgGradient, 0, 0, 0, tocolor(0, 3, 8, state.alpha), pg)
         end
         -- divider line (old: sideX + 2, 1px, alpha 10)
         if state.sideX > 0 then
-                dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), true)
-        end
-        if state.sideX > 60 then
-                -- logo at the top of the strip, alpha 200 like the old draw
+                dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), pg)
+                -- logo at the top of the strip, alpha 200 like the old draw.
+                -- [Fix #76] the old ">60" gate + unclamped centering kept the
+                -- branding out of the early frames; clamp so any strip width
+                -- shows it without the logo sliding off the left edge
                 if logoTex then
                         local size = LOGO_SIZE * SCALE_Y
-                        dxDrawImage((state.sideX - size) / 2, 26 * SCALE_Y, size, size,
-                                logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), true)
+                        local w = math.max(state.sideX, size)
+                        dxDrawImage((w - size) / 2, 26 * SCALE_Y, size, size,
+                                logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), pg)
                 end
                 -- wordmark watermark: rotated -90 (reads bottom -> top, V at
                 -- the bottom), alpha 50, centered on the strip — the old
@@ -366,7 +375,7 @@ local function drawChromeLive()
                         local cy = 26 * SCALE_Y + LOGO_SIZE * SCALE_Y
                                 + (sy - (26 * SCALE_Y + LOGO_SIZE * SCALE_Y)) * 0.38
                         dxDrawImage(cx - len / 2, cy - thick / 2, len, thick,
-                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), true)
+                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), pg)
                 end
         end
 end
@@ -374,16 +383,28 @@ end
 local function paintChromeRT()
         if not isElement(chromeRT) then
                 local ok, rt = pcall(dxCreateRenderTarget, sx, sy, true)
-                if not ok or not rt then chromeDirty = false return false end
+                if not ok or not rt then chromeDirty = false chromePainted = false return false end
                 chromeRT = rt
         end
-        local ok = pcall(function()
+        local ok, err = pcall(function()
                 dxSetRenderTarget(chromeRT, true)
-                drawChromeLive()
+                -- [Fix #76] postGUI must be false while painting into a render
+                -- target (the live path keeps postGUI=true)
+                drawChromeLive(false)
                 dxSetRenderTarget()
         end)
+        -- [Fix #76] always release the RT, even when the paint errored above
+        -- (the inner restore never runs then, and every later dx draw of the
+        -- frame would keep rendering INTO the chrome RT)
+        pcall(dxSetRenderTarget)
         chromeDirty = false
-        return ok
+        if not ok then
+                chromePainted = false
+                outputDebugString("[F1] chrome RT paint failed: " .. tostring(err), 1)
+                return false
+        end
+        chromePainted = true
+        return true
 end
 
 addEventHandler("onClientRestore", root, function() chromeDirty = true end)
@@ -393,13 +414,15 @@ function main_menu_draw()
         local settled = getTickCount() - state.anim[1] >= state.anim[6]
         if settled then
                 if chromeDirty then paintChromeRT() end
-                if isElement(chromeRT) then
+                -- [Fix #76] only blit the RT when it painted cleanly; on any
+                -- failure keep drawing live so the branding never disappears
+                if chromePainted and isElement(chromeRT) then
                         dxDrawImage(0, 0, sx, sy, chromeRT, 0, 0, 0,
                                 tocolor(255, 255, 255, 255), true)
                         return
                 end
         end
-        drawChromeLive()
+        drawChromeLive(true)
 end
 
 --[[ F1 / ESC-binds cancel while quitting the character ]]
@@ -1497,20 +1520,25 @@ addEventHandler("onClientUIKitReady", root, UIKitReady)
 
 --[[ Fix #26 (user): "البلاغات م تقدر تكتب بها ولاحرف" — UIKit's own pipeline
      does not always hand keyboard focus to the report edit/memo. A raw click
-     on their rects focuses them explicitly (same trick the staff panel uses). ]]
+     on their rects focuses them explicitly (same trick the staff panel uses).
+     [Fix #76] the pcall(eui.uiGetPosition, el) form called the export WITHOUT
+     its receiver -> the pcall always errored -> focus never set -> the chatbox
+     stayed armed and every keystroke went to chat (nothing could be typed).
+     uiGetAbsoluteBounds (Fix #32) returns the true on-screen rect including
+     parent offsets; uiGetPosition would be parent-relative. ]]
 addEventHandler("onClientClick", root, function(button, press)
         if not press or button ~= "left" then return end
         if not (UI.window.report_center and eui:uiGetVisible(UI.window.report_center)) then return end
         local cx, cy = getCursorPosition()
         if not cx then return end
         cx, cy = cx * sx, cy * sy
-        local okM, mx, my = pcall(eui.uiGetPosition, UI.memo.report_text)
-        if okM and cx >= mx and cx <= mx + 530 * SCALE_Y and cy >= my and cy <= my + 175 * SCALE_Y then
+        local okM, mx, my, mw, mh = pcall(function() return eui:uiGetAbsoluteBounds(UI.memo.report_text) end)
+        if okM and mx and cx >= mx and cx <= mx + (mw or 0) and cy >= my and cy <= my + (mh or 0) then
                 pcall(function() eui:uiSetFocusedElement(UI.memo.report_text) end)
                 return
         end
-        local okE, ex, ey = pcall(eui.uiGetPosition, UI.edit.report_target)
-        if okE and cx >= ex and cx <= ex + 530 * SCALE_Y and cy >= ey and cy <= ey + 25 * SCALE_Y then
+        local okE, ex, ey, ew, eh = pcall(function() return eui:uiGetAbsoluteBounds(UI.edit.report_target) end)
+        if okE and ex and cx >= ex and cx <= ex + (ew or 0) and cy >= ey and cy <= ey + (eh or 0) then
                 pcall(function() eui:uiSetFocusedElement(UI.edit.report_target) end)
         end
 end)

@@ -197,7 +197,10 @@ local function UIKitReady()
             eui:uiSetProperty(UI.appIcon[i], "HoverOpacityEffect", true)
         end
         -- icon -> app name (decompile var0 map)
-        local iconApps = { "phone", "contacts", "messages", "settings", "bank", "notes",
+        -- [Fix #72] position 5 was "bank": the Wallet.png icon opened the
+        -- EMPTY bank stub while the fully built UI.app.wallet (with server
+        -- data request) was unreachable - remapped so the Wallet icon works
+        local iconApps = { "phone", "contacts", "messages", "settings", "wallet", "notes",
             "taxi", "safari", "whatsapp", "airport", "electricity", "health", "traffic", "activities" }
         UI.iconApp = {}
         for i, name in ipairs(iconApps) do UI.iconApp[UI.appIcon[i]] = name end
@@ -501,7 +504,9 @@ local function UIKitReadyPart2()
         -- ====================== STUB APPS (v1.0 faithful) =================
         -- electricity / traffic / bank / activities shipped EMPTY in the
         -- original v1.0 client - kept as dark containers with a title only
-        for _, name in ipairs({ "electricity", "traffic", "bank", "activities" }) do
+        -- [Fix #72] taxi is the iconApps name too (gridNames "taxi" -> openApp
+        -- "taxi"); without a container uiSetVisible(nil) errored on every tap
+        for _, name in ipairs({ "electricity", "traffic", "bank", "activities", "taxi" }) do
             UI.app[name] = eui:uiCreateContainer(5, 0, DW - 10, DH, UI.image.device)
             eui:uiSetVisible(UI.app[name], false)
         end
@@ -632,6 +637,13 @@ end
 -- open / close / openApp (decompile: app.open / app.close / openApp)
 --------------------------------------------------------------------------------
 local function openApp(name)
+    -- [Fix #72] guard: an icon whose app name has no container (e.g. taxi
+    -- before the stub was added) must not error inside onClientUIClick
+    if not (name and UI.app and UI.app[name]) then
+        outputDebugString("[phone-system] openApp: no container for app '"
+            .. tostring(name) .. "'", 2)
+        return
+    end
     if app.currentApp then
         eui:uiSetVisible(UI.app[app.currentApp], false)
     else
@@ -687,7 +699,12 @@ addEventHandler("phone:data:request:callback", localPlayer, function(item, data)
         eui:uiSetVisible(UI.label.home_screen, true)
         eui:uiSetVisible(UI.image.screen, true)
         bindKey("mouse2", "down", cursor_visible)
-        cursorStatus = false
+        -- [Fix #72] the screen opened with NO cursor - onClientUIClick only
+        -- fires on cursor clicks, so every tap did nothing ("phone broken,
+        -- nothing works"). Open with the cursor on (right-click still toggles
+        -- it off/on via cursor_visible); closePhone/showCursor(false) resets.
+        cursorStatus = true
+        showCursor(true)
         eui:uiSetText(UI.label.device_info, "Serial Number: " .. tostring(item.serial or "N/A") ..
             "\nPhone Number: " .. tostring(item.phone_number or "N/A") ..
             "\nVoucher: " .. tostring(item.voucher or 0))

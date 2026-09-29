@@ -654,9 +654,18 @@ local function drawHeader()
         -- change) - re-sync the edit to the pill whenever the box moves so the
         -- text field can never drift off the drawn pill
         if searchUI and isElement(searchUI) and eui then
-                local rx, ry = 1728 / sw, 972 / sh
-                local ex, ey = (searchBox.x + 30 * s) * rx, (searchBox.y + 3 * s) * ry
-                local ew, eh = (searchBox.w - 44 * s) * rx, (searchBox.h - 6 * s) * ry
+                -- [Fix #76] uiSetPosition expects ABSOLUTE screen px (stored
+                -- verbatim, UIKit core c_main 430-443) and uiSetSize expects
+                -- reference units (scaled by SCALE_Y at 465-472). The #73 sync
+                -- pushed 1728x972 ref coords to uiSetPosition, which parked the
+                -- field off the pill every frame (the "search still broken" bug).
+                -- Creation keeps its ref-space round-trip; only the sync changes.
+                local ex, ey = searchBox.x + 30 * s, searchBox.y + 3 * s
+                -- SCALE_Y = sh / ref_sy always (core c_main 10-17); ask UIKit
+                -- for ref_sy so non-standard resolutions stay exact
+                local _, refSy = eui:uiGetReferenceScreenSize()
+                local k = (refSy or 972) / sh
+                local ew, eh = (searchBox.w - 44 * s) * k, (searchBox.h - 6 * s) * k
                 if ex ~= lastEditX or ey ~= lastEditY or ew ~= lastEditW or eh ~= lastEditH then
                         lastEditX, lastEditY, lastEditW, lastEditH = ex, ey, ew, eh
                         eui:uiSetPosition(searchUI, ex, ey)
@@ -910,7 +919,14 @@ addEventHandler("onClientClick", root, function(button, buttonState)
                 return
         end
         if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
-                if not searchActive then createSearchEdit() end
+                if not searchActive then
+                        createSearchEdit()
+                elseif searchUI and isElement(searchUI) and eui then
+                        -- [Fix #76] clicking the pill while the edit already
+                        -- exists but lost focus (UIKit focus moves on other
+                        -- clicks) did nothing -> could not type; re-focus it
+                        pcall(function() eui:uiSetFocusedElement(searchUI) end)
+                end
                 if not cursorOn then
                         cursorOn = true
                         showCursor(true)

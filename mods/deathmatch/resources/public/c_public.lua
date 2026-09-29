@@ -26,3 +26,60 @@ function isASCII(text)
 	end
 	return true
 end
+
+-------------------------------------------------------------------------------
+-- [Fix #63] colshape checker - the old Owl public resource shipped one (the
+-- Fix #62 port deferred it: the decompile was too damaged). The contract is
+-- recovered from the trucker job client:
+--   exports.public:addColshapeChecker(shape, x, y, z) registers a colshape;
+--   when the local player enters it, "onClientColshapeCheckerHit" fires with
+--   the shape as source. One hit per entry (re-fires after leaving).
+--   addColshapeChecker is used by jobs to gate deliveries at a polygon.
+-------------------------------------------------------------------------------
+local checkedShapes = {}
+local insideShapes = {}
+local checkerTimer = nil
+
+local function checkShapes()
+	for shape in pairs(checkedShapes) do
+		if not isElement(shape) then
+			checkedShapes[shape] = nil
+			insideShapes[shape] = nil
+		else
+			local within = isElementWithinColShape(localPlayer, shape)
+			if within and not insideShapes[shape] then
+				insideShapes[shape] = true
+				triggerEvent("onClientColshapeCheckerHit", shape)
+			elseif not within and insideShapes[shape] then
+				insideShapes[shape] = false
+			end
+		end
+	end
+	if next(checkedShapes) == nil and isTimer(checkerTimer) then
+		killTimer(checkerTimer)
+		checkerTimer = nil
+	end
+end
+
+function addColshapeChecker(shape, x, y, z)
+	if not isElement(shape) or getElementType(shape) ~= "colshape" then
+		return false
+	end
+	checkedShapes[shape] = { x = x, y = y, z = z }
+	if not checkerTimer then
+		checkerTimer = setTimer(checkShapes, 250, 0)
+	end
+	return true
+end
+
+function removeColshapeChecker(shape)
+	checkedShapes[shape] = nil
+	insideShapes[shape] = nil
+end
+
+addEventHandler("onClientElementDestroy", root, function()
+	if checkedShapes[source] then
+		checkedShapes[source] = nil
+		insideShapes[source] = nil
+	end
+end)

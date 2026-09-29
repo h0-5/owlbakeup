@@ -18,6 +18,7 @@
         <file src="fonts/PFDinDisplayPro-Regular.ttf" />
 
         <file src="icons/discord.png" />
+	<file src="icons/rank.png" />
         <file src="icons/youtube.png" />
         <file src="icons/link.png" />
         <file src="icons/menu_person.png" />

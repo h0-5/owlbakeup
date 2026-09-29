@@ -16,4 +16,6 @@
 	<export function="progress" type="client" />
 	<export function="showTimer" type="client" />
 	<export function="msToTimeStr" type="client" />
+	<export function="addColshapeChecker" type="client" />
+	<export function="removeColshapeChecker" type="client" />
 </meta>

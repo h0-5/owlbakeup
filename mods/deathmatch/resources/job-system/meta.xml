@@ -12,6 +12,28 @@
         <script src="taxi/c_taxi_owl.lua" type="client" cache="false" />
         <file src="taxi/images/pin.png" />
 
+        <script src="dustman/s_dustman_owl.lua" type="server" />
+        <script src="dustman/c_dustman_owl.lua" type="client" cache="false" />
+
+        <script src="miner/s_miner_owl.lua" type="server" />
+        <script src="miner/c_miner_owl.lua" type="client" cache="false" />
+
+        <script src="drugdealer/g_drug_conf_owl.lua" type="shared" cache="false" />
+        <script src="drugdealer/s_drug_owl.lua" type="server" />
+        <script src="drugdealer/c_drug_owl.lua" type="client" cache="false" />
+        <script src="liquordealer/g_liquor_conf_owl.lua" type="shared" cache="false" />
+        <script src="liquordealer/s_liquor_owl.lua" type="server" />
+        <script src="liquordealer/c_liquor_owl.lua" type="client" cache="false" />
+        <script src="trucker/g_trucker_conf_owl.lua" type="shared" cache="false" />
+        <script src="trucker/s_trucker_owl.lua" type="server" />
+        <script src="trucker/c_trucker_owl.lua" type="client" cache="false" />
+
+        <!-- [Fix #63] the decompiled job clients call core helpers as
+             cross-resource exports (same call sites verbatim) -->
+        <export function="givePlayerJobEXP" type="client" />
+        <export function="giveJobSalary" type="client" />
+        <export function="showTakeJob" type="client" />
+
         <!-- ===================== LEGACY SUB-JOBS (dormant) ==================
              fishing / photographer / mechanic / locksmith / bus come from the
              UG base and stay loadable; taking them is no longer possible

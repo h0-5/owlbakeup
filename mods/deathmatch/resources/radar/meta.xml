@@ -42,6 +42,9 @@
         <export function="showRadar" type="client" />
         <export function="setRadarDispatchElements" type="client" />
         <export function="isRadarVisible" type="client" />
+        <!-- [Fix #63] the old Owl jobs call exports.radar:findBestWay for the
+             GPS route to their target (dustman trash, postman houses, ...) -->
+        <export function="findBestWay" type="client" />
         <export function="createNamedBlip" type="server" />
         <export function="getMapBlips" type="server" />
 </meta>

@@ -34,10 +34,80 @@ local JOBS_DATA = {
                         { name = "Veteran Driver", required_exp = 400, salary = 320 },
                         { name = "Taxi Master", required_exp = 900, salary = 450 }
                 }
+        },
+        -- [Fix #63] name MUST stay exactly "Dustman" - the decompiled client
+        -- compares getElementData(job) == "Dustman" (c_decompiled.lua:7/96)
+        dustman = {
+                code = "dustman",
+                name = "Dustman",
+                label = "Dustman",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Collector", required_exp = 50, salary = 0 },
+                        { name = "Sanitation Expert", required_exp = 150, salary = 0 }
+                }
+                -- EXP-only job in the decompile (no giveJobSalary call) so
+                -- salaries are 0; EXP +1 per delivered trash (client-driven)
+        },
+        -- [Fix #63] name MUST stay exactly "Drug Dealer" - the decompiled
+        -- client compares it verbatim and takes it via drug_dealer:takeJob
+        drug_dealer = {
+                code = "drug_dealer",
+                name = "Drug Dealer",
+                label = "Drug Dealer",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Grower", required_exp = 50, salary = 0 },
+                        { name = "Supplier", required_exp = 150, salary = 0 }
+                }
+                -- harvested plants sell as items (no salary/EXP calls exist
+                -- in the decompile)
+        },
+        -- [Fix #63] name MUST stay exactly "Liquor Dealer" (same decompile
+        -- family as the drug dealer; taken via liquor_dealer:takeJob)
+        liquor_dealer = {
+                code = "liquor_dealer",
+                name = "Liquor Dealer",
+                label = "Liquor Dealer",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Brewer", required_exp = 50, salary = 0 },
+                        { name = "Supplier", required_exp = 150, salary = 0 }
+                }
+        },
+        -- [Fix #63] name MUST stay exactly "Trucker" (client compares it)
+        trucker = {
+                code = "trucker",
+                name = "Trucker",
+                label = "Trucker",
+                jobs_center = true,
+                requirements = {
+                        min_level = 3
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Hauler", required_exp = 50, salary = 0 },
+                        { name = "Long Hauler", required_exp = 150, salary = 0 },
+                        { name = "Road Master", required_exp = 400, salary = 0 }
+                }
+                -- paid per delivery straight to the wallet (no giveJobSalary
+                -- call exists in the decompile)
         }
 }
 
-local JOBS_LIST = { "taxi" }
+local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker" }
 
 local function ensureTable()
         mysql:query_free([[
@@ -224,21 +294,30 @@ addEventHandler("jobs:giveJobSalary", root, function(player, amount, reason)
         end
 end)
 
--- givePlayerJobEXP(amount, reason) -> level-system
+-- givePlayerJobEXP(jobName, amount) -> level-system
+-- [Fix #63] REAL Owl contract (see c_job_owl): the job clients call
+-- givePlayerJobEXP("Postman", 1) etc - (jobName, amount), not (amount, reason).
+-- The old server presumably gated the name against the player's job - kept.
 addEvent("jobs:givePlayerJobEXP", true)
-addEventHandler("jobs:givePlayerJobEXP", root, function(amount, reason)
+addEventHandler("jobs:givePlayerJobEXP", root, function(jobName, amount)
         local player = client
-        if not player or not tonumber(amount) or type(reason) ~= "string" or reason == "" then
+        if not player or type(jobName) ~= "string" or not tonumber(amount) then
                 return
         end
         amount = math.floor(tonumber(amount))
         if amount <= 0 or amount > 500 then
                 return -- anti-exploit cap
         end
-        if not getElementData(player, "job") then
-                return
+        if getElementData(player, "job") ~= jobName then
+                return -- can only earn EXP for the job you hold
         end
-        exports["level-system"]:addExp(player, amount, reason)
+        -- job-rank EXP (character_jobs.exp drives getJobRankByEXP / salaries)
+        local characterID = tonumber(getElementData(player, "character:id"))
+        local code = getJobByName(jobName)
+        if characterID and code then
+                mysql:query_free("UPDATE character_jobs SET exp = exp + " .. amount .. " WHERE character_id = " .. characterID .. " AND job_code = '" .. code .. "'")
+        end
+        exports["level-system"]:addExp(player, amount, jobName)
 end)
 
 -- login sync: restore the current job from character_jobs

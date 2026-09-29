@@ -138,9 +138,14 @@ local function buildUI()
         eui:uiSetProperty(UI.menu.main, "selected_row_color", tocolor(3, 6, 11, 255))
         eui:uiSetProperty(UI.menu.main, "row_height", 30)
 
+        -- [Fix #59] ONE shared content panel for every section. Each section
+        -- used to build its OWN opaque panel at the same spot, so the later
+        -- sections' panels were painted on top of the selected one and no
+        -- section switch was ever visible (F3 looked dead / info missing).
+        local contentPanel = eui:uiCreateRectangle(PANEL_X, PANEL_Y, PANEL_W, PANEL_H,
+                tocolor(11, 14, 19, 230), true, true, true, true, UI.window.FactionWindow)
         for _, sec in ipairs(SECTIONS) do
-                UI.container[sec.id] = eui:uiCreateContainer(0, 0, PANEL_W, PANEL_H,
-                        eui:uiCreateRectangle(PANEL_X, PANEL_Y, PANEL_W, PANEL_H, tocolor(11, 14, 19, 230), true, true, true, true, UI.window.FactionWindow))
+                UI.container[sec.id] = eui:uiCreateContainer(0, 0, PANEL_W, PANEL_H, contentPanel)
                 eui:uiSetVisible(UI.container[sec.id], false)
         end
 
@@ -486,6 +491,12 @@ function factionUIHide()
         F.visible = false
         closeAllWindows()
         showCursor(false)
+        -- [Fix #59] ALWAYS tell the server, whatever closed us (ESC, death,
+        -- sub-window action): the server keeps factionMenu=1 otherwise and
+        -- its ~=1 gate in showFactionMenuEx then blocks every later F3 open
+        -- ("F3 opens once only"). The server reset is idempotent, so the
+        -- existing ESC-side event and server-pushed hides stay harmless.
+        triggerServerEvent("factionmenu:hide", localPlayer)
 end
 
 addEvent("factionmenu:hide", true)

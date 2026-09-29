@@ -509,7 +509,7 @@ function lobby.draw()
         local tabH = 40 * s
         local tabY = 45 * s
         local radius = (lobby.section and 12 * s) or 6 * s
-        dxDrawCircle(50 * s, tabY + tabH / 2, radius, 0, 360, 0, 0, tocolor(255, 55, 95, 255), nil, 3 * s)
+        dxDrawCircle(50 * s, tabY + tabH / 2, radius, 0, 360, tocolor(255, 55, 95, 255), nil, 32, 1, false)
 
         local cursorX = 100 * s
         lobby.tabRects = {}

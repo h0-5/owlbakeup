@@ -568,27 +568,29 @@ local function buildMainMenuUI()
         eui:uiSetProperty(menu, "selection_color", tocolor(255, 255, 255))
         setElementID(menu, "main-menu")
 
+        -- [Fix #59] ONE shared content panel for every section (was: an
+        -- opaque panel per section, all stacked at the same coordinates ->
+        -- only the LAST section could ever be seen and F1 navigation looked
+        -- dead). Corner ticks are decoration -> drawn once.
+        local contentPanel = eui:uiCreateRectangle(220 + 30, 5, contentW, contentH,
+                tocolor(3, 6, 11, 240), true, true, true, true, UI.window.MainMenu)
+        eui:uiCreateRectangle(30, 0, 10, 2, tocolor(255, 255, 255, 240),
+                false, false, false, false, contentPanel)
+        eui:uiCreateRectangle(contentW - 40, contentH - 2, 10, 2, tocolor(255, 255, 255, 240),
+                false, false, false, false, contentPanel)
+        eui:uiCreateRectangle(contentW - 40, 0, 10, 2, tocolor(255, 255, 255, 240),
+                false, false, false, false, contentPanel)
+        eui:uiCreateRectangle(30, contentH - 2, 10, 2, tocolor(255, 255, 255, 240),
+                false, false, false, false, contentPanel)
+
         for _, section in ipairs(SECTIONS) do
-                -- content panel (rounded, like the old build calls)
-                local panel = eui:uiCreateRectangle(220 + 30, 5, contentW, contentH,
-                        tocolor(3, 6, 11, 240), true, true, true, true, UI.window.MainMenu)
-                UI.container[section.id] = eui:uiCreateContainer(0, 0, contentW, contentH, panel)
+                UI.container[section.id] = eui:uiCreateContainer(0, 0, contentW, contentH, contentPanel)
                 eui:uiSetVisible(UI.container[section.id], false)
 
                 UI.label.title = eui:uiCreateLabel(0, 10, contentW, 30,
                         { en = section.en, ar = section.ar }, tocolor(255, 255, 255, 255),
                         "center", "center", UI.container[section.id])
                 eui:uiSetFont(UI.label.title, "default-large")
-
-                -- the four white corner ticks of the content panel (old)
-                eui:uiCreateRectangle(30, 0, 10, 2, tocolor(255, 255, 255, 240),
-                        false, false, false, false, panel)
-                eui:uiCreateRectangle(contentW - 40, contentH - 2, 10, 2, tocolor(255, 255, 255, 240),
-                        false, false, false, false, panel)
-                eui:uiCreateRectangle(contentW - 40, 0, 10, 2, tocolor(255, 255, 255, 240),
-                        false, false, false, false, panel)
-                eui:uiCreateRectangle(30, contentH - 2, 10, 2, tocolor(255, 255, 255, 240),
-                        false, false, false, false, panel)
 
                 eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
                         tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)

@@ -748,6 +748,15 @@ local function formatMoney(n)
         return s
 end
 
+-- [Fix #74] the server fires moneyUpdateFX on every money change
+-- (global/s_money_globals.lua) but NO client resource ever added the event ->
+-- "Server triggered clientside event moneyUpdateFX, but event is not added
+-- clientside" logged on every transaction. Declared + absorbed here: the money
+-- row already animates live off the elementData change (moneyFlex above), so
+-- no visual work is needed for this event.
+addEvent("moneyUpdateFX", true)
+addEventHandler("moneyUpdateFX", root, function() end)
+
 local moneyFlex = nil   -- smoothed text width driving the icon position
 local lastTopRightBottom = nil   -- [Fix #33] published for the reports list
 

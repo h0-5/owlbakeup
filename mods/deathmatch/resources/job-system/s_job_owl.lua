@@ -169,10 +169,26 @@ local JOBS_DATA = {
                 }
                 -- earns by crafting/assembling in the factory (sold to
                 -- players); no giveJobSalary call in the decompile
+        },
+        -- [Fix #63] name MUST stay exactly "Fuel Deliverer" (client compares)
+        fuel = {
+                code = "fuel",
+                name = "Fuel Deliverer",
+                label = "Fuel Deliverer",
+                jobs_center = true,
+                requirements = {
+                        min_level = 3
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Tanker Driver", required_exp = 50, salary = 0 },
+                        { name = "Route Veteran", required_exp = 150, salary = 0 }
+                }
+                -- EXP +1 per 5000L drop (client-driven, decompile-verbatim)
         }
 }
 
-local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus", "gunsmith" }
+local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus", "gunsmith", "fuel" }
 
 local function ensureTable()
         mysql:query_free([[

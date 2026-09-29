@@ -47,6 +47,12 @@
         <file src="gunsmith/images/Deagle/receiver.png" />
         <script src="lumberjack/s_lumberjack_owl.lua" type="server" />
         <script src="lumberjack/c_lumberjack_owl.lua" type="client" cache="false" />
+        <script src="fuel/s_fuel_owl.lua" type="server" />
+        <script src="fuel/c_fuel_owl.lua" type="client" cache="false" />
+        <file src="oil-barrel.png" />
+        <script src="mechanical/s_mech_owl.lua" type="server" />
+        <script src="mechanical/c_mech_owl.lua" type="client" cache="false" />
+        <file src="mechanical/upgrades.xml" />
 
         <!-- [Fix #63] the decompiled job clients call core helpers as
              cross-resource exports (same call sites verbatim) -->

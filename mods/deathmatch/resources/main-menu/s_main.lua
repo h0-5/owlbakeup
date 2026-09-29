@@ -199,16 +199,41 @@ function getPlayerIDStrSafe(player)
                 or "-")
 end
 
---[[ ==================== leaderboard ==================== ]]
--- placeholder until the level-system mod is restored: replies with an
--- empty list so the client grid simply renders empty (same as PDZ bridge)
+--[[ ==================== leaderboard ====================
+        [Fix #63] real leaderboards. "levels" = level_system (per-character
+        level/exp, the same table level-system maintains) joined with the
+        characters table for names - the old client grid has #/Name/Level.
+        "activities" has no server data source yet (play-time points placeholder
+        kept empty until its system is ported) - the grid renders empty. ]]
 
 addEvent("leaderboard:get", true)
 addEventHandler("leaderboard:get", root, function(kind)
         local thePlayer = client or source
         if not isElement(thePlayer) then return end
         if kind ~= "levels" and kind ~= "activities" then return end
-        reply(thePlayer, "leaderboard:get:response", kind, {})
+        local list = {}
+        if kind == "levels" then
+                local q = exports.mysql:query([[
+                        SELECT ls.character_id, ls.level, ls.exp, c.charactername
+                        FROM level_system ls
+                        JOIN characters c ON c.id = ls.character_id
+                        ORDER BY ls.level DESC, ls.exp DESC
+                        LIMIT 20
+                ]])
+                if q then
+                        while true do
+                                local row = exports.mysql:fetch_assoc(q)
+                                if not row then break end
+                                list[#list + 1] = {
+                                        name = tostring(row.charactername or "-"),
+                                        level = tonumber(row.level) or 1,
+                                        exp = tonumber(row.exp) or 0
+                                }
+                        end
+                        exports.mysql:free_result(q)
+                end
+        end
+        reply(thePlayer, "leaderboard:get:response", kind, list)
 end)
 
 --[[ ==================== discord link ==================== ]]

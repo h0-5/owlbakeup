@@ -80,7 +80,13 @@ local SECTIONS = {
         { id = "commands",       en = "Commands",       ar = "الأوامر",            icon = "icons/menu_chat.png" },
         { id = "report",         en = "Report",         ar = "البلاغات",           icon = "icons/reportpanel.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/discord.png" },
+        -- [Fix #63] awards section - the old client jumped to menu row 9 for
+        -- "Level Awards" (client_decompiled.lua: uiMenuSetSelectedRow(var2, 9))
+        -- and c_level.lua builds its awards tab inside UI.container["awards"]
+        -- when uiMenuGetItemID == "awards" - row 9 = this section
+        { id = "awards",         en = "Level Awards",    ar = "جوائز المستوى",      icon = "icons/rank.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
+        { id = "jobs",           en = "Jobs",            ar = "الوظائف",            icon = "icons/menu_suitcase.png" },
 }
 
 --[[ report types — MUST stay in report-system/g_reports.lua order ]]
@@ -1130,10 +1136,10 @@ local function buildMainMenuUI()
                         triggerServerEvent("main-menu:linkdiscord:unlink", localPlayer, charId)
                         currentLinkCode = false
                 elseif source == UI.button.goto_level_awards then
-                        -- old jumped to the awards section row (our leaderboard)
+                        -- old jumped to the awards section row (row 9 in the old menu)
                         local target = 1
                         for i, section in ipairs(SECTIONS) do
-                                if section.id == "leaderboard" then target = i end
+                                if section.id == "awards" then target = i end
                         end
                         eui:uiMenuSetSelectedRow(menu, target)
                 end
@@ -1334,22 +1340,24 @@ local function buildMainMenuUI()
                                         .. bullet .. "بصمة الأصابع »  #FFFFFF" .. fingerprint .. "\n"
                                         .. bullet .. "الوصف »  #FFFFFF" .. tostring(desc or "-"),
                         })
-                        -- a REAL level: derived from total play time (1 level per
-                        -- 5 hours) with progress to the next one
+                        -- [Fix #63] REAL level from level-system (old client:
+                        -- "Level ${color.primary} N" + "exp / required" + progress).
+                        -- The decompile inlined getPlayerLevel() everywhere and lost
+                        -- the 2nd/3rd returns (same artifact repaired in c_level.lua)
+                        -- - unpacked with explicit locals here.
                         local hours = tonumber(getElementData(localPlayer, "hoursplayed")) or 0
                         local minutes = math.floor((tonumber(getElementData(localPlayer, "timeinserver")) or 0))
-                        local totalHours = hours + minutes / 60
-                        local levelNum = math.floor(totalHours / 5) + 1
-                        local nextIn = math.max(0, math.ceil(levelNum * 5 - totalHours))
+                        local lv, lvExp, lvReq = exports["level-system"]:getPlayerLevel()
+                        if not lv or lv < 1 then lv, lvExp, lvReq = 1, 0, 50 end
                         eui:uiSetText(UI.label.level, {
-                                en = "Level ${color.primary}" .. tostring(levelNum),
-                                ar = "المستوى ${color.primary}" .. tostring(levelNum),
+                                en = "Level ${color.primary}" .. tostring(lv),
+                                ar = "المستوى ${color.primary}" .. tostring(lv),
                         })
                         eui:uiSetText(UI.label.level_exp, {
-                                en = "Next level in " .. tostring(nextIn) .. "h",
-                                ar = "المستوى التالي بعد " .. tostring(nextIn) .. " ساعة",
+                                en = tostring(lvExp) .. " / " .. tostring(lvReq),
+                                ar = tostring(lvExp) .. " / " .. tostring(lvReq),
                         })
-                        eui:uiProgressBarSetProgress(UI.progressbar[1], math.floor((totalHours % 5) / 5 * 100))
+                        eui:uiProgressBarSetProgress(UI.progressbar[1], lvExp / lvReq * 100)
                         -- cash + bank balance live in the play-time card
                         -- Fix #26: this server stores money in elementData "money" (custom economy)
                         local money = tonumber(getElementData(localPlayer, "money"))

@@ -190,6 +190,13 @@ function showStats(thePlayer, commandName, targetPlayerName)
 		else
 			table.insert(info, {" Career: Unemployed"})
 		end
+	elseif type(job) == "string" then
+		-- Fix #61: Owl jobs store the job NAME (e.g. "Taxi Driver")
+		if isOverlayDisabled then
+			outputChatBox(" Career: "..job, showPlayer)
+		else
+			table.insert(info, {" Career: "..job})
+		end
 	else
 		local jobName = exports["job-system"]:getJobTitleFromID(job)
 		local joblevel = getElementData(thePlayer, "jobLevel") or 1

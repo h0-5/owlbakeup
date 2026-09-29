@@ -650,6 +650,13 @@ local function openApp(name)
         eui:uiSetVisible(UI.image.wallpaper, false)
         eui:uiSetVisible(UI.label.home_screen, false)
     end
+    -- Fix #61: external app modules (e.g. taxi) build into a stub via
+    -- phone:app:request(name, parent, x, y, w, h)
+    if not UI.app[name] then
+        UI.app[name] = eui:uiCreateContainer(5, 0, DW - 10, DH, UI.image.device)
+        eui:uiSetVisible(UI.app[name], false)
+        triggerEvent("phone:app:request", localPlayer, name, UI.app[name], 0, 0, DW - 10, DH)
+    end
     app.currentApp = name
     eui:uiSetVisible(UI.app[name], true)
     if name == "phone" then

@@ -1,0 +1,5 @@
+<meta>
+	<info author="Owl Gaming (decompiled by Owl Decompiler v1.0 - ported by owlbakeup Fix #63)" type="script" description="Flight countdown display (pilot:flight timer) - driven by the airport travel system" />
+
+	<script src="c_pilot.lua" type="client" cache="false" />
+</meta>

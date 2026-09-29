@@ -1,0 +1,7 @@
+<meta>
+	<info author="owlbakeup Fix #61" type="script" description="Security shim: Owl client scripts call exports.security:triggerServerEvent(...) - the original Owl 'security' resource has no decompile in the old-client dump, so this minimal shim keeps those client calls verbatim by forwarding to triggerServerEvent. Server-side validation stays in each receiving resource." />
+
+	<script src="c_security.lua" type="client" cache="false" />
+
+	<export function="triggerServerEvent" type="client" />
+</meta>

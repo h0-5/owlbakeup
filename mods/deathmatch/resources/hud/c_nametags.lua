@@ -326,22 +326,34 @@ function drawNametags()
         if cacheLooksBroken() then updatePlayersHud() end
 
         for player, entry in pairs(playersHud) do
-                if player ~= localPlayer and isElement(player) and entry
+                -- [Fix #71] the old client draws EVERY streamed player INCLUDING
+                -- localPlayer (its loop tests `== localPlayer` for the heart
+                -- cooldown). The `player ~= localPlayer` skip meant a session
+                -- with a single client (the only case ever connected here) drew
+                -- ZERO names — exactly the user's "nametags don't show" report.
+                if isElement(player) and entry
                         and (not entry.hidden or localIsStaff()) then
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then
-                                local hx, hy, hz = getPedBonePosition(player, 6)
+                                -- [Fix #71] bone 8 (head) — matches the old client
+                                -- (var8(player, 8)) and the WORKING NPC renderer
+                                -- (c_ped_names.lua:120). Bone 6 is the neck and sat
+                                -- too low, so the +0.42 lift floated the tag oddly.
+                                local hx, hy, hz = getPedBonePosition(player, 8)
                                 if hx then
-                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.42)
+                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.25)
                                         if sX then
                                                 -- line of sight (skip when blocked), recon ignores it
                                                 -- Fix #23: throttled to once per 250ms per player
                                                 local c = losCache[player]
                                                 if not c or now - c.t > 250 then
+                                                        -- [Fix #71] vehicles=false — a passing/car target used to
+                                                        -- hide the name (false blocked). The WORKING NPC renderer
+                                                        -- (c_ped_names.lua:131) clears LOS with vehicles=false too.
                                                         c = { blocked = processLineOfSight(camX, camY, camZ,
-                                                                        hx, hy, hz + 0.4,
-                                                                        true, true, false, true, false, false, false, false),
+                                                                        hx, hy, hz + 0.25,
+                                                                        true, false, false, true, false, false, false, false),
                                                               t = now }
                                                         losCache[player] = c
                                                 end

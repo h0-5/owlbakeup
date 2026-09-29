@@ -104,10 +104,58 @@ local JOBS_DATA = {
                 }
                 -- paid per delivery straight to the wallet (no giveJobSalary
                 -- call exists in the decompile)
+        },
+        -- [Fix #63] name MUST stay exactly "Pizza Deliverer" (client compares)
+        pizza = {
+                code = "pizza",
+                name = "Pizza Deliverer",
+                label = "Pizza Deliverer",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Deliverer", required_exp = 50, salary = 0 },
+                        { name = "Route Master", required_exp = 150, salary = 0 }
+                }
+                -- EXP-only in the decompile (no giveJobSalary call)
+        },
+        -- [Fix #63] name MUST stay exactly "Forklift Operator" (client compares)
+        forklift = {
+                code = "forklift",
+                name = "Forklift Operator",
+                label = "Forklift Operator",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Operator", required_exp = 50, salary = 0 },
+                        { name = "Dock Master", required_exp = 150, salary = 0 }
+                }
+                -- EXP-only in the decompile (no giveJobSalary call)
+        },
+        -- [Fix #63] name MUST stay exactly "Bus Driver" (client compares it)
+        bus = {
+                code = "bus",
+                name = "Bus Driver",
+                label = "Bus Driver",
+                jobs_center = true,
+                requirements = {
+                        min_level = 2
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Driver", required_exp = 50, salary = 0 },
+                        { name = "Line Veteran", required_exp = 150, salary = 0 }
+                }
+                -- EXP-only in the decompile (no giveJobSalary call)
         }
 }
 
-local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker" }
+local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus" }
 
 local function ensureTable()
         mysql:query_free([[

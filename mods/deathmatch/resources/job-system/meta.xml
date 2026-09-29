@@ -27,6 +27,12 @@
         <script src="trucker/g_trucker_conf_owl.lua" type="shared" cache="false" />
         <script src="trucker/s_trucker_owl.lua" type="server" />
         <script src="trucker/c_trucker_owl.lua" type="client" cache="false" />
+        <script src="pizza/s_pizza_owl.lua" type="server" />
+        <script src="pizza/c_pizza_owl.lua" type="client" cache="false" />
+        <script src="forklift/s_forklift_owl.lua" type="server" />
+        <script src="forklift/c_forklift_owl.lua" type="client" cache="false" />
+        <script src="busowl/s_bus_owl.lua" type="server" />
+        <script src="busowl/c_bus_owl.lua" type="client" cache="false" />
 
         <!-- [Fix #63] the decompiled job clients call core helpers as
              cross-resource exports (same call sites verbatim) -->

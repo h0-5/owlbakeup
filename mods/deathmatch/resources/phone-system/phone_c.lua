@@ -1117,6 +1117,32 @@ end
 
 addEventHandler("onClientUIClick", root, function()
     if not built then return end
+    -- [Fix #76] the home indicator was matched by element identity
+    -- (source == UI.rectangle.HOME_BUTTON): UIKit's hit-test returns the
+    -- element that was CREATED LAST among those under the cursor, so any
+    -- later-created element overlapping the 5px bar (app containers, the
+    -- device frame) stole the click and the home button never fired.
+    -- Test the cursor against the bar's own on-screen rect instead.
+    do
+        local hx, hy, hw, hh = eui:uiGetAbsoluteBounds(UI.rectangle.HOME_BUTTON)
+        local ccx, ccy = getCursorPosition()
+        if hx and ccx then
+            local pw, ph = guiGetScreenSize()
+            ccx, ccy = ccx * pw, ccy * ph
+            if ccx >= hx and ccx <= hx + hw and ccy >= hy and ccy <= hy + hh then
+                if app.currentApp then
+                    eui:uiSetVisible(UI.app[app.currentApp], false)
+                    eui:uiSetVisible(UI.image.wallpaper, true)
+                    eui:uiSetVisible(UI.label.home_screen, true)
+                    app.currentApp = false
+                    focusBrowser()
+                else
+                    closePhone()
+                end
+                return
+            end
+        end
+    end
     if source == UI.button["SIM:Close"] then
         eui:uiSetVisible(UI.window.SIM, false)
         showCursor(false)

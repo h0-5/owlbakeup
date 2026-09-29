@@ -126,6 +126,10 @@ local function buildPlayerEntry(player)
         -- staff rank color pushes the name color (Fix #19: no title text)
         local rgb = getElementData(player, "rank:color")
         if type(rgb) ~= "table" or #rgb < 3 then rgb = { 255, 255, 255 } end
+        -- [Fix #75 - user] hidden admins show as PLAIN players above the head:
+        -- "لو سويت hide admin ما يرجع لون فوق الشخصية كلاير - يبقى لون الرتبة".
+        -- Un-hiding restores the rank color (rgb is re-read every build).
+        if hidden then rgb = { 255, 255, 255 } end
 
         -- friends were colored white in the old client (friend-system guarded)
         local friend = player == localPlayer
@@ -342,7 +346,9 @@ function drawNametags()
                                 -- too low, so the +0.42 lift floated the tag oddly.
                                 local hx, hy, hz = getPedBonePosition(player, 8)
                                 if hx then
-                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.25)
+                                        -- [Fix #75 - user] "كبر اسم الشخصية فوق اللاعب اكثر":
+                                        -- anchor slightly higher to fit the bigger text+badge
+                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.30)
                                         if sX then
                                                 -- line of sight (skip when blocked), recon ignores it
                                                 -- Fix #23: throttled to once per 250ms per player
@@ -352,7 +358,7 @@ function drawNametags()
                                                         -- hide the name (false blocked). The WORKING NPC renderer
                                                         -- (c_ped_names.lua:131) clears LOS with vehicles=false too.
                                                         c = { blocked = processLineOfSight(camX, camY, camZ,
-                                                                        hx, hy, hz + 0.25,
+                                                                        hx, hy, hz + 0.30,
                                                                         true, false, false, true, false, false, false, false),
                                                               t = now }
                                                         losCache[player] = c
@@ -390,12 +396,15 @@ function drawNametags()
                                                         if entry.hidden then
                                                                 nameText = nameText .. " (Hidden)"
                                                         end
-                                                        outlineText(nameText, sX - 120, baseY - 22, 240, 18,
-                                                                entry.color, 1, fontDefault(), "center", "top")
+                                                        -- [Fix #75 - user] "كبر اسم الشخصية اكثر وكبر الشارة اكثر"
+                                                        -- name: scale 1 -> 1.3 (wider centered box for long names)
+                                                        outlineText(nameText, sX - 150, baseY - 34, 300, 28,
+                                                                entry.color, 1.3, fontDefault(), "center", "top")
 
                                                         -- badge icons under the name (old client icons row)
+                                                        -- [Fix #75] 18px -> 26px (user: "كبر الشارة اكثر")
                                                         if #entry.icons > 0 then
-                                                                local iconSize, iconGap = 18, 3
+                                                                local iconSize, iconGap = 26, 4
                                                                 local rowW = #entry.icons * iconSize + (#entry.icons - 1) * iconGap
                                                                 local iconX = sX - rowW / 2
                                                                 local iconY = baseY + 4

@@ -152,10 +152,27 @@ local JOBS_DATA = {
                         { name = "Line Veteran", required_exp = 150, salary = 0 }
                 }
                 -- EXP-only in the decompile (no giveJobSalary call)
+        },
+        -- [Fix #63] name MUST stay exactly "Gunsmith" (client compares it)
+        gunsmith = {
+                code = "gunsmith",
+                name = "Gunsmith",
+                label = "Gunsmith",
+                jobs_center = true,
+                requirements = {
+                        min_level = 2
+                },
+                ranks = {
+                        { name = "Apprentice", required_exp = 0, salary = 0 },
+                        { name = "Craftsman", required_exp = 50, salary = 0 },
+                        { name = "Master Gunsmith", required_exp = 200, salary = 0 }
+                }
+                -- earns by crafting/assembling in the factory (sold to
+                -- players); no giveJobSalary call in the decompile
         }
 }
 
-local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus" }
+local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus", "gunsmith" }
 
 local function ensureTable()
         mysql:query_free([[

@@ -438,6 +438,23 @@ g_items = {
 	[215] = { "Materials", "Raw mined materials. Sell them at the materials dealer.", 7, 1463, 0, 0, 0, 0, weight = 1}, -- [Fix #63] miner job sells these
 	[216] = { "Grapes", "Fresh grapes for brewing liquor.", 1, 809, 0, 0, 0, 0, weight = 0.2}, -- [Fix #63] liquor dealer harvest
 	[217] = { "Blueberries", "Fresh blueberries for brewing liquor.", 1, 810, 0, 0, 0, 0, weight = 0.2}, -- [Fix #63] liquor dealer harvest
+	[218] = { "Screwdriver", "A factory tool used for crafting. (TempUse)", 7, 3015, 0, 0, 0, 0, weight = 0.3}, -- [Fix #63] gunsmith factory
+	[219] = { "Hammer", "A factory tool used for crafting. (TempUse)", 7, 3017, 0, 0, 0, 0, weight = 0.8}, -- [Fix #63] gunsmith factory
+	[220] = { "Wire", "Copper wiring for electronics.", 7, 2967, 0, 0, 0, 0, weight = 0.1}, -- [Fix #63] gunsmith factory
+	[221] = { "Electronic Chip", "A small circuit board.", 7, 2967, 0, 0, 0, 0, weight = 0.05}, -- [Fix #63] gunsmith factory
+	[222] = { "Explosive Powder", "Highly unstable powder. Handle with care.", 7, 1575, 0, 0, 0, 0, weight = 0.3}, -- [Fix #63] gunsmith factory
+	[223] = { "Iron", "Raw iron material for the factory.", 7, 1463, 0, 0, 0, 0, weight = 0.5}, -- [Fix #63] gunsmith factory
+	[224] = { "Copper", "Raw copper material for the factory.", 7, 1463, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
+	[225] = { "Lead", "Raw lead material for the factory.", 7, 1463, 0, 0, 0, 0, weight = 0.6}, -- [Fix #63] gunsmith factory
+	[226] = { "Aluminium", "Raw aluminium material for the factory.", 7, 1463, 0, 0, 0, 0, weight = 0.2}, -- [Fix #63] gunsmith factory
+	[227] = { "Wood", "Processed wood material.", 7, 1463, 0, 0, 0, 0, weight = 0.5}, -- [Fix #63] gunsmith factory
+	[228] = { "Deagle Barrel", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.3}, -- [Fix #63] gunsmith factory
+	[229] = { "Deagle Receiver", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.3}, -- [Fix #63] gunsmith factory
+	[230] = { "AK-47 Magazine", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.3}, -- [Fix #63] gunsmith factory
+	[231] = { "AK-47 Receiver", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
+	[232] = { "AK-47 Stock", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
+	[233] = { "AK-47 Wooden Shield", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
+	[234] = { "C4 Explosive", "A craftable c4 charge.", 7, 1654, 0, 0, 0, 0, weight = 0.8}, -- [Fix #63] gunsmith factory
 
 	--{ "Armor", "Kevlar-made armor.", 6, 373, 90, 90, 0, -0.05, weight = 1 }, -- 138
 

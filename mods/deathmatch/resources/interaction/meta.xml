@@ -1,0 +1,11 @@
+<meta>
+	<info author="Owl (old client)" name="interaction" description="Right-click interaction menu shared by all Owl systems" type="script" version="1.0.0" />
+
+	<script src="s_interaction.lua" type="server" />
+	<script src="c_interaction.lua" type="client" cache="false" />
+
+	<export function="addInteractOption" type="client" />
+	<export function="executeInteractOption" type="client" />
+	<export function="hideInteract" type="client" />
+	<export function="isInteractionOptionsShowing" type="client" />
+</meta>

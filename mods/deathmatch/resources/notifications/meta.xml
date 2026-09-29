@@ -1,0 +1,18 @@
+<meta>
+	<info author="Owl (old client)" name="notifications" description="Owl notification stack: pills, boxes, directives, key hints" type="script" version="1.0.0" />
+
+	<script src="s_notifications.lua" type="server" />
+	<script src="c_notifications.lua" type="client" cache="false" />
+
+	<file src="sounds/notification.wav" />
+
+	<export function="output" type="client" />
+	<export function="sendNotification" type="client" />
+	<export function="hideNotification" type="client" />
+	<export function="showDirective" type="client" />
+	<export function="hideDirective" type="client" />
+	<export function="showKeyDescription" type="client" />
+	<export function="hideKeyDescription" type="client" />
+
+	<export function="outputToPlayer" type="server" />
+</meta>

@@ -125,6 +125,7 @@ function loadOnePed(id, hasCoroutine)
 			exports.anticheat:changeProtectedElementDataEx(ped, "dbid", row.id)
 			exports.anticheat:changeProtectedElementDataEx(ped, "rpp.npc.dbid", row.id)
 			exports.pool:allocateElement(ped, row.id, true)
+			setElementID(ped, "ped:" .. tostring(row.id)) -- [Fix #59] old-client getPedFromID contract
 								
 			setElementDimension(ped, row.dimension)
 			setElementInterior(ped, row.interior)
@@ -145,6 +146,31 @@ function loadOnePed(id, hasCoroutine)
 			exports.anticheat:changeProtectedElementDataEx(ped, "ped:name", pedname) -- For chat system
 			exports.anticheat:changeProtectedElementDataEx(ped, "rpp.npc.gender", gender)
 			exports.anticheat:changeProtectedElementDataEx(ped, "name", pedname) --for owl
+
+			-- [Fix #59] old-client ped contracts (ped_c_decompiled)
+			exports.anticheat:changeProtectedElementDataEx(ped, "ped:interact", row.type or "")
+			exports.anticheat:changeProtectedElementDataEx(ped, "ped:behaviour", tonumber(row.behaviour) or 0)
+			exports.anticheat:changeProtectedElementDataEx(ped, "rightclick:title", tostring(pedname))
+			local owlAnim = false
+			if row.animation then
+				local owlAnimParts = exports.global:split(row.animation, ";")
+				if owlAnimParts[1] and owlAnimParts[2] then
+					owlAnim = { owlAnimParts[1], owlAnimParts[2] }
+				end
+			end
+			exports.anticheat:changeProtectedElementDataEx(ped, "ped:data", {
+				Frozen = tonumber(row.frozen) == 1,
+				ShopID = row.shopid or "",
+				GatesID = row.gatesid or "",
+				anim = owlAnim,
+				Weapon = tonumber(row.weapon) or false,
+			})
+			if row.owner_type == 1 and row.owner and tonumber(row.owner) and tonumber(row.owner) > 0 then
+				exports.anticheat:changeProtectedElementDataEx(ped, "ped:owner", tonumber(row.owner))
+			end
+			if tonumber(row.weapon) then
+				giveWeapon(ped, tonumber(row.weapon))
+			end
 			if row.nametag then
 				exports.anticheat:changeProtectedElementDataEx(ped, "rpp.npc.nametag", true)
 				exports.anticheat:changeProtectedElementDataEx(ped, "nametag", true) --for owl
@@ -795,6 +821,126 @@ function hideMyID(thePlayer, command)
 	end
 end
 addCommandHandler("hidemyid", hideMyID)
+
+---------------------------------------------------------------------------------------
+-- [Fix #59] Old-client Owl events (ped_c_decompiled contract)
+---------------------------------------------------------------------------------------
+
+local function ensureOwlColumns()
+	-- Owl's evolved peds table carried shopid/gatesid/weapon; ALTER silently
+	-- no-ops when the columns already exist.
+	exports.mysql:query_free("ALTER TABLE `peds` ADD COLUMN `shopid` TEXT NULL")
+	exports.mysql:query_free("ALTER TABLE `peds` ADD COLUMN `gatesid` TEXT NULL")
+	exports.mysql:query_free("ALTER TABLE `peds` ADD COLUMN `weapon` INT(11) NULL")
+end
+addEventHandler("onResourceStart", getResourceRootElement(), ensureOwlColumns)
+
+local function pedFromDBID(pedID)
+	return getElementByID("ped:" .. tostring(pedID)) or exports.pool:getElement("ped", tonumber(pedID))
+end
+
+local function buildAnimationString(dataTable)
+	if type(dataTable) == "table" and type(dataTable.anim) == "table" and dataTable.anim[1] and dataTable.anim[1] ~= "" and dataTable.anim[2] and dataTable.anim[2] ~= "" then
+		return tostring(dataTable.anim[1]) .. ";" .. tostring(dataTable.anim[2])
+	end
+	return nil
+end
+
+-- ped:updatePedInDataBase(pedID, name, interact, behaviour, pos{skin,x,y,z,rot,int,dim}, dataTable, owner, weaponComboSelected)
+addEvent("ped:updatePedInDataBase", true)
+addEventHandler("ped:updatePedInDataBase", root, function(pedID, name, interact, behaviour, pos, dataTable, owner, weaponComboSelected)
+	if client ~= source then return end
+	if not exports.integration:isPlayerTrialAdmin(client) then
+		outputChatBox("Only admins can edit peds.", client, 255, 0, 0)
+		return
+	end
+	pedID = tonumber(pedID)
+	if not pedID or pedID <= 0 then return end
+	if type(pos) ~= "table" or not tonumber(pos[1]) or not tonumber(pos[2]) or not tonumber(pos[3]) or not tonumber(pos[4]) then return end -- pos = {skin,x,y,z,rot,int,dim}
+	if type(name) ~= "string" or #name == 0 or #name > 64 then name = "Unnamed Ped" end
+	if type(interact) ~= "string" then interact = "" end
+	behaviour = tonumber(behaviour) or 0
+	if behaviour < 0 or behaviour > 5 then behaviour = 0 end
+-- client order: pos[1]=skin, pos[2]=x, pos[3]=y, pos[4]=z, pos[5]=rot, pos[6]=interior, pos[7]=dimension
+	pos[2] = tonumber(pos[2])
+	pos[3] = tonumber(pos[3])
+	pos[4] = tonumber(pos[4])
+	pos[5] = tonumber(pos[5]) or 0
+	pos[6] = tonumber(pos[6]) or 0
+	pos[7] = tonumber(pos[7]) or 0
+
+	local mysql = exports.mysql
+	local animation = buildAnimationString(dataTable)
+	local frozen = (type(dataTable) == "table" and dataTable.Frozen) and 1 or 0
+	local shopid = type(dataTable) == "table" and tostring(dataTable.ShopID or "") or ""
+	local gatesid = type(dataTable) == "table" and tostring(dataTable.GatesID or "") or ""
+	local weaponSQL = "NULL"
+	if type(dataTable) == "table" and tonumber(dataTable.Weapon) and tonumber(weaponComboSelected or -1) ~= -1 then
+		weaponSQL = tostring(math.floor(tonumber(dataTable.Weapon)))
+	end
+
+	local query = mysql:query_free(string.format(
+		"UPDATE peds SET name='%s', type='%s', behaviour=%d, x=%s, y=%s, z=%s, rotation=%s, interior=%d, dimension=%d, skin=%d, frozen=%d, animation=%s, shopid='%s', gatesid='%s', weapon=%s WHERE id=%d",
+		mysql:escape_string(name),
+		mysql:escape_string(interact),
+		behaviour,
+		tostring(pos[2]), tostring(pos[3]), tostring(pos[4]), tostring(pos[5]),
+		pos[6], pos[7],
+		tonumber(pos[1]),
+		frozen,
+		animation and ("'" .. mysql:escape_string(animation) .. "'") or "NULL",
+		mysql:escape_string(shopid),
+		mysql:escape_string(gatesid),
+		weaponSQL,
+		pedID
+	))
+	if query then
+		outputChatBox("Updated ped #" .. tostring(pedID) .. " in the database.", client, 0, 255, 0)
+		reloadPed(pedID)
+	else
+		outputChatBox("Error saving ped (database).", client, 255, 0, 0)
+	end
+end)
+
+addEvent("ped:deletePedFromDataBase", true)
+addEventHandler("ped:deletePedFromDataBase", root, function(pedID)
+	if client ~= source then return end
+	if not exports.integration:isPlayerTrialAdmin(client) then
+		outputChatBox("Only admins can delete peds.", client, 255, 0, 0)
+		return
+	end
+	pedID = tonumber(pedID)
+	if not pedID or pedID <= 0 then return end
+	local ped = pedFromDBID(pedID)
+	exports.mysql:query_free("DELETE FROM peds WHERE id='" .. exports.mysql:escape_string(pedID) .. "'")
+	if ped then
+		destroyElement(ped)
+	end
+	outputChatBox("Deleted ped #" .. tostring(pedID) .. ".", client, 0, 255, 0)
+end)
+
+-- ped:pedTalk(player, ped, data) - the ped turns towards the talker; system
+-- resources open their own UIs from onClientElementMenuClick
+addEvent("ped:pedTalk", true)
+addEventHandler("ped:pedTalk", root, function(ped, data)
+	if client ~= source then return end
+	if not isElement(ped) or getElementType(ped) ~= "ped" then return end
+	local px, py, pz = getElementPosition(client)
+	if getDistanceBetweenPoints3D(px, py, pz, getElementPosition(ped)) > 5 then return end
+	local ex, ey = getElementPosition(ped)
+	local rot = 0
+	if (px >= ex) and (py > ey) then
+		rot = 90 - rot
+	elseif (px <= ex) and (py > ey) then
+		rot = 270 + rot
+	elseif (px >= ex) and (py <= ey) then
+		rot = 90 + rot
+	else
+		rot = 270 - rot
+	end
+	setPedRotation(ped, rot)
+end)
+
 
 function giveFakeName(thePlayer, command)
 	if(exports.integration:isPlayerScripter(thePlayer)) then

@@ -509,6 +509,8 @@ the proper {en/ar} placeholder - same widget, same events as the old client.
 ]]
 local eui            -- UIKit exports bridge
 local searchUI       -- the ui-edit element (alive while the board is open)
+-- [Fix #73] last position pushed to the edit (per-frame pill sync in drawHeader)
+local lastEditX, lastEditY, lastEditW, lastEditH
 
 local function ensureUIKit()
         if eui then return true end
@@ -525,6 +527,7 @@ function destroySearchEdit()
         searchUI = nil
         searchActive = false
         searchBuf = ""
+        lastEditX, lastEditY, lastEditW, lastEditH = nil, nil, nil, nil
         -- [Fix #35] the search edit may die while it holds keyboard focus -
         -- UIKit's blur never fires on destroy, so the MTA chat input would
         -- stay disarmed ("can't type in chat after using the tab search")
@@ -646,6 +649,20 @@ local function drawHeader()
         searchBox.h = 32 * s
         searchBox.x = BOARD.x + (BOARD.w - searchBox.w) / 2
         searchBox.y = BOARD.y + (HEADER_H - searchBox.h) / 2 + 2 * s
+        -- [Fix #73] the UIKit edit was positioned ONCE at creation while the
+        -- pill above is recomputed every frame (and computeBoard on resolution
+        -- change) - re-sync the edit to the pill whenever the box moves so the
+        -- text field can never drift off the drawn pill
+        if searchUI and isElement(searchUI) and eui then
+                local rx, ry = 1728 / sw, 972 / sh
+                local ex, ey = (searchBox.x + 30 * s) * rx, (searchBox.y + 3 * s) * ry
+                local ew, eh = (searchBox.w - 44 * s) * rx, (searchBox.h - 6 * s) * ry
+                if ex ~= lastEditX or ey ~= lastEditY or ew ~= lastEditW or eh ~= lastEditH then
+                        lastEditX, lastEditY, lastEditW, lastEditH = ex, ey, ew, eh
+                        eui:uiSetPosition(searchUI, ex, ey)
+                        eui:uiSetSize(searchUI, ew, eh)
+                end
+        end
         drawRoundRect(searchBox.x - 1, searchBox.y - 1, searchBox.w + 2, searchBox.h + 2,
                 tocolor(104, 102, 255, 70), true, (searchBox.h + 2) / 2)
         drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(30, 23, 43, 255), true, searchBox.h / 2)
@@ -918,7 +935,16 @@ end)
 -- active (so searching still works); pressing TAB again or ESC closes it.
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then
-                if state and searchActive then return end
+                if state and searchActive then
+                        -- [Fix #73] a left click can hide the cursor while the
+                        -- search edit stays active; pressing TAB again restores
+                        -- it instead of early-returning with no way to click
+                        if not cursorOn then
+                                cursorOn = true
+                                showCursor(true)
+                        end
+                        return
+                end
                 toggle(true)
         elseif state and not searchActive then
                 toggle(false)

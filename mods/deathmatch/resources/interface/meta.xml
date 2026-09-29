@@ -1,0 +1,7 @@
+<meta>
+	<info author="Owl (old client)" name="interface" description="GUI input focus helper + shared rectangle texture" type="script" version="1.0.0" />
+
+	<script src="interface_c.lua" type="client" cache="false" />
+
+	<file src="images/rectangle.png" />
+</meta>

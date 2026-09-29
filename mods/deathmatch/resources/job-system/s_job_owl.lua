@@ -185,10 +185,42 @@ local JOBS_DATA = {
                         { name = "Route Veteran", required_exp = 150, salary = 0 }
                 }
                 -- EXP +1 per 5000L drop (client-driven, decompile-verbatim)
+        },
+        -- [Fix #63] name MUST stay exactly "Postman" (client compares it)
+        postman = {
+                code = "postman",
+                name = "Postman",
+                label = "Postman",
+                jobs_center = true,
+                requirements = {
+                        min_level = 2
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Courier", required_exp = 50, salary = 0 },
+                        { name = "Route Master", required_exp = 150, salary = 0 }
+                }
+                -- EXP +1 per delivered box (client-driven, decompile-verbatim)
+        },
+        -- [Fix #63] name MUST stay exactly "Farmer" (client compares it)
+        farmer = {
+                code = "farmer",
+                name = "Farmer",
+                label = "Farmer",
+                jobs_center = true,
+                requirements = {
+                        min_level = 1
+                },
+                ranks = {
+                        { name = "Rookie", required_exp = 0, salary = 0 },
+                        { name = "Grower", required_exp = 50, salary = 0 },
+                        { name = "Harvest Master", required_exp = 150, salary = 0 }
+                }
+                -- earns by selling crops (no giveJobSalary in the decompile)
         }
 }
 
-local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus", "gunsmith", "fuel" }
+local JOBS_LIST = { "taxi", "dustman", "drug_dealer", "liquor_dealer", "trucker", "pizza", "forklift", "bus", "gunsmith", "fuel", "postman", "farmer" }
 
 local function ensureTable()
         mysql:query_free([[

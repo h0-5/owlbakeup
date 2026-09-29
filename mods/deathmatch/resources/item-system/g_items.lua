@@ -455,6 +455,8 @@ g_items = {
 	[232] = { "AK-47 Stock", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
 	[233] = { "AK-47 Wooden Shield", "A weapon part. Used in the gun factory.", 7, 2969, 0, 0, 0, 0, weight = 0.4}, -- [Fix #63] gunsmith factory
 	[234] = { "C4 Explosive", "A craftable c4 charge.", 7, 1654, 0, 0, 0, 0, weight = 0.8}, -- [Fix #63] gunsmith factory
+	[235] = { "Carrot", "A fresh carrot crop.", 1, 679, 0, 0, 0, 0, weight = 0.2}, -- [Fix #63] farmer crop
+	[236] = { "Corn", "A fresh corn crop.", 1, 862, 0, 0, 0, 0, weight = 0.2}, -- [Fix #63] farmer crop
 
 	--{ "Armor", "Kevlar-made armor.", 6, 373, 90, 90, 0, -0.05, weight = 1 }, -- 138
 

@@ -132,7 +132,10 @@ function checkInt(thePlayer, commandName, intID)
 		end
 	end
 end
-addCommandHandler("checkint", checkInt)
+-- [Fix #66] /checkint now opens the old client's "Check Interior" panel
+-- (interior-system / c_interior_ui.lua); the classic admin window is still on
+-- /checkinterior and on the interiorManager:checkint event.
+addCommandHandler("checkinterior", checkInt)
 addCommandHandler("checkinterior", checkInt)
 addEvent("interiorManager:checkint", true)
 addEventHandler("interiorManager:checkint", getRootElement(), checkInt)

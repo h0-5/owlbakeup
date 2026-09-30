@@ -50,7 +50,12 @@ function getPlayerName(player)
 	return getElementType(player) == 'player' and getPlayerName_(player):gsub('_', ' ') or getElementData(player, 'name') or '(ped)'
 end
 
-function canBuySkin(player, clothing)
+function canBuySkin(player, clothing)
+	-- [Fix #65] skins added through the player skin shop (`skin-system` /
+	-- "Fashion Dupont") can be private: only their owner may buy them.
+	if tonumber(clothing.private) == 1 then
+		return tonumber(clothing.owner or 0) == (tonumber(getElementData(player, "dbid")) or -1)
+	end
 	if not clothing.description or clothing.price == 0 then
 		return false
 	end

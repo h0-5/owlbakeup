@@ -1,5 +1,5 @@
 <meta>
-        <info author="Vortex" type="script" description="Owl Radar - old client port (Fix #55)" />
+        <info author="Vortex" type="script" description="Owl Radar - old client port (Fix #55, visual restore Fix #62)" />
 
         <script src="s_radar.lua" type="server" />
         <script src="nodes.lua" type="client" cache="false" />

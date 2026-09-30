@@ -1,5 +1,5 @@
 --[[ =========================================================================
-        c_radar.lua — Vortex RADAR (Fix #55)
+        c_radar.lua — Vortex RADAR (Fix #55, visual restore Fix #62)
 
         Faithful rebuild of the OLD CLIENT radar
         (backupm [rp]/radar/radar_c_decompiled.lua).  The decompile shipped
@@ -36,6 +36,17 @@
                 running when this resource starts)
           * events kept: radar:showRadar, radar:onFindBestWay (server),
             radar:findBestWay:sync (server -> vehicle occupants)
+          * Fix #62 (visual restore from the old decompile):
+              - minimap blip hover scale 1.3x (old formula var31 * (zoom...*1.3-0.5))
+              - minimap dispatch elements draw the black label strip with the
+                dispatch text next to the icon (old unpack(dispatch) label)
+              - minimap GPS route line width 8 (old)
+              - big-map route line width scales with zoom (old)
+              - big-map player arrow is plain white (old) - the pink tint was
+                the rebuild's own addition
+              - big-map sidebar: server logo (:assets/images/logo.png) behind
+                the hovered blip icon at 1.5x size (old)
+              - big-map min zoom 0.9 (old)
 ========================================================================= ]]
 
 local localPlayer = getLocalPlayer()
@@ -218,12 +229,12 @@ local function drawMinimapContent()
                 end
         end
 
-        -- GPS route (purple, old)
+        -- GPS route (purple, old; Fix #62: old minimap line was 8px wide)
         if route and #route > 1 then
                 for i = 1, #route - 1 do
                         local x1, y1 = minimapBlipPoint(route[i][1], route[i][2], camRot, px, py)
                         local x2, y2 = minimapBlipPoint(route[i + 1][1], route[i + 1][2], camRot, px, py)
-                        dxDrawLine(x1, y1, x2, y2, routeColor, 4 * SCALE)
+                        dxDrawLine(x1, y1, x2, y2, routeColor, 8 * SCALE)
                 end
         end
 
@@ -233,8 +244,19 @@ local function drawMinimapContent()
                         and getElementInterior(blip) == 0 then
                         local bx, by, _ = getElementPosition(blip)
                         if getDistanceBetweenPoints2D(px, py, bx, by) <= getBlipVisibleDistance(blip) then
-                                local size = getBlipSize(blip) * 8 * SCALE
                                 local ix, iy = minimapBlipPoint(bx, by, camRot, px, py)
+                                -- Fix #62: old client scales the hovered blip by 1.3x
+                                local hover = 1
+                                if isCursorShowing() and getCursorPosition() then
+                                        local cx, cy = getCursorPosition()
+                                        cx, cy = cx * sx, cy * sy
+                                        local hsz = 14 * SCALE
+                                        if cx >= ix - hsz / 2 and cx <= ix + hsz / 2
+                                                and cy >= iy - hsz / 2 and cy <= iy + hsz / 2 then
+                                                hover = 1.3
+                                        end
+                                end
+                                local size = getBlipSize(blip) * 8 * SCALE * hover
                                 dxDrawImage(ix - size / 2, iy - size / 2, size, size,
                                         iconPath(blip), 0, 0, 0, blipColor(blip))
                         end
@@ -249,6 +271,18 @@ local function drawMinimapContent()
                 if getDistanceBetweenPoints2D(px, py, dxp, dyp) <= 500 then
                         local ix, iy = minimapBlipPoint(dxp, dyp, camRot, px, py)
                         local size = 14 * SCALE
+                        -- Fix #62: old client drew a black label strip with the
+                        -- dispatch text (unpack(dispatch)) next to the blip icon
+                        local parts = getElementData(elm, "dispatch")
+                        local label = type(parts) == "table" and tostring(parts[1] or "") or ""
+                        if label ~= "" then
+                                local lw = dxGetTextWidth(label, 1, "default-bold") + 5
+                                dxDrawRectangle(ix + size / 2 + 20 * SCALE, iy - size / 2 + 3 * SCALE,
+                                        lw, 12 * SCALE, tocolor(0, 0, 0, 200), false)
+                                dxDrawText(label, ix + size / 2 + 20 * SCALE, iy - size / 2,
+                                        ix + size / 2 + 20 * SCALE + lw, iy - size / 2 + 14 * SCALE,
+                                        tocolor(255, 255, 255, 255), 1, "default-bold", "left", "top", false, false, false, false, true)
+                        end
                         dxDrawImage(ix - size / 2, iy - size / 2, size, size,
                                 "images/blip/0.png", 0, 0, 0, ZONE_COLORS[1])
                 end
@@ -311,7 +345,7 @@ end
 --------------------------------------------------------------------------------
 local BIG = {
         zoom = 1,
-        minZoom = 1,
+        minZoom = 0.9,             -- Fix #62: old client allowed zooming out to 0.9
         maxZoom = 3,
         mapH = 0,                  -- drawn map height in px (sy at zoom 1)
         offX = 0,                  -- top-left of the drawn map on screen
@@ -396,12 +430,12 @@ local function bigMapDraw()
                 end
         end
 
-        -- GPS route
+        -- GPS route (Fix #62: old big-map route line = 6px scaled with zoom)
         if route and #route > 1 then
                 for i = 1, #route - 1 do
                         local x1, y1 = bigMapWorldPoint(route[i][1], route[i][2])
                         local x2, y2 = bigMapWorldPoint(route[i + 1][1], route[i + 1][2])
-                        dxDrawLine(x1, y1, x2, y2, routeColor, 6, false)
+                        dxDrawLine(x1, y1, x2, y2, routeColor, 6 * math.max(BIG.zoom / 2, 1), false)
                 end
         end
 
@@ -451,11 +485,11 @@ local function bigMapDraw()
                 end
         end
 
-        -- player arrow (old big-map color)
+        -- player arrow (Fix #62: old client drew it plain white on the big map)
         local pwx, pwy = bigMapWorldPoint(px, py)
         local psize = 21 * SCALE
         dxDrawImage(pwx - psize / 2, pwy - psize / 2, psize, psize, "images/player.png",
-                -getPedRotation(localPlayer), 0, 0, tocolor(255, 55, 95, 255), false)
+                -getPedRotation(localPlayer), 0, 0, tocolor(255, 255, 255, 255), false)
 
         -- dispatch elements
         for _, elm in pairs(RADAR.dispatchElements or {}) do
@@ -478,10 +512,17 @@ local function bigMapDraw()
         dxDrawText("MAP", sbx + 15 * SCALE, sby + 12 * SCALE, sbx + sbw - 15 * SCALE,
                 sby + 40 * SCALE, tocolor(255, 255, 255, 220), 1, fontMapLarge, "left", "center")
         if BIG.hovered and isElement(BIG.hovered) then
+                -- Fix #62: old sidebar = server logo behind the hovered blip icon,
+                -- blip icon over it, name below in the blip's own color
                 local size = 50 * SCALE
-                local hx = sbx + (sbw - size) / 2
-                dxDrawImage(hx, sby + 50 * SCALE, size, size, iconPath(BIG.hovered), 0, 0, 0,
-                        blipColor(BIG.hovered), false)
+                local hx = sbx + (sbw - size * 1.5) / 2
+                local lsize = size * 1.5
+                if fileExists(":assets/images/logo.png") then
+                        dxDrawImage(hx, sby + 50 * SCALE, lsize, lsize,
+                                ":assets/images/logo.png", 0, 0, 0, tocolor(255, 255, 255, 255), false)
+                end
+                dxDrawImage(sbx + (sbw - size) / 2, sby + 50 * SCALE, size, size,
+                        iconPath(BIG.hovered), 0, 0, 0, blipColor(BIG.hovered), false)
                 local nm = getElementData(BIG.hovered, "blip:name")
                 if nm then
                         dxDrawText(nm, sbx, sby + 50 * SCALE + size + 10, sbx + sbw,

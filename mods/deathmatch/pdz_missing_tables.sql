@@ -101,3 +101,70 @@ INSERT IGNORE INTO `applications_questions`
   (13, 'Explain the difference between IC (in character) and OOC (out of character).', '', '', '', '', 2, 1, NOW(), 1, NOW()),
   (14, 'How would you handle an OOC conflict with another player?', '', '', '', '', 2, 1, NOW(), 1, NOW());
 
+-- --------------------------------------------------------
+-- Fix #63 / #64 - vehicle tuning (مودات السيارات) + player vehicle parking
+-- (سكنات اللاعبين).  Re-import this file once after updating:
+--   mysql -u root pdz < pdz_missing_tables.sql
+-- MariaDB (what XAMPP ships) understands ADD COLUMN IF NOT EXISTS, so this
+-- file stays re-runnable.
+-- --------------------------------------------------------
+
+-- Per vehicle tuning state written by the `vehicle-tuning` resource:
+--   {"engine":1,"neon":0,"neonOn":false,"backfire":false}
+-- (the engine preset also rewrites `handling`, which already existed)
+ALTER TABLE `vehicles_custom` ADD COLUMN IF NOT EXISTS `tuning` varchar(500) DEFAULT NULL;
+
+-- Player vehicle storage used by the `vehicle-parking` resource.
+-- A row means the vehicle is parked (hidden in the lot's private dimension).
+CREATE TABLE IF NOT EXISTS `vehicle_parking` (
+  `vehicleID` int(11) NOT NULL,
+  `lot` int(11) NOT NULL DEFAULT 0,
+  `slot` int(11) NOT NULL DEFAULT 1,
+  `parked` datetime DEFAULT current_timestamp(),
+  PRIMARY KEY (`vehicleID`),
+  KEY `lot` (`lot`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- --------------------------------------------------------
+-- Fix #65 - player skins (سكنات اللاعبين), old client's "Fashion Dupont" shop
+-- (`skin-system`).  The catalogue is the `clothing` table the clothing shop
+-- and the item/texture pipeline already use (item 16 = "Clothes", value
+-- "skin:clothing.id"); the old client's two extra fields are added here.
+--   `private` = 1 -> only the owner sees it in the shop
+--   `owner`      -> the character id of the player who added it
+-- --------------------------------------------------------
+ALTER TABLE `clothing`
+  ADD COLUMN IF NOT EXISTS `private` tinyint(1) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `owner` int(10) UNSIGNED NOT NULL DEFAULT 0;
+
+-- `clothing.id` has no AUTO_INCREMENT in this schema, so skins are inserted
+-- with an explicit id (MAX(id) + 1) by the resource.  IMPORTANT: if the live
+-- table still has no primary key, add one so two players cannot pick the same
+-- id at the same time:
+--   ALTER TABLE `clothing` ADD PRIMARY KEY (`id`), MODIFY `id` int(11) UNSIGNED NOT NULL AUTO_INCREMENT;
+
+-- The shop itself is a normal ped: create it from the in-game ped editor and
+-- pick interact type "skins" (the editor already lists it), or use:
+-- INSERT INTO `peds` (`name`, `type`, `x`, `y`, `z`, `rotation`, `interior`, `dimension`, `skin`, `gender`, `created_by`, `created_at`)
+--   VALUES ('Fashion Dupont', 'skins', 0, 0, 0, 0, 0, 0, 158, 1, 1, NOW());
+
+-- --------------------------------------------------------
+-- Fix #66 - housing panels (لوحات البيوت), old client's Property Panel
+-- (`interior-system`).  The panel shows what a house was bought for and when,
+-- which this schema never stored:
+--   `purchaseprice` -> what the current owner paid
+--   `purchasedate`  -> when he bought it
+--   `originalowner` -> the character that owned it before him (0/-1 = nobody)
+-- Without these columns the panel falls back to the listing price.
+-- --------------------------------------------------------
+ALTER TABLE `interiors`
+  ADD COLUMN IF NOT EXISTS `purchaseprice` int(11) NOT NULL DEFAULT 0,
+  ADD COLUMN IF NOT EXISTS `purchasedate` datetime DEFAULT NULL,
+  ADD COLUMN IF NOT EXISTS `originalowner` int(11) NOT NULL DEFAULT 0;
+
+-- The Check Interior panel lists the last ENTER / EXIT / LOCK / UNLOCK action
+-- of a house (written by interior-system/s_interior_ui.lua).  Those rows are
+-- inserted without `log_id`, exactly like the interior admin tool does, so the
+-- live table needs its auto increment:
+--   ALTER TABLE `interior_logs` MODIFY `log_id` int(11) NOT NULL AUTO_INCREMENT, ADD PRIMARY KEY (`log_id`);
+

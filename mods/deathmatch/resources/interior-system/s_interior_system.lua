@@ -796,7 +796,15 @@ function enterInterior(  )
 			local isHouse = interiorStatus[INTERIOR_TYPE] == 0
 			local isRentable = interiorStatus[INTERIOR_TYPE] == 3
 			local neighborhood = exports.global:getElementZoneName(source)
-			triggerClientEvent(client, "openPropertyGUI", client, source, cost, isHouse, isRentable, neighborhood)
+			-- [Fix #66] the old client opened its UIKit "Purchase Property" window
+			-- (or "Rent Property" for type 3) here; the faction/cash/bank picker of
+			-- the classic window is still used for faction leaders by
+			-- s_interior_ui.lua (interior:buyInterior).
+			if interiorStatus[INTERIOR_TYPE] == 3 then
+				triggerClientEvent(client, "interior:openRentWindow", client, source, false, interiorUiWindowData(source))
+			else
+				triggerClientEvent(client, "interior:openPurchaseWindow", client, source, false, interiorUiWindowData(source))
+			end
 			--buyInterior(client, source, cost, isHouse, isRentable)
 		else
 			outputChatBox(errorMsg, client, 255, 0, 0)

@@ -27,8 +27,17 @@ local TREE_SPOTS = {
 local trees = {} -- [tree element] = entry
 
 local function spawnTrees()
+	-- [Fix #94] getGroundPosition is CLIENT-only; on the server it is nil
+	-- and the old call crashed spawnTrees() before the z-fallback ran, so
+	-- NO trees ever spawned. Skip the probe and use the fallback z.
+	local function groundZ(x, y, startZ)
+		if type(getGroundPosition) == "function" then
+			return getGroundPosition(x, y, startZ)
+		end
+		return nil
+	end
 	for _, spot in ipairs(TREE_SPOTS) do
-		local z = getGroundPosition(spot[1], spot[2], 30)
+		local z = groundZ(spot[1], spot[2], 30)
 		if not z or z == 0 then
 			z = 12
 		end

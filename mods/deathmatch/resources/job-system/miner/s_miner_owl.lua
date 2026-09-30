@@ -36,9 +36,18 @@ local ROCK_SPOTS = {
 local rocks = {} -- [rock] = { worker = player, timer = timerHandle }
 
 local function spawnRocks()
+	-- [Fix #94] getGroundPosition is CLIENT-only; on the server it is nil
+	-- and the old call crashed spawnRocks() before the z-fallback ran, so
+	-- NO rocks ever spawned. Skip the probe and use the fallback z.
+	local function groundZ(x, y, startZ)
+		if type(getGroundPosition) == "function" then
+			return getGroundPosition(x, y, startZ)
+		end
+		return nil
+	end
 	for _, spot in ipairs(ROCK_SPOTS) do
 		local x, y, model = spot[1], spot[2], spot[4]
-		local z = getGroundPosition(x, y, spot[3] == 0 and 30 or spot[3])
+		local z = groundZ(x, y, spot[3] == 0 and 30 or spot[3])
 		if not z or z == 0 then
 			z = spot[3] == 0 and 12 or spot[3]
 		end

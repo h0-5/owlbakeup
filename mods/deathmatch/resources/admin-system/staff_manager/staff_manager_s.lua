@@ -806,6 +806,11 @@ local function updateRoleImpl(sender, levelID, rights, color)
         -- NOT valid JSON, fromJSON returned nil and the rank silently fell
         -- back to WHITE on the next read (tab/chat/nametag colors died after
         -- every panel save). Encode the whole {r,g,b,a} table in ONE call.
+        -- [Fix #86] one toJSON call for the whole {r,g,b,a} table (see Fix
+        -- #34 above). NOTE: MTA has no "compact" mode — toJSON always emits
+        -- the spaced "[ [ r, g, b, a ] ]" form; that is FINE now because the
+        -- setup pass parses Color with fromJSON instead of the old
+        -- `LIKE '[[%'` string test that wiped every saved color to white.
         local colorJSON = toJSON({ tonumber(color[1]) or 255, tonumber(color[2]) or 255,
                 tonumber(color[3]) or 255, tonumber(color[4]) or 255 })
         mysql:query_free("UPDATE staff_roles SET Rights='"

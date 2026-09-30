@@ -161,6 +161,25 @@ addEventHandler ( "onResourceStart", resourceRoot, function ( )
 end )
 setTimer ( syncRankColors, 30000, 0 )         -- keep mirroring staff_roles
 
+-- [Fix #93] clients pull both payloads on start, so a broadcast that fired
+-- while their scoreboard script was still loading ("event is not added
+-- clientside") can never leave them permanently out of sync
+addEvent ( "scoreboard:requestSync", true )
+addEventHandler ( "scoreboard:requestSync", root, function ( )
+        local p = client
+        if not p then return end
+        triggerClientEvent ( p, "scoreboard:highestPlayerCount:sync", p, highestPlayerCount )
+        local adminSys = getResourceFromName ( "admin-system" )
+        if adminSys and getResourceState ( adminSys ) == "running" then
+                local ok, tbl = pcall ( function ( )
+                        return exports [ "admin-system" ]:getAllRankColors ( )
+                end )
+                if ok and type ( tbl ) == "table" and next ( tbl ) then
+                        triggerClientEvent ( p, "scoreboard:rankColors", root, tbl )
+                end
+        end
+end )
+
 --------------------------------------------------------------------------------
 -- Fix #24 (user): FIXED MOD ID per account
 --   * every account gets a permanent sequential id the first time it logs in
@@ -247,6 +266,12 @@ local function assignModId(player)
         local id = getOrCreateModId(user)
         if id and getElementData(player, "mod:id") ~= id then
                 setElementData(player, "mod:id", id)
+        end
+        -- [Fix #90] full replacement: keep the session id equal to the
+        -- persistent mod id on every login (silently skipped when the slot
+        -- is already held by another online player - see setPlayerSlot)
+        if id and tonumber(getElementData(player, "playerid")) ~= id then
+                exports["id-system"]:setPlayerSlot(player, id)
         end
 end
 
@@ -484,6 +509,12 @@ addCommandHandler("setid", function(player, cmd, query, newId)
         local online = findPlayerByNamePart(targetUser)
         if online then
                 setElementData(online, "mod:id", newId)
+                -- [Fix #90] full replacement: the session id (playerid, the
+                -- one nametags / /id / chat show) follows the new mod id too
+                local ok, err = exports["id-system"]:setPlayerSlot(online, newId)
+                if not ok then
+                        outputChatBox("Mod id updated, but the session id could not change: " .. tostring(err) .. ".", player, 255, 195, 14)
+                end
         end
         outputChatBox("[SETID] " .. targetUser .. " now has mod id " .. newId .. ".", player, 120, 220, 120)
 end, false, false)

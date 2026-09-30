@@ -245,30 +245,19 @@ function enterNewLine(arg0, arg1)
       triggerEvent("onClientUITextChange", UI.FocusElement)
       return
     end
-    ;(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine] = utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[UI.FocusElement].data.caret - 1) .. "\n" .. utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[UI.FocusElement].data.caret, utfLen((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]))
-    UI.DB[UI.FocusElement].text = table.concat(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }, "\n"):gsub("" .. newLinePrefix, "")
-    UI.DB[UI.FocusElement].data.showtext = table.concat(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-    UI.DB[UI.FocusElement].data.caret = 1
-    UI.DB[UI.FocusElement].data.caretLine = math.min(UI.DB[UI.FocusElement].data.caretLine + 1, #(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }))
-    if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
-      triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
-    end
+    -- [Fix #82] the decompiled body assigned into a temporary returned by
+    -- split() and then wrote back the UNCHANGED original text, so Enter
+    -- never inserted a line break in a memo (report box)
+    local db = UI.DB[UI.FocusElement]
+    local lines = memoSplitLines(db.text)
+    local li = math.max(1, math.min(db.data.caretLine or 1, #lines))
+    local line = (lines[li] or ""):gsub(newLinePrefix, "")
+    lines[li] = utfSub(line, 1, db.data.caret - 1)
+    table.insert(lines, li + 1, utfSub(line, db.data.caret, utfLen(line)))
+    memoSetText(UI.FocusElement, memoJoinLines(lines))
+    db.data.caret = 1
+    db.data.caretLine = li + 1
+    triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
   end
 end
 bindKey("enter", "down", enterNewLine)

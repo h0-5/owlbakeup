@@ -106,6 +106,10 @@ end
 
 addEventHandler("onClientResourceStart", resourceRoot, function()
         loadAssets()
+        -- [Fix #93] pull the sync payloads ourselves: a server broadcast can
+        -- fire while this script is still loading and gets dropped ("event is
+        -- not added clientside")
+        triggerServerEvent("scoreboard:requestSync", localPlayer)
 end)
 
 --[[ ==================== 21-rank Vortex ladder ==================== ]]
@@ -469,6 +473,12 @@ local WATCHED_KEYS = {
         ["fakename"] = true, ["afk"] = true, ["mod:id"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key)
+        if key == "mod:id" and state then
+                -- [Fix #90] the list is sorted by id - rebuild it when an id
+                -- flips (/setid), otherwise rows keep the old order
+                updatePlayers()
+                return
+        end
         if WATCHED_KEYS[key] and cache[source] then
                 refreshPlayer(source)
         end

@@ -118,16 +118,20 @@ function scrollGridList(arg0, arg1)
   end
   local db = UI.DB[arg1 or getElementParent(source)]
   local rows = db.data.rows
-  -- [Fix #77] the old mapping was scrolled = calcRowsHeight()/100*p with
+  -- [Fix #77/#84] the old mapping was scrolled = calcRowsHeight()/100*p with
   -- acc starting at 2+column_height: calcRowsHeight EXCLUDES the column
   -- header, so for the first wheel notches (p <= ~8%) scrolled <= acc and
   -- row_i never left 1 (thumb moved, rows didn't); near 100% it overshot
   -- and findLastRow emptied the list from the bottom instead of scrolling.
   -- Map p over the real scrollable range [acc .. content - viewport].
+  -- [Fix #84] bottom was calcRowsHeight - viewport, which is short by the
+  -- header (acc includes 2+column_height, calcRowsHeight does not), so the
+  -- LAST row of the /staffs rank list was ~1.3 rows out of reach at p=100.
+  -- bottom = acc + (rows content height) - viewport  = 2*acc + calc - 2 - H
   local gl = arg1 or getElementParent(source)
   local acc = 2 + db.properties.column_height.value
   local viewport = db.dimensions.height - db.properties.column_height.value - 2
-  local bottom = math.max(acc, calcRowsHeight(gl) - viewport)
+  local bottom = math.max(acc, 2 * acc + calcRowsHeight(gl) - 2 - db.dimensions.height)
   local scrolled = acc + (bottom - acc) / 100 * (tonumber(arg0) or 0)
   local newI = math.max(1, #rows)
   for forvar8 = 1, #rows do
@@ -331,6 +335,31 @@ function uiGridListSetSelectedItem(arg0, arg1)
   UI.DB[arg0].data.selection_tick = getTickCount()
   return true
 end
+-- [Fix #85] wheel fix: the wheel used UI.HoveredElement/refreshHover only.
+-- If ANY other element draws above the list (window chrome, another
+-- resource's element), hover never reaches the gridlist and the wheel
+-- silently no-oped over the list body -- only the scrollbar strip worked
+-- (it has its own handler). Resolve the topmost GRIDLIST under the cursor
+-- directly so whatever list is under the mouse always scrolls. Non-gridlist
+-- elements are skipped, so an overlay above the list no longer eats the wheel.
+local function gridlistUnderCursor()
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  cx, cy = cx * sx, cy * sy
+  for i = #UI.DrawElements, 1, -1 do
+    local el = UI.DrawElements[i]
+    if (UI.EType[el] or getElementType(el)) == "ui-gridlist" and UI.DB[el]
+      and UI.DB[el].visible and UI.isDraw[el] and not isUIDisabled(el) then
+      local d = UI.DB[el].dimensions
+      if d and cx >= d.x and cy >= d.y and cx <= d.x + d.width and cy <= d.y + d.height then
+        return el
+      end
+    end
+  end
+  return false
+end
 UI.getDrawFunction["ui-gridlist"] = function(arg0)
   hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
   if dxGetColor(UI.DB[arg0].colors[1]) and dxGetColor(UI.DB[arg0].colors[1]) > 0 then
@@ -412,7 +441,13 @@ function MouseWheel(arg0, arg1)
     UI.HoveredElement = hovered
   end
   if not isUIElement(hovered, "gridlist") then
-    return
+    -- [Fix #85] hover resolved to a non-gridlist (an element draws above the
+    -- list): fall back to the topmost gridlist directly under the cursor so
+    -- the list under the mouse scrolls no matter what overlays it.
+    hovered = gridlistUnderCursor()
+    if not hovered then
+      return
+    end
   end
   if isElement(UI.DB[hovered].data.scrollbar) then
     -- [Vortex fix] +-5% per notch (same step the memo uses) so long lists

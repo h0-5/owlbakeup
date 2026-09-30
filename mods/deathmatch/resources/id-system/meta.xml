@@ -1,5 +1,6 @@
 <meta>
 	<info author="vG MTA Scripting Team" type="script" description="ID System"/>
 
-	<script src="s_id_system.lua" type="server" />
+	<script src="s_id_system.lua" type="server" />
+	<export function="setPlayerSlot" type="server" />
 </meta>

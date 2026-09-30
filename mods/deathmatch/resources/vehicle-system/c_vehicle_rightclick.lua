@@ -197,7 +197,7 @@ function showVehicleMenu()
 		end
 		
 		if ( getPedSimplestTask(localPlayer) == "TASK_SIMPLE_CAR_DRIVE" and getPedOccupiedVehicle(localPlayer) == vehicle ) then
-			if (getElementData(vehicle, "dbid") > 0 ) then
+			if (tonumber(getElementData(vehicle, "dbid")) or 0) > 0 then
 				row.look = rightclick:addRow("Edit Description")
 				addEventHandler("onClientGUIClick", row.look, fLook, false)
 			end

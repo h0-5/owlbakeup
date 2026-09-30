@@ -14,6 +14,77 @@ local cancelKeys = {
 local function isTypableCharacter(ch)
         return type(ch) == "string" and #ch > 0 and ch:byte() >= 32 and ch:byte() ~= 127
 end
+-- [Fix #83 - user] one shared funnel for backspace / delete / arrows / enter,
+-- fed by BOTH the original bindKey handlers and the onClientKey dispatcher
+-- below, with a per key+state dedup: a single physical press can never
+-- delete/insert twice no matter how many input modes are alive (the login
+-- screen's guiSetInputEnabled(true) kills binds, normal play keeps them).
+local TEXT_KEYS = {
+  backspace = true, delete = true,
+  arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
+  enter = true, num_enter = true
+}
+local lastTextKey, lastTextState, lastTextTick = false, false, 0
+local function nativeOwnsTextKeys()
+  -- isChatBoxOpen() / guiGetFocusedElement() do NOT exist in this MTA build:
+  -- the old guard crashed with "attempt to call global 'isChatBoxOpen'"
+  -- on every filtered key press, so backspace/delete/arrows/enter never
+  -- reached removeText/moveCaret/acceptedEvent from onClientKey
+  if isChatBoxInputActive and isChatBoxInputActive() then return true end
+  if guiGetFocusedElement then
+    local ok, el = pcall(guiGetFocusedElement)
+    if ok and el then return true end
+  end
+  return false
+end
+function handleTextKey(key, state)
+  if nativeOwnsTextKeys() then return end
+  local now = getTickCount()
+  if key == lastTextKey and state == lastTextState and now - lastTextTick < 60 then
+    return
+  end
+  lastTextKey, lastTextState, lastTextTick = key, state, now
+  if key == "backspace" or key == "delete" then
+    removeText(key, state)
+  elseif key == "enter" or key == "num_enter" then
+    acceptedEvent(key, state)
+  else
+    moveCaret(key, state)
+  end
+end
+-- [Fix #83 - user] while typing in ANY UIKit input every other key is
+-- canceled, so game binds / GTA controls stay silent (WASD, space, weapons,
+-- F-keys, TAB ...) and come back automatically the moment the user clicks
+-- outside the text rect (focus cleared). Keys UIKit itself needs while
+-- typing stay whitelisted; mouse keys are never canceled so clicking still
+-- defocuses. onClientCharacter (actual letters) is a separate event and is
+-- not affected by cancelEvent.
+local typingSafeKeys = {
+  backspace = true, delete = true,
+  arrow_l = true, arrow_r = true, arrow_u = true, arrow_d = true,
+  enter = true, num_enter = true,
+  mouse1 = true, mouse2 = true, mouse3 = true, mouse4 = true, mouse5 = true,
+  mouse_wheel_up = true, mouse_wheel_down = true
+}
+function isTypingFocus()
+  local el = UI.FocusElement
+  if not el or not isElement(el) then return false end
+  local t = getElementType(el)
+  if t ~= "ui-edit" and t ~= "ui-memo" then return false end
+  local db = UI.DB[el]
+  if not db or not db.data or not db.visible then return false end
+  if db.data.readonly then return false end
+  return true
+end
+local function allowWhileTyping(key)
+  if typingSafeKeys[key] then return true end
+  -- ctrl+A/C/X (select all / copy / cut) binds read getKeyState() themselves,
+  -- so the letter key events must survive while ctrl is held
+  if key == "a" or key == "c" or key == "x" or key == "v" then
+    if getKeyState("lctrl") or getKeyState("rctrl") then return true end
+  end
+  return false
+end
 function updateLabelScroll(label)
         if UI.DB[label] and UI.DB[label].scrollbar and UI.DB[label].scrollbar.element then
                 uiScrollBarSetScrollPosition(UI.DB[label].scrollbar.element, 0)
@@ -250,9 +321,42 @@ function UI.refreshMenuHoverRow(arg0)
     end
   end
 end
+-- [Fix #87] the menu click path only fires when UI.HoveredElement IS the
+-- menu; when any other element draws above it (the classic case: the
+-- alpha-0 main-menu window rectangle acting as a hit target), sidebar rows
+-- looked dead while the menu still rendered normally. Resolve the topmost
+-- MENU under the cursor directly as a fallback.
+local function menuUnderCursor()
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  cx, cy = cx * sx, cy * sy
+  for i = #UI.DrawElements, 1, -1 do
+    local el = UI.DrawElements[i]
+    if (UI.EType[el] or getElementType(el)) == "ui-menu" and UI.DB[el]
+      and UI.DB[el].visible and UI.isDraw[el] and not isUIDisabled(el) then
+      local d = UI.DB[el].dimensions
+      if d and cx >= d.x and cy >= d.y and cx <= d.x + d.width and cy <= d.y + d.height then
+        return el
+      end
+    end
+  end
+  return false
+end
 function UI.click(arg0, arg1, arg2, arg3)
   -- [Vortex fix #12] fresh hover at click time (kills the stale-frame gap)
   UI.HoveredElement = UI.refreshHover() or false
+  -- [Fix #87] if hover resolved to something that is NOT the menu under the
+  -- cursor (window chrome / overlay above the sidebar), prefer the menu so
+  -- sidebar row selection keeps working. The menu's own scrollbar keeps
+  -- priority (it is a child drawn above the menu rect).
+  if not isUIElement(UI.HoveredElement, "menu") then
+    local m = menuUnderCursor()
+    if m and UI.HoveredElement ~= UI.DB[m].data.scrollbar then
+      UI.HoveredElement = m
+    end
+  end
   if arg0 == "left" then
     if UI.HoveredElement then
       if clickTimer1 and isTimer(clickTimer1) then
@@ -553,22 +657,18 @@ addEventHandler("onClientCharacter", root, function(arg0)
       triggerEvent("onClientUITextChange", UI.FocusElement)
       return
     end
-    ;(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine] = utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[UI.FocusElement].data.caret - 1) .. arg0 .. utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[UI.FocusElement].data.caret, utfLen((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]))
-    uiSetText(UI.FocusElement, table.concat(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }, "\n"):gsub("" .. newLinePrefix, ""))
-    UI.DB[UI.FocusElement].data.caret = UI.DB[UI.FocusElement].data.caret + 1
-    if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
-      triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
-    end
+    -- [Fix #82] build the new text in ONE local line table; the decompiled
+    -- form assigned into a temporary returned by split() and then wrote back
+    -- a fresh concat of the UNCHANGED original text, so the typed character
+    -- was constructed and thrown away (the report memo accepted no letters)
+    local memoDb = UI.DB[UI.FocusElement]
+    local memoLines = memoSplitLines(memoDb.text)
+    local memoLine = math.max(1, math.min(memoDb.data.caretLine or 1, #memoLines))
+    local memoText = (memoLines[memoLine] or ""):gsub(newLinePrefix, "")
+    memoLines[memoLine] = utfSub(memoText, 1, memoDb.data.caret - 1) .. arg0 .. utfSub(memoText, memoDb.data.caret, utfLen(memoText))
+    memoSetText(UI.FocusElement, memoJoinLines(memoLines))
+    memoDb.data.caret = memoDb.data.caret + utfLen(arg0)
+    triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
   end
 end)
 addEvent("ui-returnClipBoard", true)
@@ -592,29 +692,25 @@ addEventHandler("ui-returnClipBoard", localPlayer, function(arg0)
       triggerEvent("onClientUITextChange", UI.FocusElement)
       return
     end
-    ;(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine] = utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[UI.FocusElement].data.caret - 1) .. arg0 .. utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[UI.FocusElement].data.caret, utfLen((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]))
-    uiSetText(UI.FocusElement, table.concat(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }, "\n"):gsub("" .. newLinePrefix, ""))
-    UI.DB[UI.FocusElement].data.showtext = table.concat(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-    UI.DB[UI.FocusElement].data.caret = utfLen((utfSub((UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix):find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-      (UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix))
-    })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[UI.FocusElement].data.caret - 1) .. arg0):gsub("" .. newLinePrefix, "")) + 1
-    if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
-      triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
+    -- [Fix #82] same temp-table discard as the character insert above:
+    -- paste built the new line in a throwaway split() table, then wrote the
+    -- unchanged original back, so clipboard text never reached the memo
+    local memoDb = UI.DB[UI.FocusElement]
+    local memoLines = memoSplitLines(memoDb.text)
+    local memoLine = math.max(1, math.min(memoDb.data.caretLine or 1, #memoLines))
+    local memoText = (memoLines[memoLine] or ""):gsub(newLinePrefix, "")
+    local memoBefore = utfSub(memoText, 1, memoDb.data.caret - 1)
+    memoLines[memoLine] = memoBefore .. arg0 .. utfSub(memoText, memoDb.data.caret, utfLen(memoText))
+    memoSetText(UI.FocusElement, memoJoinLines(memoLines))
+    local memoInserted = memoBefore .. arg0
+    local memoNewLines = select(2, memoInserted:gsub("\n", "\n"))
+    if memoNewLines > 0 then
+      memoDb.data.caretLine = memoLine + memoNewLines
+      memoDb.data.caret = utfLen(memoInserted:match("[^\n]*$") or "") + 1
+    else
+      memoDb.data.caret = utfLen(memoInserted) + 1
     end
+    triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
   end
 end)
 function moveCaret(arg0, arg1)
@@ -705,10 +801,10 @@ function moveCaret(arg0, arg1)
     end
   end
 end
-bindKey("arrow_r", "both", moveCaret)
-bindKey("arrow_l", "both", moveCaret)
-bindKey("arrow_u", "both", moveCaret)
-bindKey("arrow_d", "both", moveCaret)
+bindKey("arrow_r", "both", handleTextKey)
+bindKey("arrow_l", "both", handleTextKey)
+bindKey("arrow_u", "both", handleTextKey)
+bindKey("arrow_d", "both", handleTextKey)
 function removeText(arg0, arg1)
   if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly then
     if UI.DB[UI.FocusElement].text then
@@ -764,208 +860,39 @@ function removeText(arg0, arg1)
         triggerEvent("onClientUITextChange", UI.FocusElement)
         return
       end
-      if arg0 == "backspace" then
-        if #(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }) == 0 then
-          return
-        end
-        if UI.DB[UI.FocusElement].data.caret == 1 and UI.DB[UI.FocusElement].data.caretLine ~= 1 then
-          table.remove(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          }, UI.DB[UI.FocusElement].data.caretLine)
-          UI.DB[UI.FocusElement].data.caret = utfLen((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine - 1]:gsub("" .. newLinePrefix, "")) + 1
-          ;(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine - 1] = (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine - 1]:gsub("" .. newLinePrefix, "") .. (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, "")
-          UI.DB[UI.FocusElement].data.caretLine = UI.DB[UI.FocusElement].data.caretLine - 1
-        else
-          (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine] = utfSub((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, math.max(0, UI.DB[UI.FocusElement].data.caret - 2)) .. utfSub((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[UI.FocusElement].data.caret, utfLen(((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""))))
-          UI.DB[UI.FocusElement].data.caret = math.max(1, UI.DB[UI.FocusElement].data.caret - 1)
-        end
-        uiSetText(UI.FocusElement, table.concat(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }, "\n"):gsub("" .. newLinePrefix, ""))
-        UI.DB[UI.FocusElement].data.showtext = table.concat(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
+      if arg0 == "backspace" or arg0 == "delete" then
+        -- [Fix #82] the decompiled block mutated a throwaway table returned
+        -- by split() and concatenated the UNCHANGED original text, so
+        -- backspace/delete in a memo (report box) removed nothing at all
+        local memoEl = UI.FocusElement
+        local repeatKey = arg0
+        memoDeleteChar(memoEl, repeatKey)
         if repeatTimer and isTimer(repeatTimer) then
           killTimer(repeatTimer)
         end
         repeatCount = 0
-        repeatTimer = setTimer(function(arg0)
+        repeatTimer = setTimer(function(el)
           repeatCount = repeatCount + 1
           if repeatCount >= 5 then
-            if #(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }) == 0 then
-              return
-            end
-            if UI.DB[arg0].data.caret == 1 and UI.DB[arg0].data.caretLine ~= 1 then
-              table.remove(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              }, UI.DB[arg0].data.caretLine)
-              UI.DB[arg0].data.caret = utfLen((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine - 1]:gsub("" .. newLinePrefix, "")) + 1
-              ;(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine - 1] = (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine - 1]:gsub("" .. newLinePrefix, "") .. (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, "")
-              UI.DB[arg0].data.caretLine = UI.DB[arg0].data.caretLine - 1
-            else
-              (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine] = utfSub((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, math.max(0, UI.DB[arg0].data.caret - 2)) .. utfSub((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[arg0].data.caret, utfLen(((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""))))
-              UI.DB[arg0].data.caret = math.max(1, UI.DB[arg0].data.caret - 1)
-            end
-            uiSetText(arg0, table.concat(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }, "\n"):gsub("" .. newLinePrefix, ""))
-            UI.DB[arg0].data.showtext = table.concat(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }, "\n", UI.DB[arg0].data.line_i, (math.min(#(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }), UI.DB[arg0].data.line_i + math.floor(UI.DB[arg0].dimensions.height / dxGetFontHeight(UI.DB[arg0].font.size, UI.DB[arg0].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-            if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
-              triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
-            end
+            memoDeleteChar(el, repeatKey)
           end
-        end, 80, 0, UI.FocusElement)
-      elseif arg0 == "delete" then
-        if #(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }) == 0 then
-          return
-        end
-        if UI.DB[UI.FocusElement].data.caret == utfLen(((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""))) + 1 and UI.DB[UI.FocusElement].data.caretLine ~= #(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }) then
-          (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine] = (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, "") .. (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine + 1]:gsub("" .. newLinePrefix, "")
-          table.remove(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          }, UI.DB[UI.FocusElement].data.caretLine + 1)
-        else
-          (UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine] = utfSub((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[UI.FocusElement].data.caret - 1) .. utfSub((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[UI.FocusElement].data.caret + 1, utfLen(((UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-            UI.DB[UI.FocusElement].text
-          })[UI.DB[UI.FocusElement].data.caretLine]:gsub("" .. newLinePrefix, ""))))
-        end
-        uiSetText(UI.FocusElement, table.concat(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }, "\n"):gsub("" .. newLinePrefix, ""))
-        UI.DB[UI.FocusElement].data.showtext = table.concat(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }, "\n", UI.DB[UI.FocusElement].data.line_i, (math.min(#(UI.DB[UI.FocusElement].text:find("\n", 1, true) and split(UI.DB[UI.FocusElement].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-          UI.DB[UI.FocusElement].text
-        }), UI.DB[UI.FocusElement].data.line_i + math.floor(UI.DB[UI.FocusElement].dimensions.height / dxGetFontHeight(UI.DB[UI.FocusElement].font.size, UI.DB[UI.FocusElement].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-        if repeatTimer and isTimer(repeatTimer) then
-          killTimer(repeatTimer)
-        end
-        repeatCount = 0
-        repeatTimer = setTimer(function(arg0)
-          repeatCount = repeatCount + 1
-          if repeatCount >= 5 then
-            if #(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }) == 0 then
-              return
-            end
-            if UI.DB[arg0].data.caret == utfLen(((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""))) + 1 and UI.DB[arg0].data.caretLine ~= #(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }) then
-              (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine] = (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, "") .. (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine + 1]:gsub("" .. newLinePrefix, "")
-              table.remove(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              }, UI.DB[arg0].data.caretLine + 1)
-            else
-              (UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine] = utfSub((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""), 1, UI.DB[arg0].data.caret - 1) .. utfSub((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""), UI.DB[arg0].data.caret + 1, utfLen(((UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-                UI.DB[arg0].text
-              })[UI.DB[arg0].data.caretLine]:gsub("" .. newLinePrefix, ""))))
-            end
-            uiSetText(arg0, table.concat(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }, "\n"):gsub("" .. newLinePrefix, ""))
-            UI.DB[arg0].data.showtext = table.concat(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }, "\n", UI.DB[arg0].data.line_i, (math.min(#(UI.DB[arg0].text:find("\n", 1, true) and split(UI.DB[arg0].text:gsub("\n", "\n" .. newLinePrefix), 10) or {
-              UI.DB[arg0].text
-            }), UI.DB[arg0].data.line_i + math.floor(UI.DB[arg0].dimensions.height / dxGetFontHeight(UI.DB[arg0].font.size, UI.DB[arg0].font.name)) + 1))):gsub("" .. newLinePrefix, "")
-            if uiMemoGetCaretIndex(arg0) ~= uiMemoGetCaretIndex(arg0) then
-              triggerEvent("onClientUICaretPositionChange", arg0, uiMemoGetCaretIndex(arg0))
-            end
-          end
-        end, 80, 0, UI.FocusElement)
+        end, 80, 0, memoEl)
       end
-      if uiMemoGetCaretIndex(UI.FocusElement) ~= uiMemoGetCaretIndex(UI.FocusElement) then
-        triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
-      end
+      triggerEvent("onClientUICaretPositionChange", UI.FocusElement, uiMemoGetCaretIndex(UI.FocusElement))
     elseif repeatTimer and isTimer(repeatTimer) then
       killTimer(repeatTimer)
     end
   end
 end
-bindKey("backspace", "both", removeText)
-bindKey("delete", "both", removeText)
+bindKey("backspace", "both", handleTextKey)
+bindKey("delete", "both", handleTextKey)
 function acceptedEvent(arg0, arg1)
   if UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" and not UI.DB[UI.FocusElement].data.readonly and arg1 == "up" then
     triggerEvent("onClientUIAccepted", UI.FocusElement)
   end
 end
-bindKey("enter", "both", acceptedEvent)
-bindKey("num_enter", "both", acceptedEvent)
+bindKey("enter", "both", handleTextKey)
+bindKey("num_enter", "both", handleTextKey)
 addEventHandler("onClientUIPropertyChange", resourceRoot, function(arg0, arg1)
   if isUIElement(source, "combobox") then
     if arg0 == "items_per_page" then
@@ -1010,35 +937,21 @@ function cancelBindsOnTyping(arg0, arg1)
   return
 end
 addEventHandler("onClientKey", root, cancelBindsOnTyping)
--- [Fix #76 - user] "أي مود أي لوحة فيها كتابة ضيف امكانية الحذف": text keys
--- were bindKey-only, and binds are suppressed in several input modes (the
--- login screen's guiSetInputEnabled(true) is the known case), so backspace /
--- delete / arrows / enter silently died there while typing kept working.
--- onClientKey fires in EVERY input mode; the original binds are kept and a
--- per key+state dedup collapses both sources for the same physical press so
--- nothing ever double-fires.
-local lastTextKey, lastTextState, lastTextTick = false, false, 0
-addEventHandler("onClientKey", root, function(key, state)
-  if key ~= "backspace" and key ~= "delete"
-    and key ~= "arrow_l" and key ~= "arrow_r" and key ~= "arrow_u" and key ~= "arrow_d"
-    and key ~= "enter" and key ~= "num_enter" then
-    return
+-- [Fix #76/#83 - user] onClientKey fires in EVERY input mode (binds do not:
+-- guiSetInputEnabled(true) kills them — the login screen proves it). Text
+-- keys are routed through the shared handleTextKey above; every other key
+-- is canceled while a UIKit input has focus so game binds/controls stay
+-- quiet until the user clicks outside the text rect.
+-- Old bugs fixed here: isChatBoxOpen() does not exist in this MTA build
+-- (the handler crashed with "attempt to call global 'isChatBoxOpen'" on
+-- every key press, so NOTHING was ever dispatched), and onClientKey hands
+-- a boolean press flag while removeText/moveCaret expect "down"/"up".
+addEventHandler("onClientKey", root, function(key, press)
+  if TEXT_KEYS[key] then
+    handleTextKey(key, press and "down" or "up")
   end
-  -- chatbox input and real MTA gui edits own the key in these cases
-  if isChatBoxOpen() or guiGetFocusedElement() then
-    return
-  end
-  local now = getTickCount()
-  if key == lastTextKey and state == lastTextState and now - lastTextTick < 60 then
-    return
-  end
-  lastTextKey, lastTextState, lastTextTick = key, state, now
-  if key == "backspace" or key == "delete" then
-    removeText(key, state)
-  elseif key == "enter" or key == "num_enter" then
-    acceptedEvent(key, state)
-  else
-    moveCaret(key, state)
+  if press and isTypingFocus() and not (isChatBoxInputActive and isChatBoxInputActive()) and not allowWhileTyping(key) then
+    cancelEvent()
   end
 end)
 addEventHandler("onClientUITextChange", resourceRoot, function()

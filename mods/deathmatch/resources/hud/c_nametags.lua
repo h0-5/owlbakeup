@@ -119,6 +119,18 @@ local function buildPlayerEntry(player)
                 or getElementData(player, "admin:hideadmin") == true
                 or getElementData(player, "admin:hideadmin") == "1"
 
+        -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم الإخفاء":
+        -- the ENGINE nametag is drawn by the game itself and never reaches
+        -- this file's gate, so it can put a hidden admin's real name over
+        -- their head for every viewer (including regular players). MTA's own
+        -- stock race/nametags.lua forces it off from the client every frame
+        -- for exactly this reason. One call per build is enough; the server
+        -- also disables it at spawn (s_characters.lua:491), this client-side
+        -- pass makes it impossible for the engine renderer to leak it.
+        if hidden and setPlayerNametagShowing then
+                setPlayerNametagShowing(player, false)
+        end
+
         local masked = getElementData(player, "fakename")
         local name = masked and "Unknown Person"
                 or getPlayerName(player):gsub("_", " ")
@@ -335,8 +347,18 @@ function drawNametags()
                 -- cooldown). The `player ~= localPlayer` skip meant a session
                 -- with a single client (the only case ever connected here) drew
                 -- ZERO names — exactly the user's "nametags don't show" report.
+                -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم
+                -- الإخفاء": the staff half of this gate also matched the
+                -- LOCAL player, so after /hideadmin a hidden admin kept
+                -- seeing their OWN name (plus the " (Hidden)" word) above
+                -- their own head - and that is the only nametag a single
+                -- client session can ever show. Self view is now skipped
+                -- when the local player is hidden; staff still see OTHER
+                -- hidden admins and regular players still see nothing
+                -- (both unchanged).
                 if isElement(player) and entry
-                        and (not entry.hidden or localIsStaff()) then
+                        and (not entry.hidden
+                                or (localIsStaff() and player ~= localPlayer)) then
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then

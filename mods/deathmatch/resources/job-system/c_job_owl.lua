@@ -345,7 +345,7 @@ addEventHandler("onClientUIClick", root, function()
                 triggerServerEvent("jobs:quit_job", localPlayer)
                 eui:uiSetVisible(UI.window[1], false)
                 showCursor(false)
-        elseif source == UI.gridlist.jobs then
+        elseif UI.gridlist and source == UI.gridlist.jobs then
                 if eui:uiGridListGetSelectedItem(UI.gridlist.jobs) ~= -1 then
                         showJobDetails((eui:uiGridListGetItemData(UI.gridlist.jobs, eui:uiGridListGetSelectedItem(UI.gridlist.jobs), 1)))
                 else

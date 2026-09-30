@@ -61,6 +61,12 @@ function uiCreateProgressBar(arg0, arg1, arg2, arg3, arg4, arg5)
 end
 function uiProgressBarSetProgress(arg0, arg1)
   assert(isUIElement(arg0, "progressbar"), "Bad argument @ 'uiProgressBarSetProgress' [Expected ui-progressbar at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  -- [Fix #91] callers pass raw element data which can be a boolean (e.g.
+  -- "Miner:Progress") - reject it instead of letting the draw math crash
+  arg1 = tonumber(arg1)
+  if not arg1 then
+    return false
+  end
   if UI.DB[arg0].data.progress ~= arg1 then
     UI.DB[arg0].data.progress = arg1
     if not UI.DB[arg0].animation[3] and UI.DB[arg0].properties.progress_animation.value then
@@ -80,6 +86,10 @@ function uiProgressBarGetProgress(arg0)
   return UI.DB[arg0].data.progress
 end
 UI.getDrawFunction["ui-progressbar"] = function(arg0)
+  -- [Fix #91] belt + braces: keep progress/animation numeric so the width
+  -- math below can never see a boolean
+  UI.DB[arg0].data.progress = tonumber(UI.DB[arg0].data.progress) or 0
+  UI.DB[arg0].animation[2] = tonumber(UI.DB[arg0].animation[2]) or 0
   if anim(UI.DB[arg0].animation[1], 1000, UI.DB[arg0].animation[2], 0, 0, 0, UI.DB[arg0].data.progress, 0, 0, 0, "Linear") == UI.DB[arg0].data.progress and UI.DB[arg0].animation[3] then
     UI.DB[arg0].animation[3] = false
   end

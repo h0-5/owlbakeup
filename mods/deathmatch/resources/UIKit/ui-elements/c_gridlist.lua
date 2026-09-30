@@ -360,6 +360,20 @@ local function gridlistUnderCursor()
   end
   return false
 end
+-- [Fix #158] a cell color that would drown on the blue selection band
+-- (navy/maroon/black rank colors) is lifted toward white just enough to
+-- stay readable. Bright colors (white, gold, light green...) pass through
+-- untouched, so every cell keeps its own color instead of the old fix #14b
+-- "force everything white" force.
+local function fix158LiftOnBlue(c)
+  local a, r, g, b = bitExtract(c, 24, 8), bitExtract(c, 16, 8), bitExtract(c, 8, 8), bitExtract(c, 0, 8)
+  local lum = 0.299 * r + 0.587 * g + 0.114 * b
+  if lum >= 200 then
+    return c
+  end
+  local t = (200 - lum) / math.max(1, 255 - lum)
+  return tocolor(math.floor(r + (255 - r) * t + 0.5), math.floor(g + (255 - g) * t + 0.5), math.floor(b + (255 - b) * t + 0.5), a)
+end
 UI.getDrawFunction["ui-gridlist"] = function(arg0)
   hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
   if dxGetColor(UI.DB[arg0].colors[1]) and dxGetColor(UI.DB[arg0].colors[1]) > 0 then
@@ -393,27 +407,19 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
       -- alpha stacking into a near-opaque purple slab that drowned the row
       -- text -> "the name disappears when I click" + harsh fade = broken
       -- animation). The highlight is now drawn ONCE per row, BEFORE the cells,
-      -- with a subtle alpha cap so every rank color / name stays readable.
+      -- [Fix #158] as a solid BLUE full-row rectangle (see below).
       for forvar19 = UI.DB[arg0].data.row_i, UI.DB[arg0].data.row_f do
         local rowCell1 = UI.DB[arg0].data.rows[forvar19][1]
         local rowH = (rowCell1 and rowCell1.height) or 20
         local rowY = UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i)
         if UI.DB[arg0].data.selected_row == forvar19 - 1 then
-          -- [Vortex fix #15] the band is drawn ONCE per row (fix #14 killed the
-          -- per-cell overdraw), so it can be stronger without drowning the text:
-          -- fade 60 -> 170 over ~140ms = clearly "prominent + white" on the
-          -- promote/demote rank lists, text stays forced white and readable.
-          local selTick = UI.DB[arg0].data.selection_tick
-          local selAlpha = 170
-          if selTick then
-            local selDT = getTickCount() - selTick
-            if selDT < 140 then
-              selAlpha = math.floor(60 + (170 - 60) * (selDT / 140))
-            end
-          end
-          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), selAlpha), UI.postGUI)
-          -- accent bar on the left edge keeps the selection unmistakable
-          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, 3, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
+          -- [Fix #158] the SELECTED row is a solid BLUE rectangle covering the
+          -- WHOLE row: full list width (padding out to the scrollbar edge
+          -- included) and the full row height, drawn UNDER the cell text.
+          -- Replaces the translucent theme-primary band + 3px accent bar
+          -- (fix #15), which read as a white/purple sliver instead of a
+          -- selected row. Hover below stays untouched.
+          dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY, UI.DB[arg0].dimensions.width, rowH, tocolor(45, 110, 225, 255), UI.postGUI)
         end
         if not isUIDisabled(arg0) and UI.HoveredElement == arg0
           and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, rowHitW, rowH) then
@@ -426,12 +432,13 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
         -- list stroked the same 0.5px line 5x per row). Draw it once.
         dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + rowH * (forvar19 - UI.DB[arg0].data.row_i) + rowH, UI.DB[arg0].dimensions.width, 0.5, tocolor(255, 255, 255, 5), UI.postGUI, UI.subPixelPositioning)
         for forvar24, forvar25 in ipairs(UI.DB[arg0].data.rows[forvar19]) do
-          -- [Vortex fix #14b] selected row text is forced WHITE: rank colors
-          -- like navy/maroon drowned on the selection band and the name
-          -- looked like it "disappears" when clicked
+          -- [Fix #158] the fix #14b white text force is REMOVED: every cell
+          -- keeps its own color on the blue band (rank colors stay
+          -- distinguishable); only colors too dark to read on blue are
+          -- lifted, never forced white.
           local cellColor = forvar25.color or tocolor(255, 255, 255, 255)
           if UI.DB[arg0].data.selected_row == forvar19 - 1 then
-            cellColor = tocolor(255, 255, 255, 255)
+            cellColor = fix158LiftOnBlue(cellColor)
           end
           dxDrawText(gridResolveText(forvar25.text), columnX[forvar24] + (forvar25.alignX == "left" and 5 or 0), UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i), columnX[forvar24] + forvar25.width * UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.y + 2 + UI.DB[arg0].properties.column_height.value + forvar25.height * (forvar19 - UI.DB[arg0].data.row_i) + forvar25.height, cellColor, UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.name, forvar25.alignX, "center", true, _, UI.postGUI, UI.DB[arg0].properties.color_coded.value)
         end

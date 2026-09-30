@@ -59,7 +59,7 @@ end
 addEvent("fakemyid", true)
 addEventHandler("fakemyid", getRootElement(), fakeMyID)
 
--- [Fix #90] explicit session-id swap (used by /setid for the FULL id
+-- [Fix #90] explicit session-id swap (used by /changeid for the FULL id
 -- replacement: mod:id + playerid + pool slot together). Unlike fakeMyID
 -- this takes an EXACT slot and refuses it when another player holds it.
 function setPlayerSlot(player, slot)

@@ -7,6 +7,9 @@
 --   * ((TYPING...)) animated indicator while a player is writing
 --   * badge icons above heads (icons/): AFK, admin badge on duty, heart item
 --   * 8-unit range + line of sight, tagmode setting respected
+--   * Fix #154: drawn in onClientPreRender so F1 / F3 / /staffs / TAB always
+--     cover the tags, and non-friends read the account "mod:id" instead of
+--     the name (friends keep the name - see buildPlayerEntry)
 --------------------------------------------------------------------------------
 
 local sx, sy = guiGetScreenSize()
@@ -36,6 +39,25 @@ local localTyping = false
 -- Fix #23 perf: throttled line-of-sight cache (declared early: cleanup
 -- handlers below reference it)
 local losCache = {}     -- [player] = { blocked = bool, t = tick }
+
+-- [Fix #154] the local account's friend ids. nil until the first list
+-- arrives, then { [accountId] = true }. buildPlayerEntry reads it, so it is
+-- declared up here while the event plumbing lives further down (it has to,
+-- since it calls updatePlayersHud).
+local friendIds = nil
+local friendRowsRequestedAt = 0
+
+-- [Fix #154] self-heal request: only ever fired while friendIds is still nil
+-- (hud restarted after login, so the push below was missed) and only once per
+-- 5s. It reuses main-menu's read-only Fix #159 list - no change there - and
+-- stops the moment an answer lands.
+local function requestFriendIds()
+        if friendIds then return end
+        local now = getTickCount()
+        if now - friendRowsRequestedAt < 5000 then return end
+        friendRowsRequestedAt = now
+        triggerServerEvent("main-menu:friends:list", localPlayer)
+end
 
 -- badge textures (old client icons/ set)
 local badgeTex = {}
@@ -136,6 +158,9 @@ local function isPlayerOffDutyStaff(p)
 end
 
 local function buildPlayerEntry(player)
+        -- [Fix #154] if the friend list never arrived (hud restarted after
+        -- login), ask main-menu for it before deciding name-vs-id
+        if friendIds == nil and localIsLoggedIn() then requestFriendIds() end
         -- [Fix #33] robust across every way the server stores these flags
         -- (number 1, DB string "1", boolean true)
         local hidden = isOne(getElementData(player, "hiddenadmin"))
@@ -170,12 +195,19 @@ local function buildPlayerEntry(player)
         -- plain players were already white (rgb fallback above).
         if hidden or isPlayerOffDutyStaff(player) then rgb = { 255, 255, 255 } end
 
-        -- friends were colored white in the old client (friend-system guarded)
+        -- [Fix #154] friends keep the real name, everyone else is read as
+        -- their account-bound "mod:id" (the very id /checkid, /changeid and
+        -- the TAB board use). Rules kept from the old client: self stays a
+        -- friend, a masked player is NEVER swapped (the mask has to keep
+        -- hiding them) and a missing id falls back to the name, so no tag can
+        -- ever go blank. The old friend-system lookup is gone with this - that
+        -- resource does not exist in this server, so it always read false.
+        local accountId = tonumber(getElementData(player, "account:id"))
         local friend = player == localPlayer
-        local friendSys = getResourceFromName("friend-system")
-        if not friend and friendSys and getResourceState(friendSys) == "running" then
-                local ok, isFriend = pcall(function() return exports["friend-system"]:isFriend(player) end)
-                if ok then friend = isFriend and true or false end
+                or (accountId ~= nil and friendIds ~= nil and friendIds[accountId] == true)
+        if not friend and not masked then
+                local modId = tonumber(getElementData(player, "mod:id"))
+                if modId then name = tostring(modId) end
         end
 
         -- badge icons above the head (old client icons row)
@@ -234,6 +266,10 @@ local CACHE_KEYS = {
         -- [Fix #98] staff detection reads these too (rank ladder / levels) -
         -- a rank push must re-evaluate the off-duty plain-white color now
         ["rank:index"] = true, ["admin_level"] = true, ["supporter_level"] = true,
+        -- [Fix #154] the tag text itself: a /setid or a login-time account
+        -- assignment has to rebuild the entry (name vs mod:id), and the
+        -- friend match keys on account:id
+        ["mod:id"] = true, ["account:id"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key, _, _value)
         if CACHE_KEYS[key] and isElement(source) and getElementType(source) == "player" then
@@ -257,6 +293,66 @@ addEventHandler("onClientPlayerQuit", root, function()
         playersHud[source] = nil
         losCache[source] = nil
 end)
+
+--------------------------------------------------------------------------------
+-- [Fix #154] friend list -> who still reads as a NAME above their head
+--------------------------------------------------------------------------------
+local function setFriendIds(list, idIndex)
+        local set = {}
+        if type(list) == "table" then
+                for _, row in ipairs(list) do
+                        -- rows arrive with mixed shapes/types (social-system
+                        -- pushes raw DB values), so always compare as numbers
+                        local id = tonumber(type(row) == "table" and row[idIndex] or nil)
+                        if id then set[id] = true end
+                end
+        end
+        friendIds = set
+        updatePlayersHud()
+end
+
+-- social-system sends the whole list to this client at login and again on
+-- every friend add/accept (s_friends.lua: sendFriends -> "social:friends",
+-- source = the player).
+-- [Fix #154] both events are declared by OTHER resources, and MTA refuses
+-- addEventHandler() until that declaration exists: it checks CEvents::Exists
+-- first and just RETURNS FALSE (CStaticFunctionDefinitions::AddEventHandler),
+-- no error, no handler. hud starts before social-system and main-menu (it is
+-- far earlier in mtaserver.conf), so the attach is retried until it sticks -
+-- the login push and every friends fetch arrive well after that, so nothing
+-- is ever missed.
+local socialFriendsAttached = false
+local friendCallbackAttached = false
+
+local function attachFriendHandlers()
+        if not socialFriendsAttached then
+                -- rows: { accountID, username, message, player-or-lastOnline }
+                socialFriendsAttached = addEventHandler("social:friends", localPlayer, function(friendsList)
+                        setFriendIds(friendsList, 1)
+                end) == true
+        end
+        if not friendCallbackAttached then
+                -- main-menu's Fix #159 list, rows are { id = accountId, ... }:
+                -- requestFriendIds above asks for it while friendIds is nil,
+                -- and it also sees F1's own refreshes, which keeps the set
+                -- honest after an unfriend.
+                friendCallbackAttached = addEventHandler("main-menu:friends:list:callback", localPlayer, function(rows)
+                        setFriendIds(rows, "id")
+                end) == true
+        end
+        return socialFriendsAttached and friendCallbackAttached
+end
+
+if not attachFriendHandlers() then
+        local attachTries = 0
+        local attachTimer
+        attachTimer = setTimer(function()
+                attachTries = attachTries + 1
+                if attachFriendHandlers() or attachTries >= 120 then
+                        if isTimer(attachTimer) then killTimer(attachTimer) end
+                end
+        end, 1000, 0)
+end
 
 --------------------------------------------------------------------------------
 -- typing sync (old client: latent server event, server relays to nearby)
@@ -313,7 +409,24 @@ local function cacheLooksBroken()
         return false
 end
 
-addEventHandler("onClientRender", root, function()
+-- [Fix #154] Drawn from onClientPreRender, NOT onClientRender, keeping the
+-- "high-2" band. MTA walks its handler list from HIGH to LOW
+-- (CMapEventManager::AddInternal inserts the higher priority first and Call()
+-- iterates that order), and dx is only ORDERED by WHEN it is issued - so the
+-- pass that issues a draw first is the pass that ends up at the BOTTOM:
+--   * F1 (chrome veil "high-2" + its UIKit window), F3 and /staffs (UIKit
+--     windows at "normal") all draw in onClientRender: every one of them now
+--     issues AFTER this pass and therefore covers the tags. Before, this
+--     handler TIED with F1's chrome at "high-2" and only stayed underneath
+--     while hud happened to be the older of the two registrations - a hud
+--     restart with F1 open flipped the stacking.
+--   * the TAB board draws in THIS very event at "normal" (scoreboard
+--     c_tab.lua, Fix #31), so "high-2" keeps the tags first inside the pass
+--     and under the board - that was the one menu nametags provably covered.
+-- postGUI=true is untouched: the tags still land over the 3D world, the
+-- radar, the chatbox and every pre-GUI layer, and Fix #100 / #151, the radar
+-- band and the HUD bands are NOT touched - only menu stacking changes.
+addEventHandler("onClientPreRender", root, function()
         local ok, err = pcall(drawNametags)
         if not ok then
                 -- [Fix #47] report once per 30s, keep drawing (auto-recover)
@@ -477,9 +590,10 @@ function drawNametags()
                 end
         end
 end
--- drawNametags ends here; the pcall'd onClientRender handler above is the
+-- drawNametags ends here; the pcall'd onClientPreRender handler above is the
 -- only registration (Fix #33: one-time error report instead of a silent
--- every-frame abort that also ate FPS)
+-- every-frame abort that also ate FPS; Fix #154 moved it out of
+-- onClientRender so the menus always cover the tags)
 
 --------------------------------------------------------------------------------
 -- startup

@@ -16,6 +16,8 @@
                   list rows { name, level } | { name, points }
           main-menu:linkdiscord:generateCode   -> :callback(code)   (20 chars, 5 min)
           main-menu:linkdiscord:unlink         -> clears the stored account
+          main-menu:friends:list               -> :callback(list)   [Fix #159]
+                  list rows { id, name, online, lastlogin }
 ]]
 
 local function getCharacterId(thePlayer)
@@ -163,6 +165,8 @@ end)
 
 --[[ ==================== online staff ==================== ]]
 -- payload per row: { isSupport, id, name, hidden } (client unpacks by index)
+-- [Fix #156] row[2] - the "ID" column of the F1 administration section - is
+-- the ACCOUNT-bound mod id, not the character id (dbid) it used to show.
 
 addEvent("admin:showStaff", true)
 addEventHandler("admin:showStaff", root, function()
@@ -199,7 +203,7 @@ addEventHandler("admin:showStaff", root, function()
                         local rcolor = getElementData(player, "rank:color")
                         list[#list + 1] = {
                                 admin == 0 and support > 0,                -- [1] isSupport
-                                getPlayerIDStrSafe(player),                -- [2] id
+                                getPlayerIDStrSafe(player),                -- [2] mod id (Fix #156)
                                 getPlayerName(player):gsub("_", " "),      -- [3] name
                                 (getElementData(player, "hiddenadmin") or 0) == 1, -- [4] hidden
                                 rname ~= "" and rname or nil,              -- [5] rank title
@@ -216,10 +220,15 @@ addEventHandler("admin:showStaff", root, function()
 end)
 
 function getPlayerIDStrSafe(player)
-        return tostring(getElementData(player, "account:character:id")
-                or getElementData(player, "character:id")
-                or getElementData(player, "playerid")
-                or "-")
+        -- [Fix #156] the F1 administration/staff section must show the
+        -- ACCOUNT-bound mod id (elementData "mod:id" - the very id
+        -- /changeid edits) instead of the character id (dbid) it resolved
+        -- first before. Fallbacks: account username, then "-".
+        local modId = tonumber(getElementData(player, "mod:id"))
+        if modId then return tostring(modId) end
+        local user = tostring(getElementData(player, "account:username") or "")
+        if user ~= "" then return user end
+        return "-"
 end
 
 --[[ ==================== leaderboard ====================
@@ -345,6 +354,60 @@ addEventHandler("main-menu:radio:add", root, function(name, url)
                 triggerClientEvent(thePlayer, "main-menu:radio:added", thePlayer,
                         false, "فشل حفظ القناة في قاعدة البيانات.")
         end
+end)
+
+--[[ ==================== friends (Fix #159) ====================
+        F1 "الأصدقاء": the friend rows of THIS account, straight from the
+        friends table (social-system's own storage), enriched with the
+        account username + accounts.lastlogin and flagged online when a
+        player wearing the same account:username elementData is connected. ]]
+
+addEvent("main-menu:friends:list", true)
+addEventHandler("main-menu:friends:list", root, function()
+        local thePlayer = client or source
+        if not isElement(thePlayer) then return end
+
+        local list = {}
+        local accountID = tonumber(getElementData(thePlayer, "account:id"))
+        if accountID and getResourceRunning("mysql") then
+                local ok, rows = pcall(function()
+                        return exports.mysql:query_rows_assoc(
+                                "SELECT f.friend AS fid, a.username, " ..
+                                "       UNIX_TIMESTAMP(a.lastlogin) AS lastlogin " ..
+                                "FROM `friends` f " ..
+                                "LEFT JOIN `accounts` a ON a.id = f.friend " ..
+                                "WHERE f.id = " .. exports.mysql:escape_string(accountID) .. " " ..
+                                "ORDER BY a.username ASC"
+                        )
+                end)
+                if ok and type(rows) == "table" then
+                        -- online = an online player with the SAME
+                        -- account:username elementData (the friend's account)
+                        local online = {}
+                        for _, p in ipairs(getElementsByType("player")) do
+                                local u = tostring(getElementData(p, "account:username") or "")
+                                if u ~= "" then online[string.lower(u)] = true end
+                        end
+                        for _, row in ipairs(rows) do
+                                local name = tostring(row.username or "")
+                                local fid = tonumber(row.fid)
+                                if fid then
+                                        -- a deleted account still holds its
+                                        -- friendship row: keep it reachable by
+                                        -- its id so it can be removed too
+                                        if name == "" then name = "#" .. fid end
+                                        list[#list + 1] = {
+                                                id        = fid,
+                                                name      = name,
+                                                online    = online[string.lower(name)] == true,
+                                                -- NULL lastlogin -> false -> "never"
+                                                lastlogin = tonumber(row.lastlogin) or false,
+                                        }
+                                end
+                        end
+                end
+        end
+        reply(thePlayer, "main-menu:friends:list:callback", list)
 end)
 
 --------------------------------------------------------------------------------

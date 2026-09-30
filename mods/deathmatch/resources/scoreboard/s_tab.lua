@@ -186,7 +186,8 @@ end )
 --   * the id survives reconnects (stored mod_ids.json inside this resource)
 --   * the scoreboard ID column shows it instead of the session playerid
 --   * /checkid [name|id]  (staff): look up who owns a mod id / name
---   * /setid <name|id> <newid>  (staff): reassign an account's mod id
+--   * /changeid <name|id> <newid>  (staff): reassign an account's mod id
+--     [Fix #155] strict rename of the old command, no alias kept
 --------------------------------------------------------------------------------
 local modIds = {}          -- [username] = mod id
 local nextModId = 1
@@ -267,7 +268,7 @@ end)
 -- [Fix #30] THIS server's account stack never fires onPlayerLogin (no
 -- triggerEvent("onPlayerLogin") exists anywhere), so mod ids were never
 -- assigned ("Your mod id: -" in the owner's screenshots) and /checkid,
--- /setid could never find anybody. Hook what the stack ACTUALLY fires:
+-- /changeid could never find anybody. Hook what the stack ACTUALLY fires:
 -- the account:username data flip and accounts:character:select.
 local function assignModId(player)
         local user = tostring(getElementData(player, "account:username") or "")
@@ -481,8 +482,8 @@ addCommandHandler("checkid", function(player, cmd, query)
         triggerClientEvent(player, "checkid:openInput", player, query)
 end, false, false)
 
--- staff: /setid <part-of-name | old mod id> <new id>
-addCommandHandler("setid", function(player, cmd, query, newId)
+-- staff: /changeid <part-of-name | old mod id> <new id>   [Fix #155]
+addCommandHandler("changeid", function(player, cmd, query, newId)
         if not isStaffPlayer(player) then
                 outputChatBox("You don't have permission to use this command.", player, 255, 80, 80)
                 return
@@ -490,7 +491,7 @@ addCommandHandler("setid", function(player, cmd, query, newId)
         newId = tonumber(newId)
         if newId then newId = math.floor(newId) end
         if not query or query == "" or not newId or newId < 1 then
-                outputChatBox("USAGE: /setid <account | current mod id> <new id>", player, 255, 195, 14)
+                outputChatBox("USAGE: /changeid <account | current mod id> <new id>", player, 255, 195, 14)
                 return
         end
         local targetUser = nil
@@ -541,11 +542,11 @@ addCommandHandler("setid", function(player, cmd, query, newId)
                         outputChatBox("Mod id updated, but the session id could not change: " .. tostring(err) .. ".", player, 255, 195, 14)
                 end
         end
-        outputChatBox("[SETID] " .. targetUser .. " now has mod id " .. newId .. ".", player, 120, 220, 120)
+        outputChatBox("[CHANGEID] " .. targetUser .. " now has mod id " .. newId .. ".", player, 120, 220, 120)
 end, false, false)
 
 --------------------------------------------------------------------------------
--- [Fix #35 - user] "setid يطبق ايدي جديد على سيرفر ككل للحساب ... حتى شات
+-- [Fix #35 - user] "/changeid يطبق ايدي جديد على سيرفر ككل للحساب ... حتى شات
 -- الخاص pm وفي اوامر ادارية وكلشي في سيرفر": the MOD ID is now a FIRST-CLASS
 -- server-wide identifier. global:findPlayerByPartialNick (the one resolver
 -- behind /pm AND every admin command) consults this export FIRST, so

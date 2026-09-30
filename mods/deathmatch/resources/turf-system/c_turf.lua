@@ -35,7 +35,7 @@ local drawing = false
 
 local function init()
         if isElement(ring) then return end
-        ring = svgCreate(0, 0, SVG_SIZE, SVG_SIZE, SVG_XML, function()
+        ring = svgCreate(SVG_SIZE, SVG_SIZE, SVG_XML, function()
                 if not ring then return end
                 ringXml = svgGetDocumentXML(ring)
                 if ringXml then

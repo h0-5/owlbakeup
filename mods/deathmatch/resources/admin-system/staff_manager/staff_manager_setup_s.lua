@@ -174,22 +174,13 @@ local function runSetup()
         end
 
         -- 4) repair broken rank colors (invalid/zero JSON drew invisible rows)
-        local bad = fetchOne([=[
-                SELECT COUNT(*) AS n FROM staff_roles
-                WHERE Color IS NULL OR Color = '' OR Color = '{}'
-                        OR Color NOT LIKE '[[%']=])
-        if bad and tonumber(bad.n) and tonumber(bad.n) > 0 then
-                if ddl("UPDATE staff_roles SET Color='[255,255,255,255]' WHERE Color IS NULL OR Color = '' OR Color = '{}' OR Color NOT LIKE '[['",
-                        "UPDATE staff_roles colors") then
-                        dbg("repaired " .. tonumber(bad.n) .. " rank color(s) -> white")
-                        table.insert(SETUP_REPORT.lines, "rank colors repaired: " .. tonumber(bad.n))
-                end
-        end
-
-        -- 4b) [Fix #14] luminance floor on every stored rank color: dark seeds
-        -- (navy/maroon/burgundy) were unreadable on the dark panel - the rows
-        -- looked like the names "disappear". Idempotent: already-clamped
-        -- colors are left untouched.
+        -- [Fix #86] the old check blanked EVERY row failing `LIKE '[[%'` to
+        -- white. MTA's toJSON (non-compact) writes "[ [ 255, 255, 255, 255 ] ]"
+        -- WITH spaces, so every SAVED color failed the LIKE test and was wiped
+        -- to white on EVERY resource start -- saved colors never persisted.
+        -- Parse each row instead: only truly invalid values (NULL / '' / '{}'
+        -- / unparseable / missing channels) become white; valid spaced JSON
+        -- (from toJSON) is kept.
         pcall(function()
                 local q = mysql:query("SELECT ID, Color FROM staff_roles")
                 if q then
@@ -197,29 +188,45 @@ local function runSetup()
                         while true do
                                 local row = mysql:fetch_assoc(q)
                                 if not row then break end
-                                local c = fromJSON(row.Color or "") or {}
-                                local r = tonumber(c[1]) or 255
-                                local g = tonumber(c[2]) or 255
-                                local b = tonumber(c[3]) or 255
-                                local a = tonumber(c[4]) or 255
-                                local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-                                if lum < 0.45 then
-                                        local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                                        r = math.floor(r + (255 - r) * t + 0.5)
-                                        g = math.floor(g + (255 - g) * t + 0.5)
-                                        b = math.floor(b + (255 - b) * t + 0.5)
-                                        ddl("UPDATE staff_roles SET Color='[[" .. r .. "," .. g .. "," .. b .. "," .. a .. "]]' WHERE ID=" .. tonumber(row.ID),
-                                                "UPDATE dark rank color #" .. tostring(row.ID))
+                                local raw = row.Color
+                                local c = nil
+                                if type(raw) == "string" and raw ~= "" then
+                                        c = fromJSON(raw)
+                                end
+                                -- [Fix #153] fromJSON unpacks a JSON array into
+                                -- its elements, so toJSON's "[ [ r, g, b, a ] ]"
+                                -- normally comes back FLAT as { r, g, b, a }.
+                                -- Some builds hand back the nested shape
+                                -- { { r, g, b, a } } instead - unwrap one level
+                                -- so a VALID color is never mistaken for a
+                                -- broken one and wiped to white here.
+                                if type(c) == "table" and type(c[1]) == "table" then
+                                        c = c[1]
+                                end
+                                local ok = type(c) == "table"
+                                        and tonumber(c[1]) and tonumber(c[2]) and tonumber(c[3])
+                                if not ok then
+                                        ddl("UPDATE staff_roles SET Color='[[255,255,255,255]]' WHERE ID=" .. tonumber(row.ID),
+                                                "UPDATE staff color #" .. tostring(row.ID))
                                         fixed = fixed + 1
                                 end
                         end
                         mysql:free_result(q)
                         if fixed > 0 then
-                                dbg("brightened " .. fixed .. " dark rank color(s) (readability floor)")
-                                table.insert(SETUP_REPORT.lines, "dark rank colors brightened: " .. fixed)
+                                dbg("repaired " .. fixed .. " invalid rank color(s) -> white")
+                                table.insert(SETUP_REPORT.lines, "rank colors repaired: " .. fixed)
                         end
                 end
         end)
+
+        -- 4b) [Fix #101] the [Fix #14] "readability floor" that used to sit here
+        -- REWROTE every dark rank color to a lighter shade on every start (log:
+        -- "[Vortex Staff DB] brightened N dark rank color(s)"), so a color the
+        -- owner picked dark never stayed dark - the next restart lightened it
+        -- again and the stored value no longer matched what was saved. Stored
+        -- colors are now left EXACTLY as saved (pass 4 above still repairs
+        -- truly invalid values to white); the panel/TAB/nametags draw them
+        -- as-is.
 
         -- 5) orphaned members (AccountID without an account row) clean-up
         ddl("DELETE m FROM staff_role_members m LEFT JOIN accounts a ON a.id = m.AccountID WHERE a.id IS NULL",

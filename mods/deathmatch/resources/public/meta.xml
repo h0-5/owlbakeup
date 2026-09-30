@@ -1,0 +1,21 @@
+<meta>
+	<info author="Owl Gaming (decompiled by Owl Decompiler v1.0 - ported by owlbakeup Fix #61)" type="script" description="Public UI utilities: loading spinner, progress pill, countdown timer, 3D sounds, number formatting" />
+
+	<!-- NOTE: blur_shader_c (drawBlurShader) NOT ported - the decompile lost
+	     its state table AND the shaders/BlurShader.fx + BlurShaderBlack.fx
+	     asset files are not in the old-client dump. colshape checker also
+	     deferred (critically damaged decompile, zero current callers). -->
+
+	<script src="c_public.lua" type="client" cache="false" />
+	<script src="c_sounds.lua" type="client" cache="false" />
+	<script src="c_loading.lua" type="client" cache="false" />
+
+	<export function="formatNumber" type="client" />
+	<export function="isASCII" type="client" />
+	<export function="loading" type="client" />
+	<export function="progress" type="client" />
+	<export function="showTimer" type="client" />
+	<export function="msToTimeStr" type="client" />
+	<export function="addColshapeChecker" type="client" />
+	<export function="removeColshapeChecker" type="client" />
+</meta>

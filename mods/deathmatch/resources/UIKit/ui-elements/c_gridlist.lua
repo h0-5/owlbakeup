@@ -118,8 +118,21 @@ function scrollGridList(arg0, arg1)
   end
   local db = UI.DB[arg1 or getElementParent(source)]
   local rows = db.data.rows
-  local scrolled = calcRowsHeight(arg1 or getElementParent(source)) / 100 * (tonumber(arg0) or 0)
+  -- [Fix #77/#84] the old mapping was scrolled = calcRowsHeight()/100*p with
+  -- acc starting at 2+column_height: calcRowsHeight EXCLUDES the column
+  -- header, so for the first wheel notches (p <= ~8%) scrolled <= acc and
+  -- row_i never left 1 (thumb moved, rows didn't); near 100% it overshot
+  -- and findLastRow emptied the list from the bottom instead of scrolling.
+  -- Map p over the real scrollable range [acc .. content - viewport].
+  -- [Fix #84] bottom was calcRowsHeight - viewport, which is short by the
+  -- header (acc includes 2+column_height, calcRowsHeight does not), so the
+  -- LAST row of the /staffs rank list was ~1.3 rows out of reach at p=100.
+  -- bottom = acc + (rows content height) - viewport  = 2*acc + calc - 2 - H
+  local gl = arg1 or getElementParent(source)
   local acc = 2 + db.properties.column_height.value
+  local viewport = db.dimensions.height - db.properties.column_height.value - 2
+  local bottom = math.max(acc, 2 * acc + calcRowsHeight(gl) - 2 - db.dimensions.height)
+  local scrolled = acc + (bottom - acc) / 100 * (tonumber(arg0) or 0)
   local newI = math.max(1, #rows)
   for forvar8 = 1, #rows do
     local rowCell = rows[forvar8] and rows[forvar8][1]
@@ -322,6 +335,31 @@ function uiGridListSetSelectedItem(arg0, arg1)
   UI.DB[arg0].data.selection_tick = getTickCount()
   return true
 end
+-- [Fix #85] wheel fix: the wheel used UI.HoveredElement/refreshHover only.
+-- If ANY other element draws above the list (window chrome, another
+-- resource's element), hover never reaches the gridlist and the wheel
+-- silently no-oped over the list body -- only the scrollbar strip worked
+-- (it has its own handler). Resolve the topmost GRIDLIST under the cursor
+-- directly so whatever list is under the mouse always scrolls. Non-gridlist
+-- elements are skipped, so an overlay above the list no longer eats the wheel.
+local function gridlistUnderCursor()
+  local cx, cy = getCursorPosition()
+  if not cx then
+    return false
+  end
+  cx, cy = cx * sx, cy * sy
+  for i = #UI.DrawElements, 1, -1 do
+    local el = UI.DrawElements[i]
+    if (UI.EType[el] or getElementType(el)) == "ui-gridlist" and UI.DB[el]
+      and UI.DB[el].visible and UI.isDraw[el] and not isUIDisabled(el) then
+      local d = UI.DB[el].dimensions
+      if d and cx >= d.x and cy >= d.y and cx <= d.x + d.width and cy <= d.y + d.height then
+        return el
+      end
+    end
+  end
+  return false
+end
 UI.getDrawFunction["ui-gridlist"] = function(arg0)
   hoverUIElement(arg0, UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, UI.DB[arg0].dimensions.width, UI.DB[arg0].dimensions.height)
   if dxGetColor(UI.DB[arg0].colors[1]) and dxGetColor(UI.DB[arg0].colors[1]) > 0 then
@@ -341,6 +379,15 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
     end
     if 1 <= #UI.DB[arg0].data.rows then
       UI.DB[arg0].data.hovered_row = false
+      -- [Fix #100 #2] row hit width: the scrollbar lane is only dead space
+      -- while the scrollbar is shown (it is created hidden, see uiCreateGridList),
+      -- otherwise the right edge of every row painted a selection band but never
+      -- registered a hover -> clicking there deselected instead of selecting.
+      local rowHitW = UI.DB[arg0].dimensions.width
+      if UI.DB[arg0].data.scrollbar and isElement(UI.DB[arg0].data.scrollbar)
+        and uiGetVisible(UI.DB[arg0].data.scrollbar) then
+        rowHitW = rowHitW - 10
+      end
       -- [Vortex fix #14] row banding rebuilt. The decompiled draw painted the
       -- selection rectangle PER CELL (a 5-column list stroked the same rect 5x,
       -- alpha stacking into a near-opaque purple slab that drowned the row
@@ -369,7 +416,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
           dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, 3, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
         end
         if not isUIDisabled(arg0) and UI.HoveredElement == arg0
-          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, rowH) then
+          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, rowHitW, rowH) then
           UI.DB[arg0].data.hovered_row = forvar19 - 1
           if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
             dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(60, 60, 60, 90), UI.postGUI)
@@ -393,13 +440,28 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
   end
 end
 function MouseWheel(arg0, arg1)
-  if not isUIElement(UI.HoveredElement, "gridlist") then
-    return
+  local hovered = UI.HoveredElement
+  if not isUIElement(hovered, "gridlist") then
+    -- [Vortex wheel fix] hover is only refreshed on draw/click; when the
+    -- wheel arrives right after a section/panel switch it can still point
+    -- at the OLD element, so every wheel handler silently no-oped. Re-resolve
+    -- the topmost element under the cursor (same as the click path does).
+    hovered = UI.refreshHover() or false
+    UI.HoveredElement = hovered
   end
-  if isElement(UI.DB[UI.HoveredElement].data.scrollbar) then
+  if not isUIElement(hovered, "gridlist") then
+    -- [Fix #85] hover resolved to a non-gridlist (an element draws above the
+    -- list): fall back to the topmost gridlist directly under the cursor so
+    -- the list under the mouse scrolls no matter what overlays it.
+    hovered = gridlistUnderCursor()
+    if not hovered then
+      return
+    end
+  end
+  if isElement(UI.DB[hovered].data.scrollbar) then
     -- [Vortex fix] +-5% per notch (same step the memo uses) so long lists
     -- like the 44-row permissions table are navigable by wheel
-    uiScrollBarSetScrollPosition(UI.DB[UI.HoveredElement].data.scrollbar, (tonumber(UI.DB[UI.DB[UI.HoveredElement].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -5 or 5))
+    uiScrollBarSetScrollPosition(UI.DB[hovered].data.scrollbar, (tonumber(UI.DB[UI.DB[hovered].data.scrollbar].data.scroll) or 0) + (arg0 == "mouse_wheel_up" and -5 or 5))
   end
 end
 bindKey("mouse_wheel_up", "both", MouseWheel)

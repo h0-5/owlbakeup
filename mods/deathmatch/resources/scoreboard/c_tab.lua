@@ -106,6 +106,10 @@ end
 
 addEventHandler("onClientResourceStart", resourceRoot, function()
         loadAssets()
+        -- [Fix #93] pull the sync payloads ourselves: a server broadcast can
+        -- fire while this script is still loading and gets dropped ("event is
+        -- not added clientside")
+        triggerServerEvent("scoreboard:requestSync", localPlayer)
 end)
 
 --[[ ==================== 21-rank Vortex ladder ==================== ]]
@@ -296,20 +300,24 @@ local function getRank(p)
         return "-" -- regular players show a dash, like the reference
 end
 
--- [Fix #14] readability floor: dark rank colors (navy/maroon) vanished on
--- the dark board - the user read this as "the name disappears"
+-- [Fix #153] the board draws the rank color EXACTLY as stored. The old
+-- [Fix #14] luminance floor brightened every dark rank (navy, dark-orange,
+-- burgundy...) toward white, so the tab never matched the shade chosen in
+-- the rank editor. Readability is handled by the theme itself, not by
+-- rewriting the user's color. Invalid channels still fall back to white.
 local function clampSB(c)
+        if type(c) ~= "table" then return 255, 255, 255 end
+        -- [Fix #153] MTA toJSON writes a color as "[ [ r, g, b, a ] ]" and
+        -- fromJSON may hand back either shape depending on the build - unwrap
+        -- one level before reading the channels.
+        if type(c[1]) == "table" then c = c[1] end
         local r = tonumber(c[1]) or 255
         local g = tonumber(c[2]) or 255
         local b = tonumber(c[3]) or 255
-        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-        if lum < 0.45 then
-                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                r = math.floor(r + (255 - r) * t + 0.5)
-                g = math.floor(g + (255 - g) * t + 0.5)
-                b = math.floor(b + (255 - b) * t + 0.5)
-        end
-        return r, g, b
+        if r < 0 then r = 0 elseif r > 255 then r = 255 end
+        if g < 0 then g = 0 elseif g > 255 then g = 255 end
+        if b < 0 then b = 0 elseif b > 255 then b = 255 end
+        return math.floor(r), math.floor(g), math.floor(b)
 end
 
 local function getRankColor(p, rankName)
@@ -469,6 +477,12 @@ local WATCHED_KEYS = {
         ["fakename"] = true, ["afk"] = true, ["mod:id"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key)
+        if key == "mod:id" and state then
+                -- [Fix #90] the list is sorted by id - rebuild it when an id
+                -- flips (/setid), otherwise rows keep the old order
+                updatePlayers()
+                return
+        end
         if WATCHED_KEYS[key] and cache[source] then
                 refreshPlayer(source)
         end
@@ -509,6 +523,8 @@ the proper {en/ar} placeholder - same widget, same events as the old client.
 ]]
 local eui            -- UIKit exports bridge
 local searchUI       -- the ui-edit element (alive while the board is open)
+-- [Fix #73] last position pushed to the edit (per-frame pill sync in drawHeader)
+local lastEditX, lastEditY, lastEditW, lastEditH
 
 local function ensureUIKit()
         if eui then return true end
@@ -525,6 +541,7 @@ function destroySearchEdit()
         searchUI = nil
         searchActive = false
         searchBuf = ""
+        lastEditX, lastEditY, lastEditW, lastEditH = nil, nil, nil, nil
         -- [Fix #35] the search edit may die while it holds keyboard focus -
         -- UIKit's blur never fires on destroy, so the MTA chat input would
         -- stay disarmed ("can't type in chat after using the tab search")
@@ -646,6 +663,29 @@ local function drawHeader()
         searchBox.h = 32 * s
         searchBox.x = BOARD.x + (BOARD.w - searchBox.w) / 2
         searchBox.y = BOARD.y + (HEADER_H - searchBox.h) / 2 + 2 * s
+        -- [Fix #73] the UIKit edit was positioned ONCE at creation while the
+        -- pill above is recomputed every frame (and computeBoard on resolution
+        -- change) - re-sync the edit to the pill whenever the box moves so the
+        -- text field can never drift off the drawn pill
+        if searchUI and isElement(searchUI) and eui then
+                -- [Fix #76] uiSetPosition expects ABSOLUTE screen px (stored
+                -- verbatim, UIKit core c_main 430-443) and uiSetSize expects
+                -- reference units (scaled by SCALE_Y at 465-472). The #73 sync
+                -- pushed 1728x972 ref coords to uiSetPosition, which parked the
+                -- field off the pill every frame (the "search still broken" bug).
+                -- Creation keeps its ref-space round-trip; only the sync changes.
+                local ex, ey = searchBox.x + 30 * s, searchBox.y + 3 * s
+                -- SCALE_Y = sh / ref_sy always (core c_main 10-17); ask UIKit
+                -- for ref_sy so non-standard resolutions stay exact
+                local _, refSy = eui:uiGetReferenceScreenSize()
+                local k = (refSy or 972) / sh
+                local ew, eh = (searchBox.w - 44 * s) * k, (searchBox.h - 6 * s) * k
+                if ex ~= lastEditX or ey ~= lastEditY or ew ~= lastEditW or eh ~= lastEditH then
+                        lastEditX, lastEditY, lastEditW, lastEditH = ex, ey, ew, eh
+                        eui:uiSetPosition(searchUI, ex, ey)
+                        eui:uiSetSize(searchUI, ew, eh)
+                end
+        end
         drawRoundRect(searchBox.x - 1, searchBox.y - 1, searchBox.w + 2, searchBox.h + 2,
                 tocolor(104, 102, 255, 70), true, (searchBox.h + 2) / 2)
         drawRoundRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h, tocolor(30, 23, 43, 255), true, searchBox.h / 2)
@@ -893,7 +933,14 @@ addEventHandler("onClientClick", root, function(button, buttonState)
                 return
         end
         if clickInRect(searchBox.x, searchBox.y, searchBox.w, searchBox.h) then
-                if not searchActive then createSearchEdit() end
+                if not searchActive then
+                        createSearchEdit()
+                elseif searchUI and isElement(searchUI) and eui then
+                        -- [Fix #76] clicking the pill while the edit already
+                        -- exists but lost focus (UIKit focus moves on other
+                        -- clicks) did nothing -> could not type; re-focus it
+                        pcall(function() eui:uiSetFocusedElement(searchUI) end)
+                end
                 if not cursorOn then
                         cursorOn = true
                         showCursor(true)
@@ -918,7 +965,16 @@ end)
 -- active (so searching still works); pressing TAB again or ESC closes it.
 bindKey("tab", "both", function(_, keyState)
         if keyState == "down" then
-                if state and searchActive then return end
+                if state and searchActive then
+                        -- [Fix #73] a left click can hide the cursor while the
+                        -- search edit stays active; pressing TAB again restores
+                        -- it instead of early-returning with no way to click
+                        if not cursorOn then
+                                cursorOn = true
+                                showCursor(true)
+                        end
+                        return
+                end
                 toggle(true)
         elseif state and not searchActive then
                 toggle(false)

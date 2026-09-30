@@ -306,6 +306,10 @@ function setInteriorType( thePlayer, commandName, type )
 						outputChatBox( "Interior type is now " .. type .. ".", thePlayer, 0, 255, 0 )
 						exports.logs:dbLog(thePlayer, 4, { "in"..tostring(dbid) } , "SETINTERIORTYPE "..type .. " (was "..interiorType.." / ".. interiorStatus[INTERIOR_OWNER] ..")")
 						if type == 2 then
+							-- [Fix #152] type 2 (government) takes the house off whoever
+							-- owned it - tell their open F1 while status still has them
+							notifyF1PropertyRemoved(interiorStatus[INTERIOR_OWNER], "interior", dbid)
+
 							local query2 = mysql:query_free("UPDATE interiors SET owner=0 WHERE id='" .. mysql:escape_string(dbid) .."'")
 							if query2 then
 								interiorStatus[INTERIOR_OWNER] = 0
@@ -473,9 +477,18 @@ function deleteInterior(thePlayer, commandName, houseID)
 					local hiddenAdmin = getElementData(thePlayer, "hiddenadmin")
 					local adminTitle = exports.global:getPlayerAdminTitle(thePlayer)
 					
+					-- [Fix #152] read the owner first: once deleted, their open F1 must
+					-- drop the row (interiors.deleted holds this admin's USERNAME, so the
+					-- old numeric query filter in main-menu kept showing it forever)
+					local f1OwnerRow = mysql:query_fetch_assoc("SELECT `owner` FROM `interiors` WHERE `id`='" .. dbid .. "' LIMIT 1")
+					local f1PrevOwner = f1OwnerRow and tonumber(f1OwnerRow.owner) or false
+
 					local query = mysql:query_free("UPDATE `interiors` SET `deleted` = '"..adminUsername.."' WHERE id='" .. dbid .. "'")
 					if (query) then
-						setElementData(thePlayer, "mostRecentDeletedInterior", dbid)
+						setElementData(thePlayer, "mostRecentDeletedInterior", dbid)
+
+						-- [Fix #152] previous owner's open F1 drops the house row now
+						notifyF1PropertyRemoved(f1PrevOwner, "interior", dbid)
 						-- destroy the entrance and exit
 						realReloadInterior(dbid)
 						outputChatBox("[DELINT] Interior #" .. dbid .. " has been deleted!", thePlayer, 0, 255, 0)

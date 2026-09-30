@@ -109,6 +109,19 @@ function theftPost(noteEdit, EngineCheck, KeyCheck, targetPlayerName, targetVehi
 			exports.anticheat:changeProtectedElementDataEx(theVehicle, "owner", getElementData(targetPlayer, "dbid"))
 			vehsold = "Yes."
 			exports.global:giveItem(targetPlayer, 3, targetVehicle)
+			-- [Fix #152] the previous OWNER's open F1 drops the stolen car row now
+			-- (the seller here may be a thief, not the owner), the buyer's refetches
+			for _, f1Player in ipairs(getElementsByType("player")) do
+				local f1Pid = tonumber(getElementData(f1Player, "account:character:id"))
+					or tonumber(getElementData(f1Player, "character:id"))
+					or tonumber(getElementData(f1Player, "dbid"))
+				if f1Pid and tonumber(owner) == f1Pid then
+					triggerClientEvent(f1Player, "mainmenu:propertyRemoved", f1Player, "vehicle", targetVehicle)
+					break
+				end
+			end
+			triggerClientEvent(targetPlayer, "mainmenu:propertyAdded", targetPlayer, "vehicle")
+
 			exports.logs:logMessage( "[VEHICLE " .. getPlayerName(source) .. " has sold the Vehicle #" .. targetVehicle .. " to " .. getPlayerName(targetPlayer).. ".", 16)
 			outputChatBox("Vehicle has been sold.", source, 0, 255, 0)
 			outputChatBox("A vehicle has been sold to you.", targetPlayer, 0, 255, 0)

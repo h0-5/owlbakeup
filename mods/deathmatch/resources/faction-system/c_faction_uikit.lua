@@ -23,21 +23,25 @@
             Respawn All, double-click = respawn one
           * DUTY: tab panel (packages / locations / vehicle locations) with
             add/remove per tab
-          * LOGS: session action log
+          * LOGS: session action log + permanent server history
+            (factionlogs via faction:logs:request/receive, Fix #146)
           * sub windows: Promote/Demote rank picker (double click),
             Add Member with live character search, Duty Perks checklist
 
-        SERVER CONTRACT UNCHANGED (s_faction_system.lua / s_faction_admin.lua):
-          receives showFactionMenu(22 args) / hideFactionMenu /
+        SERVER CONTRACT (s_faction_system.lua / s_faction_admin.lua):
+          receives showFactionMenu(23 args - append-only, #23 = vehLimit
+                   [Fix #136]) / hideFactionMenu /
                    factionmenu:fillFinance / importDutyData / Duty:GotPackages /
-                   gotAllow
+                   gotAllow / faction:logs:receive [Fix #146, additive]
           sends    cguiPromotePlayer, cguiDemotePlayer, cguiInvitePlayer,
                    faction:perks:edit, cguiKickPlayer, cguiToggleLeader,
                    cguiUpdateRanks, cguiRespawnVehicles, cguiRespawnOneVehicle,
                    cguiUpdateMOTD, faction:note, cguiQuitFaction,
                    factionmenu:hide, factionmenu:getFinance, fetchDutyInfo,
+                   Duty:Grab [Fix #127],
                    Duty:GetPackages, Duty:AddDuty, Duty:RemoveDuty,
-                   Duty:AddLocation, Duty:RemoveLocation, Duty:AddVehicle
+                   Duty:AddLocation, Duty:RemoveLocation, Duty:AddVehicle,
+                   faction:logs:request [Fix #146, additive]
 ========================================================================= ]]
 
 local localPlayer = getLocalPlayer()
@@ -83,6 +87,7 @@ F = {
         dutyLocations = {},
         dutyAllow = {},
         actionLog = {},
+        historyLog = {}, -- [Fix #146] permanent factionlogs history (server pushed)
         selectedMember = 0,
         currentRank = 0,
 }
@@ -113,6 +118,15 @@ local function factionColor()
         local c = F.team and getElementData(F.team, "color") or nil
         if type(c) == "table" and tonumber(c[1]) then
                 return tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+        end
+        -- [Fix #147] factions.color is a varchar, stored as "#RRGGBB" (also
+        -- accepts bare "RRGGBB"); the table shape above stays supported for
+        -- any legacy elementData writer.
+        if type(c) == "string" then
+                local hex = c:match("^#?(%x%x%x%x%x%x)$")
+                if hex then
+                        return tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16)
+                end
         end
         return 255, 55, 95
 end
@@ -411,37 +425,155 @@ local function refreshVehiclesGrid()
         end
 end
 
-local function refreshDutyGrids()
-        eui:uiGridListClear(UI.gridlist.DutyPerks)
-        for _, p in ipairs(F.dutyPackages or {}) do
-                local row = eui:uiGridListAddRow(UI.gridlist.DutyPerks)
-                eui:uiGridListSetItemText(UI.gridlist.DutyPerks, row, 1, tostring(p.id or "-"))
-                eui:uiGridListSetItemText(UI.gridlist.DutyPerks, row, 2, tostring(p.name or "-"))
+-- [Fix #128] the duty tables cross the wire as JSON objects keyed by DB id
+-- (MTA serializes non-contiguous numeric keys as string keys), so ipairs sees
+-- ZERO rows and every duty grid rendered empty. Collect the keys, sort them
+-- numerically, and return the values in that stable order.
+local function sortedDutyRows(tbl)
+        local keys = {}
+        for k in pairs(tbl or {}) do
+                keys[#keys + 1] = k
         end
+        table.sort(keys, function(a, b)
+                local na, nb = tonumber(a), tonumber(b)
+                if na and nb then return na < nb end
+                return tostring(a) < tostring(b)
+        end)
+        local out = {}
+        for _, k in ipairs(keys) do
+                out[#out + 1] = tbl[k]
+        end
+        return out
+end
+
+local function refreshDutyGrids()
+        -- [Fix #128] sorted key order instead of ipairs (which iterated nothing)
+        local pkgRows = sortedDutyRows(F.dutyPackages)
+        F.dutyPackageOrder = pkgRows
+        eui:uiGridListClear(UI.gridlist.DutyPerks)
+        for _, p in ipairs(pkgRows) do
+                local row = eui:uiGridListAddRow(UI.gridlist.DutyPerks)
+                -- [Fix #128] package rows are positional arrays {id, name, ...}
+                local pid = type(p) == "table" and (p[1] or p.id) or p
+                local pname = type(p) == "table" and (p[2] or p.name) or nil
+                eui:uiGridListSetItemText(UI.gridlist.DutyPerks, row, 1, tostring(pid or "-"))
+                eui:uiGridListSetItemText(UI.gridlist.DutyPerks, row, 2, tostring(pname or "-"))
+        end
+        local locRows = sortedDutyRows(F.dutyLocations)
         eui:uiGridListClear(UI.gridlist.DutyLocations)
         eui:uiGridListClear(UI.gridlist.DutyVehicles)
-        for _, l in ipairs(F.dutyLocations or {}) do
-                local row = eui:uiGridListAddRow(UI.gridlist.DutyLocations)
-                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 1, tostring(l[1] or "-"))
-                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 2, tostring(l[2] or "-"))
-                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 3, tostring(l[6] or "-"))
-                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 4, tostring(l[7] or "-"))
-                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 5, string.format("%s, %s, %s", tostring(l[3] or 0), tostring(l[4] or 0), tostring(l[5] or 0)))
-                if l[10] then
-                        local vrow = eui:uiGridListAddRow(UI.gridlist.DutyVehicles)
-                        eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 1, tostring(l[1] or "-"))
-                        eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 2, tostring(l[10]))
-                        eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 3, getVehicleNameFromModel(tonumber(l[10]) or 0) or tostring(l[10]))
+        local locations, vehicles = {}, {}
+        for _, l in ipairs(locRows) do
+                if type(l) == "table" then
+                        if l[9] or l[10] then
+                                -- [Fix #131] vehicle rows (have vehicleid/model)
+                                -- belong ONLY to the vehicles grid
+                                vehicles[#vehicles + 1] = l
+                                local vrow = eui:uiGridListAddRow(UI.gridlist.DutyVehicles)
+                                eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 1, tostring(l[1] or "-"))
+                                -- [Fix #131] column 2 is "Vehicle ID" = DB id (l[9]), not the model
+                                eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 2, tostring(l[9] or "-"))
+                                eui:uiGridListSetItemText(UI.gridlist.DutyVehicles, vrow, 3, getVehicleNameFromModel(tonumber(l[10]) or 0) or tostring(l[10]))
+                        else
+                                -- [Fix #131] plain locations only (no vehicle fields)
+                                locations[#locations + 1] = l
+                                local row = eui:uiGridListAddRow(UI.gridlist.DutyLocations)
+                                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 1, tostring(l[1] or "-"))
+                                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 2, tostring(l[2] or "-"))
+                                -- [Fix #130] column 3 header is "Interior" -> l[8] (l[6] is radius)
+                                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 3, tostring(l[8] or "-"))
+                                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 4, tostring(l[7] or "-"))
+                                eui:uiGridListSetItemText(UI.gridlist.DutyLocations, row, 5, string.format("%s, %s, %s", tostring(l[3] or 0), tostring(l[4] or 0), tostring(l[5] or 0)))
+                        end
                 end
         end
+        -- row order backing the grids, so the Remove buttons hit the same row
+        F.dutyLocationRows = locations
+        F.dutyVehicleRows = vehicles
+end
+
+-- [Fix #146] "2026-09-30 14:33:12" -> "30/09/2026 14:33" so the permanent
+-- history reads like the session entries' "%d/%m %H:%M" stamps; raw value is
+-- kept when the DB format is unexpected.
+
+local function formatHistoryDate(raw)
+        local y, mo, d, hm = tostring(raw):match("^(%d%d%d%d)-(%d%d)-(%d%d) (%d%d:%d%d)")
+        if y then
+                return d .. "/" .. mo .. "/" .. y .. " " .. hm
+        end
+        return tostring(raw)
 end
 
 local function refreshLogsGrid()
         eui:uiGridListClear(UI.gridlist.Logs)
+        -- [Fix #146] permanent factionlogs history first, then this session's
+        -- entries; same two columns (Log / Date), only rows are added.
+        for _, l in ipairs(F.historyLog) do
+                local row = eui:uiGridListAddRow(UI.gridlist.Logs)
+                eui:uiGridListSetItemText(UI.gridlist.Logs, row, 1, tostring(l.who) .. ": " .. tostring(l.what))
+                eui:uiGridListSetItemText(UI.gridlist.Logs, row, 2, tostring(l.at))
+        end
         for _, l in ipairs(F.actionLog) do
                 local row = eui:uiGridListAddRow(UI.gridlist.Logs)
                 eui:uiGridListSetItemText(UI.gridlist.Logs, row, 1, tostring(l.text))
                 eui:uiGridListSetItemText(UI.gridlist.Logs, row, 2, tostring(l.at))
+        end
+end
+
+-- [Fix #146] server history reply: replace the cached rows and repaint the
+-- grid when the Logs section is the one on screen.
+
+addEvent("faction:logs:receive", true)
+
+addEventHandler("faction:logs:receive", root, function(rows)
+        F.historyLog = {}
+        if type(rows) == "table" then
+                for _, r in ipairs(rows) do
+                        if type(r) == "table" then
+                                F.historyLog[#F.historyLog + 1] = {
+                                        who = tostring(r.who or "?"),
+                                        what = tostring(r.what or ""),
+                                        at = formatHistoryDate(r.date),
+                                }
+                        end
+                end
+        end
+        if built and F.section == "logs" then
+                refreshLogsGrid()
+        end
+end)
+
+-- [Fix #129] Duty Perks checklist: every allow-list row is
+-- {dbid, itemID, itemValue}, so tostring(perk) used to print "table: 0x..." and
+-- m.perks[perk] indexed a table (never checked). Label from the numeric item id
+-- and keep a parallel id list so the save can send ids instead of display text.
+local function refreshPerksChecklist()
+        eui:uiCheckListClear(UI.checklist.DutyPerks)
+        F.perksRowIDs = {}
+        local m = F.perksMember
+        if not m then return end
+        local perks = (type(m.perks) == "table" and m.perks) or {}
+        for _, perk in ipairs(F.dutyAllow or {}) do
+                local raw = type(perk) == "table" and perk[2] or perk
+                local itemID = tonumber(raw)
+                local name
+                if itemID and itemID < 0 then
+                        -- [Fix #129] negative ids are weapons (duty admin stores -weaponID)
+                        name = getWeaponNameFromID(-itemID)
+                end
+                if (not name or name == "") then
+                        local ok, n = pcall(function()
+                                return exports["item-system"]:getItemName(raw)
+                        end)
+                        if ok then name = n end
+                end
+                if not name or name == "" or name == "?" or name == "Loading.." then
+                        name = tostring(raw)
+                end
+                -- [Fix #129] accept legacy key shapes (string / number / number-as-key)
+                local checked = perks[tostring(raw)] or perks[raw] or perks[tonumber(raw)]
+                eui:uiCheckListAddRow(UI.checklist.DutyPerks, tostring(name), eui:uiGetThemeColor("primary"), checked == true)
+                F.perksRowIDs[#F.perksRowIDs + 1] = itemID or raw
         end
 end
 
@@ -455,9 +587,30 @@ local function refreshHeader()
                 hex .. "• النوع » #FFFFFF" .. typeAr(F.factionType) .. "\n" ..
                 hex .. "• الأعضاء » #FFFFFF" .. tostring(#F.members) .. " / 20" .. "\n" ..
                 hex .. "• متصل الآن » #00FF00" .. tostring(online))
-        eui:uiSetText(UI.label.FactionInfo2,
-                hex .. "• الخط الساخن » #FFFFFF" .. tostring((d and d.phone) or "-") .. "\n" ..
-                hex .. "• رسالة اليوم » #FFFFFF" .. tostring((d and d.motd) or "-"))
+        -- [Fix #147] HOTLINE / RADIO rows (owner approved display addition):
+        -- identical hex-bullet rows as the phone/MOTD ones above, appended
+        -- ONLY when the elementData value is non-empty so the header block
+        -- never stretches (empty values keep the original two-row layout).
+
+        local info2 = {
+                hex .. "• الخط الساخن » #FFFFFF" .. tostring((d and d.phone) or "-"),
+        }
+
+        local hotline = F.team and getElementData(F.team, "hotline") or ""
+
+        if tostring(hotline) ~= "" then
+                info2[#info2 + 1] = hex .. "• الخط الطوارئ » #FFFFFF" .. tostring(hotline)
+        end
+
+        local radio = F.team and getElementData(F.team, "radio") or ""
+
+        if tostring(radio) ~= "" then
+                info2[#info2 + 1] = hex .. "• اللاسلكي » #FFFFFF" .. tostring(radio)
+        end
+
+        info2[#info2 + 1] = hex .. "• رسالة اليوم » #FFFFFF" .. tostring((d and d.motd) or "-")
+
+        eui:uiSetText(UI.label.FactionInfo2, table.concat(info2, "\n"))
         eui:uiSetText(UI.label.level, "الأعضاء")
         eui:uiSetText(UI.label.level_points, tostring(online) .. " متصل من " .. tostring(#F.members) .. " / 20")
 end
@@ -535,9 +688,11 @@ end)
 -- ===========================================================================
 
 addEvent("showFactionMenu", true)
+-- [Fix #136] server appends vehLimit as argument #23 (append-only contract);
+-- it is read by refreshVehiclesGrid but was never captured here.
 addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberRanks, memberPerks, memberLeaders,
         memberOnline, memberLastLogin, factionRanks, factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels,
-        vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, membersPhone, fromShowF, factionID)
+        vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, membersPhone, fromShowF, factionID, vehLimit)
         if not theTeam then return end
 
         buildUI()
@@ -547,7 +702,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
                 factionRanks = factionRanks, factionWages = factionWages, team = theTeam, note = note, fnote = fnote,
                 vehicleIDs = vehicleIDs, vehicleModels = vehicleModels, vehiclePlates = vehiclePlates,
                 vehicleLocations = vehicleLocations, memberOnDuty = memberOnDuty, towstats = towstats,
-                phone = phone, membersPhone = membersPhone,
+                phone = phone, membersPhone = membersPhone, vehLimit = vehLimit, -- [Fix #136]
         }
         F.team = theTeam
         F.factionID = factionID or getElementData(localPlayer, "faction") or -1
@@ -598,6 +753,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         refreshRanksGrid()
         refreshVehiclesGrid()
         refreshDutyGrids()
+        F.historyLog = {} -- [Fix #146] never show another open's stale history
         refreshLogsGrid()
         applyLeaderRights()
         reloadMenu()
@@ -609,6 +765,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         showCursor(true)
 end)
 
+addEvent("faction:permissions:sync", true)
 addEventHandler("faction:permissions:sync", localPlayer, function(perms, typeName)
         F.tools = perms or {}
         F.toolsType = typeName or {}
@@ -625,10 +782,17 @@ addEventHandler("onClientUIMenuSelectChange", root, function(row)
         showSection(id)
         if id == "duty" then
                 triggerServerEvent("fetchDutyInfo", resourceRoot, F.factionID)
+                -- [Fix #127] the panel never triggered Duty:Grab, so gotAllow
+                -- never arrived and the Duty Perks checklist stayed empty.
+                -- Payload matches s_faction_system.lua: function(factionID).
+                triggerServerEvent("Duty:Grab", resourceRoot, F.factionID)
         elseif id == "management" and not F.financeLoaded then
                 triggerServerEvent("factionmenu:getFinance", getResourceRootElement())
         elseif id == "logs" then
+                -- [Fix #146] also pull the permanent factionlogs history; the
+                -- faction:logs:receive reply repopulates the same grid.
                 refreshLogsGrid()
+                triggerServerEvent("faction:logs:request", resourceRoot)
         end
 end)
 
@@ -667,6 +831,11 @@ end)
 addEvent("gotAllow", true)
 addEventHandler("gotAllow", resourceRoot, function(allowList)
         F.dutyAllow = allowList or {}
+        -- [Fix #127] if the Duty Perks window is already open, refill it with
+        -- the freshly received allow list
+        if F.perksMember and UI.window.DutyPerks and eui:uiGetVisible(UI.window.DutyPerks) then
+                refreshPerksChecklist()
+        end
 end)
 
 -- ===========================================================================
@@ -732,19 +901,31 @@ addEventHandler("onClientUIClick", root, function()
                 local m = selectedMemberRow()
                 if m then
                         F.perksMember = m
-                        eui:uiCheckListClear(UI.checklist.DutyPerks)
-                        for _, perk in ipairs(F.dutyAllow or {}) do
-                                eui:uiCheckListAddRow(UI.checklist.DutyPerks, tostring(perk), eui:uiGetThemeColor("primary"), m.perks[perk] == true)
-                        end
+                        -- [Fix #127] ask the server for the allow list; gotAllow
+                        -- rebuilds the rows when it lands (window may open empty
+                        -- for one round trip if the Duty tab was never opened)
+                        triggerServerEvent("Duty:Grab", resourceRoot, F.factionID)
+                        -- [Fix #129] rows labelled/checked from the numeric item ids
+                        refreshPerksChecklist()
                         eui:uiSetVisible(UI.window.DutyPerks, true)
                         eui:uiBringToFront(UI.window.DutyPerks)
                 end
         elseif source == UI.button["Member.DutyPerks.Save"] then
                 local m = F.perksMember
                 if m then
+                        -- [Fix #119] key by the NUMERIC item id (the duty
+                        -- consumer needs ids), never by the display text
                         local perkTable = {}
                         for _, idx in ipairs(eui:uiCheckListGetSelectedItems(UI.checklist.DutyPerks) or {}) do
-                                perkTable[eui:uiCheckListGetItemText(UI.checklist.DutyPerks, idx)] = true
+                                local itemID = F.perksRowIDs and F.perksRowIDs[idx]
+                                if itemID == nil then
+                                        local perk = (F.dutyAllow or {})[idx]
+                                        itemID = type(perk) == "table" and perk[2]
+                                end
+                                itemID = tonumber(itemID)
+                                if itemID then
+                                        perkTable[itemID] = true
+                                end
                         end
                         logAction("تعديل امتيازات " .. m.name)
                         triggerServerEvent("faction:perks:edit", localPlayer, perkTable, m.rawName)
@@ -821,10 +1002,14 @@ addEventHandler("onClientUIClick", root, function()
         elseif source == UI.button["DP:Remove"] then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.DutyPerks)
                 if sel ~= -1 then
-                        local p = F.dutyPackages[sel + 1]
-                        triggerServerEvent("Duty:RemoveDuty", resourceRoot, tonumber(p and p.id) or p, F.factionID)
-                        logAction("حذف مناوبة")
-                        triggerServerEvent("Duty:GetPackages", resourceRoot, F.factionID)
+                        -- [Fix #128] row index follows the sorted package order
+                        local p = F.dutyPackageOrder and F.dutyPackageOrder[sel + 1]
+                        local pid = type(p) == "table" and (tonumber(p[1]) or tonumber(p.id)) or tonumber(p)
+                        if pid then
+                                triggerServerEvent("Duty:RemoveDuty", resourceRoot, pid, F.factionID)
+                                logAction("حذف مناوبة")
+                                triggerServerEvent("Duty:GetPackages", resourceRoot, F.factionID)
+                        end
                 end
         elseif source == UI.button["DL:Add"] then
                 local x, y, z = getElementPosition(localPlayer)
@@ -834,15 +1019,24 @@ addEventHandler("onClientUIClick", root, function()
         elseif source == UI.button["DL:Remove"] then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.DutyLocations)
                 if sel ~= -1 then
-                        local l = F.dutyLocations[sel + 1]
-                        triggerServerEvent("Duty:RemoveLocation", resourceRoot, tonumber(l and l[1]) or l, F.factionID)
-                        logAction("حذف موقع خدمة")
-                        triggerServerEvent("fetchDutyInfo", resourceRoot, F.factionID)
+                        -- [Fix #128] row index follows the sorted location rows
+                        -- routed by refreshDutyGrids (F.dutyLocations is keyed
+                        -- by DB id, so F.dutyLocations[sel+1] was always nil)
+                        local l = F.dutyLocationRows and F.dutyLocationRows[sel + 1]
+                        local lid = type(l) == "table" and tonumber(l[1]) or tonumber(l)
+                        if lid then
+                                triggerServerEvent("Duty:RemoveLocation", resourceRoot, lid, F.factionID)
+                                logAction("حذف موقع خدمة")
+                                triggerServerEvent("fetchDutyInfo", resourceRoot, F.factionID)
+                        end
                 end
         elseif source == UI.button["DVL:Add"] then
                 local veh = getPedOccupiedVehicle(localPlayer)
                 if veh then
-                        triggerServerEvent("Duty:AddVehicle", resourceRoot, getElementModel(veh), F.factionID)
+                        -- [Fix #132] the server resolves the vehicle by DB id
+                        -- (exports.pool:getElement("vehicle", vehicleID)), the
+                        -- model id could never match a pool entry
+                        triggerServerEvent("Duty:AddVehicle", resourceRoot, tonumber(getElementData(veh, "dbid")) or getElementData(veh, "dbid"), F.factionID)
                         logAction("إضافة مركبة خدمة")
                         triggerServerEvent("fetchDutyInfo", resourceRoot, F.factionID)
                 else
@@ -851,11 +1045,9 @@ addEventHandler("onClientUIClick", root, function()
         elseif source == UI.button["DVL:Remove"] then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.DutyVehicles)
                 if sel ~= -1 then
-                        local vehs = {}
-                        for _, l in ipairs(F.dutyLocations or {}) do
-                                if l[10] then table.insert(vehs, l) end
-                        end
-                        local l = vehs[sel + 1]
+                        -- [Fix #131] rows were routed into the vehicles grid by
+                        -- refreshDutyGrids, so use that same ordered list
+                        local l = F.dutyVehicleRows and F.dutyVehicleRows[sel + 1]
                         if l then
                                 triggerServerEvent("Duty:RemoveLocation", resourceRoot, tonumber(l[1]) or l[1], F.factionID)
                                 logAction("حذف مركبة خدمة")

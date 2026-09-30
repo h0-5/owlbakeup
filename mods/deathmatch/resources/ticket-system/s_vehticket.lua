@@ -382,6 +382,22 @@ function issueTicket(thePlayer, theCommand, theVehicle, amount, ...)
 
 
 
+		-- [Fix #110] F3 Tools "invoice" toggle (Invoices: min rank 1 for Law /
+		-- Government / Medical / News / Mechanic / Electric / Traffic types).
+		-- /ticketveh writes the payable bill row into pd_tickets - the closest
+		-- thing to an invoice this server has (no literal "invoice" command or
+		-- event exists anywhere in the resources tree). The LSPD/SASP team-name
+		-- rule below is left untouched; the gate runs before the team read so a
+		-- player with no faction is denied with a message instead of erroring.
+		-- pcall + fail-open mirrors the Fix #56 gates (spike-/roadblock-system).
+		local okPerm, hasPerm = pcall(function()
+			return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "invoice")
+		end)
+		if okPerm and hasPerm == false then
+			outputChatBox("You do not have permission to use this command.", thePlayer, 255, 0, 0)
+			return
+		end
+
 		local team = getPlayerTeam(thePlayer)
 
 

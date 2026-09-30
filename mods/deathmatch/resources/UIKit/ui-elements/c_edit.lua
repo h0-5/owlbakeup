@@ -174,9 +174,15 @@ end
 function copyText(arg0, arg1)
   if (getKeyState("lctrl") or getKeyState("rctrl")) and UI.FocusElement and getElementType(UI.FocusElement) == "ui-edit" then
     if arg0 == "x" then
+      -- [Fix #76] capture the selection BEFORE resetting shading: the old code
+      -- reset to {1,1} first, so Ctrl+X deleted nothing and copied "" 
+      local sh1, sh2 = UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2]
+      local selected = utfSub(UI.DB[UI.FocusElement].text, sh1, sh2 - 1)
       UI.DB[UI.FocusElement].data.shading = {1, 1}
-      uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1) .. utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[2], utfLen(UI.DB[UI.FocusElement].text)))
-      uiEditSetCaretIndex(UI.FocusElement, utfLen((utfSub(UI.DB[UI.FocusElement].text, 1, UI.DB[UI.FocusElement].data.shading[1] - 1))) + 1)
+      uiSetText(UI.FocusElement, utfSub(UI.DB[UI.FocusElement].text, 1, sh1 - 1) .. utfSub(UI.DB[UI.FocusElement].text, sh2, utfLen(UI.DB[UI.FocusElement].text)))
+      uiEditSetCaretIndex(UI.FocusElement, sh1)
+      setClipboard(selected)
+      return
     end
     setClipboard((utfSub(UI.DB[UI.FocusElement].text, UI.DB[UI.FocusElement].data.shading[1], UI.DB[UI.FocusElement].data.shading[2] - 1)))
   end

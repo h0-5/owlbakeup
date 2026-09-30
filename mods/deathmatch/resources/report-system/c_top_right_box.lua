@@ -81,6 +81,15 @@ addEventHandler("onClientRender", getRootElement(), function()
                 return -- camera mode: box suppressed (old rule), keep last height
         end
 
+        -- [Fix #89] no rows pushed yet: this drew a stray empty black bar
+        if type(content) ~= "table" or #content == 0 then
+                if lastHeight ~= 0 then
+                        lastHeight = 0
+                        setElementData(localPlayer, "report-system:dxBoxHeight", 0)
+                end
+                return
+        end
+
         local woffset, hoffset = 0, 40 + cachedHudOffsetY
         local heightTemp = 16*(#content)+30
         dxDrawRectangle(sx-width-5+woffset, 5+hoffset, width, heightTemp, tocolor(0, 0, 0, 100), false)

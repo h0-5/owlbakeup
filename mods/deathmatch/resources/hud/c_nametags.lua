@@ -112,12 +112,47 @@ local function localIsStaff()
                 or (tonumber(getElementData(localPlayer, "account:gmlevel")) or 0) > 0
 end
 
+-- [Fix #98] staff/off-duty detection for OTHER players - mirrors the
+-- scoreboard trio (c_tab.lua isStaff / isOnDuty / isStaffOffDuty):
+-- staff = the 21-rank ladder (rank:index) or an admin/supporter level;
+-- on duty = the server-set duty_admin / duty_supporter flags in any shape
+-- (number 1, DB string "1", boolean true - same as isOne above).
+local function isPlayerStaff(p)
+        if tonumber(getElementData(p, "rank:index")) then return true end
+        if (tonumber(getElementData(p, "admin_level")) or 0) > 0 then return true end
+        if (tonumber(getElementData(p, "supporter_level")) or 0) > 0 then return true end
+        return false
+end
+
+local function isPlayerOnDuty(p)
+        return isOne(getElementData(p, "duty_admin"))
+                or isOne(getElementData(p, "duty_supporter"))
+end
+
+-- a staff member currently OFF duty reads as a plain player (regular
+-- players are never "off duty" - they simply hold no rank)
+local function isPlayerOffDutyStaff(p)
+        return isPlayerStaff(p) and not isPlayerOnDuty(p)
+end
+
 local function buildPlayerEntry(player)
         -- [Fix #33] robust across every way the server stores these flags
         -- (number 1, DB string "1", boolean true)
         local hidden = isOne(getElementData(player, "hiddenadmin"))
                 or getElementData(player, "admin:hideadmin") == true
                 or getElementData(player, "admin:hideadmin") == "1"
+
+        -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم الإخفاء":
+        -- the ENGINE nametag is drawn by the game itself and never reaches
+        -- this file's gate, so it can put a hidden admin's real name over
+        -- their head for every viewer (including regular players). MTA's own
+        -- stock race/nametags.lua forces it off from the client every frame
+        -- for exactly this reason. One call per build is enough; the server
+        -- also disables it at spawn (s_characters.lua:491), this client-side
+        -- pass makes it impossible for the engine renderer to leak it.
+        if hidden and setPlayerNametagShowing then
+                setPlayerNametagShowing(player, false)
+        end
 
         local masked = getElementData(player, "fakename")
         local name = masked and "Unknown Person"
@@ -126,6 +161,14 @@ local function buildPlayerEntry(player)
         -- staff rank color pushes the name color (Fix #19: no title text)
         local rgb = getElementData(player, "rank:color")
         if type(rgb) ~= "table" or #rgb < 3 then rgb = { 255, 255, 255 } end
+        -- [Fix #75 - user] hidden admins show as PLAIN players above the head:
+        -- "لو سويت hide admin ما يرجع لون فوق الشخصية كلاير - يبقى لون الرتبة".
+        -- Un-hiding restores the rank color (rgb is re-read every build).
+        -- [Fix #98 - user] "لما اسوي hide admin او اطفي الدوتي الاسم يظل بلون
+        -- الرتبة": hidden AND off-duty staff both drop to the plain default
+        -- player color (white). Only VISIBLE ON-DUTY staff keep rank:color;
+        -- plain players were already white (rgb fallback above).
+        if hidden or isPlayerOffDutyStaff(player) then rgb = { 255, 255, 255 } end
 
         -- friends were colored white in the old client (friend-system guarded)
         local friend = player == localPlayer
@@ -188,6 +231,9 @@ local CACHE_KEYS = {
         ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
         ["character:name"] = true, ["duty_admin"] = true, ["duty_supporter"] = true,
         ["temp:heart"] = true, ["hud:badges"] = true,
+        -- [Fix #98] staff detection reads these too (rank ladder / levels) -
+        -- a rank push must re-evaluate the off-duty plain-white color now
+        ["rank:index"] = true, ["admin_level"] = true, ["supporter_level"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key, _, _value)
         if CACHE_KEYS[key] and isElement(source) and getElementType(source) == "player" then
@@ -326,22 +372,46 @@ function drawNametags()
         if cacheLooksBroken() then updatePlayersHud() end
 
         for player, entry in pairs(playersHud) do
-                if player ~= localPlayer and isElement(player) and entry
-                        and (not entry.hidden or localIsStaff()) then
+                -- [Fix #71] the old client draws EVERY streamed player INCLUDING
+                -- localPlayer (its loop tests `== localPlayer` for the heart
+                -- cooldown). The `player ~= localPlayer` skip meant a session
+                -- with a single client (the only case ever connected here) drew
+                -- ZERO names — exactly the user's "nametags don't show" report.
+                -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم
+                -- الإخفاء": the staff half of this gate also matched the
+                -- LOCAL player, so after /hideadmin a hidden admin kept
+                -- seeing their OWN name above their own head - and that is
+                -- the only nametag a single client session can ever show
+                -- (the suffix that used to ride along is gone, Fix #98).
+                -- Self view is now skipped when the local player is hidden;
+                -- staff still see OTHER hidden admins (plain, no marker)
+                -- and regular players still see nothing (both unchanged).
+                if isElement(player) and entry
+                        and (not entry.hidden
+                                or (localIsStaff() and player ~= localPlayer)) then
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then
-                                local hx, hy, hz = getPedBonePosition(player, 6)
+                                -- [Fix #71] bone 8 (head) — matches the old client
+                                -- (var8(player, 8)) and the WORKING NPC renderer
+                                -- (c_ped_names.lua:120). Bone 6 is the neck and sat
+                                -- too low, so the +0.42 lift floated the tag oddly.
+                                local hx, hy, hz = getPedBonePosition(player, 8)
                                 if hx then
-                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.42)
+                                        -- [Fix #75 - user] "كبر اسم الشخصية فوق اللاعب اكثر":
+                                        -- anchor slightly higher to fit the bigger text+badge
+                                        local sX, sY = getScreenFromWorldPosition(hx, hy, hz + 0.30)
                                         if sX then
                                                 -- line of sight (skip when blocked), recon ignores it
                                                 -- Fix #23: throttled to once per 250ms per player
                                                 local c = losCache[player]
                                                 if not c or now - c.t > 250 then
+                                                        -- [Fix #71] vehicles=false — a passing/car target used to
+                                                        -- hide the name (false blocked). The WORKING NPC renderer
+                                                        -- (c_ped_names.lua:131) clears LOS with vehicles=false too.
                                                         c = { blocked = processLineOfSight(camX, camY, camZ,
-                                                                        hx, hy, hz + 0.4,
-                                                                        true, true, false, true, false, false, false, false),
+                                                                        hx, hy, hz + 0.30,
+                                                                        true, false, false, true, false, false, false, false),
                                                               t = now }
                                                         losCache[player] = c
                                                 end
@@ -372,18 +442,22 @@ function drawNametags()
                                                                         nameText = nameText .. " (" .. tostring(pid) .. ")"
                                                                 end
                                                         end
-                                                        -- [Fix #33] staff viewers keep seeing hidden admins
-                                                        -- (with a suffix) exactly like the old client's
-                                                        -- admintag view; regular players see nothing
-                                                        if entry.hidden then
-                                                                nameText = nameText .. " (Hidden)"
-                                                        end
-                                                        outlineText(nameText, sX - 120, baseY - 22, 240, 18,
-                                                                entry.color, 1, fontDefault(), "center", "top")
+                                                        -- [Fix #98 - user] "ما ينكتب بكلمة Hidden جنب الاسم": the
+                                                        -- " (Hidden)" suffix is removed for EVERYONE - a hidden admin
+                                                        -- now draws as a completely plain player (plain white name,
+                                                        -- no marker). The visibility gate above is untouched:
+                                                        -- staff still SEE other hidden admins, self view stays skipped.
+                                                        -- [Fix #33] before this, hidden admins were only drawn for
+                                                        -- staff viewers and always carried the suffix.
+                                                        -- [Fix #75 - user] "كبر اسم الشخصية اكثر وكبر الشارة اكثر"
+                                                        -- name: scale 1 -> 1.3 (wider centered box for long names)
+                                                        outlineText(nameText, sX - 150, baseY - 34, 300, 28,
+                                                                entry.color, 1.3, fontDefault(), "center", "top")
 
                                                         -- badge icons under the name (old client icons row)
+                                                        -- [Fix #75] 18px -> 26px (user: "كبر الشارة اكثر")
                                                         if #entry.icons > 0 then
-                                                                local iconSize, iconGap = 18, 3
+                                                                local iconSize, iconGap = 26, 4
                                                                 local rowW = #entry.icons * iconSize + (#entry.icons - 1) * iconGap
                                                                 local iconX = sX - rowW / 2
                                                                 local iconY = baseY + 4

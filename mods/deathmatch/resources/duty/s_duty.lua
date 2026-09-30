@@ -2,6 +2,45 @@ addEvent("duty:request", true)
 function dutyRequest(grantID, itemTable, skinID)
 	local thePlayer = client
 
+	-- [Fix #106] Server-side location gate - the colshape test used to exist only client-side
+	local factionID = tonumber(getElementData(thePlayer, "faction"))
+	local atDutyPoint = false
+
+	local registry = DutyColShapes -- shared global registry filled by createDutyColShape (g_duty.lua, server side)
+	if type(registry) ~= "table" then
+		registry = getElementData(resourceRoot, "DutyColShapes")
+	end
+
+	local factionShapes = type(registry) == "table" and registry[factionID] or nil
+	if type(factionShapes) == "table" then
+		for locationID, colShape in pairs(factionShapes) do
+			if isElement(colShape) and isElementWithinColShape(thePlayer, colShape) then
+				atDutyPoint = true
+				break
+			end
+		end
+	end
+
+	if not atDutyPoint then -- same exception the client-side check makes: a faction duty vehicle counts
+		local veh = getPedOccupiedVehicle(thePlayer)
+		if veh then
+			local vehid = tonumber(getElementData(veh, "dbid"))
+			local locations = getElementData(resourceRoot, "factionLocations")
+			if vehid and type(locations) == "table" and type(locations[factionID]) == "table" then
+				for k, v in pairs(locations[factionID]) do
+					if type(v) == "table" and tonumber(v[9]) == vehid then
+						atDutyPoint = true
+						break
+					end
+				end
+			end
+		end
+	end
+
+	if not atDutyPoint then
+		outputChatBox("There is no duty available for you at this spot!", thePlayer)
+		return false
+	end
 	-- Fetch the factionPackage
 	local foundPackage = getGrant(thePlayer, grantID, getElementData(thePlayer, "faction"))
 	

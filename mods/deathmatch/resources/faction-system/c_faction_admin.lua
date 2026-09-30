@@ -51,7 +51,7 @@ function showFactionList(factions)
 					if button == "left" then
 						triggerServerEvent("faction:admin:showplayers", getLocalPlayer(), gridID )
 					elseif button == "right" then
-						triggerServerEvent("faction:admin:showf3", getLocalPlayer(), gridID, exports.integration:isPlayerAdmin(getLocalPlayer()) )
+						triggerServerEvent("faction:admin:showf3", getLocalPlayer(), gridID ) -- [Fix #108] no client-trusted admin/leader flag
 					end
 				else
 					outputChatBox( "تحتاج إلى اختيار فصيل.", 255, 0, 0 )
@@ -239,13 +239,18 @@ function closeGUI()
 	triggerServerEvent("dutyAdmin:Save", resourceRoot, factionTable, dutyChanges)
 end
 
-function allowItem()
-	local itemID = guiGetText(DutyAllow.edit[1])
+-- [Fix #117] client-local handle for rows that are not in the DB yet (never sent as an id)
+local dutyTempID = nil
+
+function allowItem()
+	local itemID = guiGetText(DutyAllow.edit[1])
 	local itemValue = guiGetText(DutyAllow.edit[2])
 	local selection = guiComboBoxGetSelected (DutyAllow.combobox[2])
-	local faction = guiComboBoxGetSelected (DutyAllow.combobox[1])+1
-	local maxIndex = getElementData(resourceRoot, "maxIndex")+1
-	if not tonumber(itemID) then return end
+	local faction = guiComboBoxGetSelected (DutyAllow.combobox[1])+1
+	-- [Fix #117] the server allocates real ids; this local handle is only used by the grid
+	dutyTempID = (dutyTempID or -math.random(1000000, 9999999)) - 1
+	local tempID = dutyTempID
+	if not tonumber(itemID) then return end
 
 	if not exports['item-system']:isItem(itemID) and selection == 0 then
 		outputChatBox("That's not even a item...", 255, 0, 0)
@@ -265,15 +270,15 @@ function allowItem()
 
 		if tonumber(itemID) then
 			if selection == 0 then -- Item
-				table.insert(factionTable[faction][3], { maxIndex, tonumber(itemID), itemValue })
-				table.insert(dutyChanges, { faction, 1, maxIndex, tonumber(itemID), itemValue })
-				setElementData(resourceRoot, "maxIndex", maxIndex)
+				table.insert(factionTable[faction][3], { tempID, tonumber(itemID), itemValue })
+				-- [Fix #117] no client-side id: the server assigns it when the change is saved
+				table.insert(dutyChanges, { faction, 1, tonumber(itemID), itemValue, tempID })
 			elseif selection == 1 then -- Weapon
 				if tonumber(itemValue) then
 					if not weapBanList[-tonumber(itemID)] then -- Check if its banned.
-						table.insert(factionTable[faction][3], { maxIndex, -tonumber(itemID), itemValue })
-						table.insert(dutyChanges, { faction, 1, maxIndex, -tonumber(itemID), itemValue })
-						setElementData(resourceRoot, "maxIndex", maxIndex)
+						table.insert(factionTable[faction][3], { tempID, -tonumber(itemID), itemValue })
+						-- [Fix #117] no client-side id: the server assigns it when the change is saved
+						table.insert(dutyChanges, { faction, 1, -tonumber(itemID), itemValue, tempID })
 					else
 						outputChatBox("This weapon is banned from being added.", 255, 0, 0)
 					end
@@ -290,19 +295,32 @@ function allowItem()
 	end
 end
 
-function removeItem()
-	local r, c = guiGridListGetSelectedItem ( DutyAllow.gridlist[1] )
-	local faction = guiComboBoxGetSelected(DutyAllow.combobox[1])+1
-    if r and r>=0 and c and c>=0 and faction and faction > 0 then
-    	local id = guiGridListGetItemData(DutyAllow.gridlist[1], r, 1)
-    	for k,v in pairs(factionTable[faction][3]) do
-    		if tonumber(id) == tonumber(v[1]) then
-    			table.insert(dutyChanges, { faction, 0, k })
-    			table.remove(factionTable[faction][3], k)
-    			populateList(faction)
-    		end
-    	end
-    else
-    	outputChatBox("Please make a selection first.", 255, 0, 0)
-    end
+function removeItem()
+	local r, c = guiGridListGetSelectedItem ( DutyAllow.gridlist[1] )
+	local faction = guiComboBoxGetSelected(DutyAllow.combobox[1])+1
+    if r and r>=0 and c and c>=0 and faction and faction > 0 then
+    	local id = tonumber(guiGridListGetItemData(DutyAllow.gridlist[1], r, 1))
+    	-- [Fix #115] reverse loop: table.remove inside pairs skips entries
+    	-- [Fix #115] v[1] is the real duty_allowed id for saved rows, a temp handle otherwise
+    	for k = #factionTable[faction][3], 1, -1 do
+    		local v = factionTable[faction][3][k]
+    		if id and v and tonumber(v[1]) == id then
+    			if id > 0 then
+    				table.insert(dutyChanges, { faction, 0, id })
+    			else
+    				-- [Fix #117] row was never saved: drop the pending insert instead of deleting
+    				for i = #dutyChanges, 1, -1 do
+    					local change = dutyChanges[i]
+    					if type(change) == "table" and tonumber(change[1]) == faction and tonumber(change[2]) == 1 and tonumber(change[5]) == id then
+    						table.remove(dutyChanges, i)
+    					end
+    				end
+    			end
+    			table.remove(factionTable[faction][3], k)
+    		end
+    	end
+    	populateList(faction)
+    else
+    	outputChatBox("Please make a selection first.", 255, 0, 0)
+    end
 end

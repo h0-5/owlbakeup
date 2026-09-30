@@ -25,7 +25,11 @@ end
 -- End small hack
 
 function switchGroundSnow( toggle )
-	if getResourceState ( getResourceFromName( "shader_snow_ground" ) ) == "running" then
+	-- [Fix #94] getResourceFromName returns false when the resource does
+	-- not exist on this server - getResourceState(false) threw a
+	-- bad-argument warning on every weather change
+	local snowRes = getResourceFromName( "shader_snow_ground" )
+	if snowRes and getResourceState ( snowRes ) == "running" then
 		triggerClientEvent( thePlayer, "switchGoundSnow", thePlayer, toggle)
 	end
 end
@@ -166,11 +170,50 @@ end
 addCommandHandler("sellproperty", sellProperty, false, false)
 addCommandHandler("unrent", sellProperty, false, false)
 
+-- [Fix #152] push "this property just left <character id>'s name" to that
+-- character's online player, so an OPEN F1 (main-menu/c_main.lua) drops the
+-- row immediately instead of keeping it until the next open/tab switch.
+-- The same helper is used by s_interior_admin.lua's deleteInterior.
+-- Not editing admin-system: its cross-resource publicSellProperty call is
+-- covered here anyway, since the previous owner is read from the DB.
+function notifyF1PropertyRemoved(ownerCharId, propertyKind, id)
+	ownerCharId = tonumber(ownerCharId)
+	-- owner -1 / 0 = government, faction or already unowned: nobody to notify
+	if not ownerCharId or ownerCharId < 1 then
+		return
+	end
+	id = tonumber(id)
+	if not id then
+		return
+	end
+	local kind = propertyKind or "interior"
+	for _, player in ipairs(getElementsByType("player")) do
+		-- same id keys main-menu/s_main.lua resolves the F1 query with
+		local pid = tonumber(getElementData(player, "account:character:id"))
+			or tonumber(getElementData(player, "character:id"))
+			or tonumber(getElementData(player, "dbid"))
+		if pid == ownerCharId then
+			triggerClientEvent(player, "mainmenu:propertyRemoved", player, kind, id)
+			return
+		end
+	end
+end
+
 function publicSellProperty(thePlayer, dbid, showmessages, givemoney, CLEANUP)
 	local dbid, entrance, exit, interiorType, interiorElement = findProperty( thePlayer, dbid )
+	-- [Fix #152] grab the previous owner while element data still holds the
+	-- pre-sale state (the UPDATE below never touches element data)
+	local f1PrevOwner = false
+	local f1PrevStatus = interiorElement and getElementData(interiorElement, "status")
+	if f1PrevStatus then
+		f1PrevOwner = f1PrevStatus[INTERIOR_OWNER]
+	end
 	local query = mysql:query_free("UPDATE interiors SET owner=-1, faction=0, locked=1, safepositionX=NULL, safepositionY=NULL, safepositionZ=NULL, safepositionRZ=NULL WHERE id='" .. dbid .. "'")
 	if query then
 		local interiorStatus = getElementData(interiorElement, "status")
+		-- [Fix #152] the previous owner's open F1 drops the house row right now
+		notifyF1PropertyRemoved(f1PrevOwner, "interior", dbid)
+
 		if getElementDimension(thePlayer) == dbid and not CLEANUP then
 			setElementInterior(thePlayer, entrance[INTERIOR_INT])
 			setCameraInterior(thePlayer, entrance[INTERIOR_INT])
@@ -276,9 +319,14 @@ function unownProperty(intid, reason) --This function is meant to be used by the
 	cleanupProperty(intid, true)
 
 	--Now we process in database first.
-	local int = mysql:query_fetch_assoc("SELECT id, type FROM interiors WHERE id="..intid.." LIMIT 1")
+	-- [Fix #152] owner comes along so the previous owner's open F1 can be told
+	local int = mysql:query_fetch_assoc("SELECT id, type, owner FROM interiors WHERE id="..intid.." LIMIT 1")
 	if int and int.id ~= nil then
-		mysql:query_free("UPDATE interiors SET owner=-1, faction=0, locked=1, safepositionX=NULL, safepositionY=NULL, safepositionZ=NULL, safepositionRZ=NULL WHERE id='" .. intid .. "'")
+		mysql:query_free("UPDATE interiors SET owner=-1, faction=0, locked=1, safepositionX=NULL, safepositionY=NULL, safepositionZ=NULL, safepositionRZ=NULL WHERE id='" .. intid .. "'")
+
+		-- [Fix #152] UCP/system forcesell: the owner read a line above loses it,
+		-- so their open F1 drops the row now
+		notifyF1PropertyRemoved(int and int.owner, "interior", intid)
 		if int.type == "1" then -- if it's a business, clean up in other table too.
 			mysql:query_free("DELETE FROM interior_business WHERE intID='" .. intid .. "'")
 		end
@@ -328,6 +376,11 @@ function sellTo(thePlayer, commandName, targetPlayerName)
 							if exports.global:hasSpaceForItem(targetPlayer, 4, dbid) then
 								local query = mysql:query_free("UPDATE interiors SET owner = '" .. getElementData(targetPlayer, "dbid") .. "', faction=0, lastused=NOW() WHERE id='" .. dbid .. "'")
 								if query then							
+									-- [Fix #152] seller's F1 drops the row, buyer's F1 refetches
+									-- (interiorStatus still holds the PREVIOUS owner)
+									notifyF1PropertyRemoved(interiorStatus[INTERIOR_OWNER], "interior", dbid)
+									triggerClientEvent(targetPlayer, "mainmenu:propertyAdded", targetPlayer, "interior")
+
 									local keytype = 4
 									if interiorType == 1 then
 										keytype = 5
@@ -582,6 +635,9 @@ function buyInterior(player, pickup, cost, isHouse, isRentable)
 		else
 			exports.global:giveItem(player, 5, pickupid)
 		end
+		-- [Fix #152] buyer's open F1 refetches and shows the new property now
+		triggerClientEvent(player, "mainmenu:propertyAdded", player, "interior")
+
 		exports.logs:dbLog(thePlayer, 37, { "in"..tostring(pickupid) } , "BUYPROPERTY $"..cost)
 		realReloadInterior(tonumber(pickupid), {player})
 		exports["interior-manager"]:addInteriorLogs(pickupid, "Bought/rented, $"..exports.global:formatMoney(cost)..", "..getPlayerName(thePlayer), thePlayer)
@@ -670,7 +726,10 @@ function buyInteriorCash(player, pickup, cost, isHouse, isRentable)
 		
 		
 		
-		mysql:query_free( "UPDATE interiors SET owner='" .. charid .. "', locked=0, lastused=NOW()  WHERE id='" .. pickupid .. "'") 
+		mysql:query_free( "UPDATE interiors SET owner='" .. charid .. "', locked=0, lastused=NOW()  WHERE id='" .. pickupid .. "'")
+
+		-- [Fix #152] buyer's open F1 refetches and shows the new property now
+		triggerClientEvent(player, "mainmenu:propertyAdded", player, "interior") 
 		
 		local interiorEntrance = getElementData(pickup, "entrance")
 		
@@ -726,7 +785,11 @@ function buyInteriorBank(player, pickup, cost, isHouse, isRentable)
 			exports.global:giveMoney( gov, cost )
 		end
 		
-		exports.bank:addBankTransactionLog(charid, -(getElementData(gov, "id")), cost, 2 , "Interior Purchase", intName.." (ID: "..pickupid..")" )
+		exports.bank:addBankTransactionLog(charid, -(getElementData(gov, "id")), cost, 2 , "Interior Purchase", intName.." (ID: "..pickupid..")" )
+
+		-- [Fix #152] buyer's open F1 refetches and shows the new property now
+		-- (fires just before the owner UPDATE below - it only triggers a fetch)
+		triggerClientEvent(player, "mainmenu:propertyAdded", player, "interior")
 		
 		mysql:query_free( "UPDATE interiors SET owner='" .. charid .. "', locked=0, lastused=NOW() WHERE id='" .. pickupid .. "'") 
 		

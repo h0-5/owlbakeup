@@ -263,7 +263,9 @@ function applyPlayerRank(player, record)
 
         setIfChanged(player, "rank:index", record.index)
         setIfChanged(player, "rank:name", record.name)
-        -- [Fix #14] the live color is ALWAYS readable (luminance floor)
+        -- [Fix #101] the live color is the STORED rank color, unchanged: no
+        -- luminance floor, so rank:color matches staff_roles (and the panel /
+        -- TAB / nametag all show the same shade)
         setIfChanged(player, "rank:color", clampRankColor(record.color))
         setIfChanged(player, "rank:rights", safeToJSON(record.rights))
 
@@ -427,22 +429,20 @@ function getRankTitleIndex(name)
         return nil
 end
 
--- [Fix #14] luminance floor for rank colors: dark seeds (navy 16,72,130,
--- maroon 128,0,32 ...) were unreadable on dark panels - players called it
--- "the name disappears". Blends toward white until luminance >= 0.45.
+-- [Fix #101] rank:color is pushed EXACTLY as stored in staff_roles - dark
+-- stays dark, so the nametag, the scoreboard TAB and the staff panel's live
+-- rows all show the shade the owner picked. The old [Fix #14] "readability
+-- floor" blended every dark color toward white (luminance >= 0.45), which is
+-- what made a dark red paint as a light red. All that is left here is the
+-- MTA nested-array unwrap ("[ [ r, g, b, a ] ]" -> { r, g, b, a }) plus a
+-- 0..255 clamp of the stored channels.
 function clampRankColor(c)
         if type(c) ~= "table" then return c end
-        local r = tonumber(c[1]) or 255
-        local g = tonumber(c[2]) or 255
-        local b = tonumber(c[3]) or 255
-        local a = tonumber(c[4]) or 255
-        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-        if lum < 0.45 then
-                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                r = math.floor(r + (255 - r) * t + 0.5)
-                g = math.floor(g + (255 - g) * t + 0.5)
-                b = math.floor(b + (255 - b) * t + 0.5)
-        end
+        if type(c[1]) == "table" then c = c[1] end
+        local r = math.min(255, math.max(0, tonumber(c[1]) or 255))
+        local g = math.min(255, math.max(0, tonumber(c[2]) or 255))
+        local b = math.min(255, math.max(0, tonumber(c[3]) or 255))
+        local a = math.min(255, math.max(0, tonumber(c[4]) or 255))
         return { r, g, b, a }
 end
 

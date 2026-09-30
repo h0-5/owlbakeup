@@ -80,7 +80,13 @@ local SECTIONS = {
         { id = "commands",       en = "Commands",       ar = "الأوامر",            icon = "icons/menu_chat.png" },
         { id = "report",         en = "Report",         ar = "البلاغات",           icon = "icons/reportpanel.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/discord.png" },
+        -- [Fix #63] awards section - the old client jumped to menu row 9 for
+        -- "Level Awards" (client_decompiled.lua: uiMenuSetSelectedRow(var2, 9))
+        -- and c_level.lua builds its awards tab inside UI.container["awards"]
+        -- when uiMenuGetItemID == "awards" - row 9 = this section
+        { id = "awards",         en = "Level Awards",    ar = "جوائز المستوى",      icon = "icons/rank.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
+        { id = "jobs",           en = "Jobs",            ar = "الوظائف",            icon = "icons/menu_suitcase.png" },
 }
 
 --[[ report types — MUST stay in report-system/g_reports.lua order ]]
@@ -187,6 +193,8 @@ local UI = {
         tab = {}, progressbar = {}, edit = {}, window = {}, label = {}, checkbox = {},
         switch = {}, button = {}, tabpanel = {}, radiobutton = {}, gridlist = {},
         memo = {}, scrollbar = {}, combobox = {}, container = {}, image = {}, rectangle = {},
+        -- [Fix #100 #4] real ownership counts backing the Info tab summary
+        owned = { vehicles = 0, interiors = 0 },
 }
 
 local menu = false            -- ui-menu element
@@ -228,6 +236,170 @@ local function safeExport(resName, fnName, ...)
         if ok then return result end
         return nil
 end
+
+-- [Fix #100 #1] while F1 is open the status/zone HUD and the minimap must
+-- paint ABOVE the menu window instead of behind it. hud and radar re-register
+-- their render handlers in a lower band when this is true; both exports are
+-- idempotent, so the pcall/retry paths in showSideBarInner are harmless.
+local function setHudLayerAboveMenu(over)
+        -- checked live (NOT resRunning): hud/radar may start after this file
+        -- is loaded, and resCache would freeze a stale "not running".
+        local function live(resName)
+                local res = getResourceFromName(resName)
+                if not res then return false end
+                local ok, st = pcall(getResourceState, res)
+                return ok and st == "running"
+        end
+        if live("hud") then
+                pcall(function() exports.hud:setHudOverMenu(over) end)
+        end
+        if live("radar") then
+                pcall(function() exports.radar:setRadarOverMenu(over) end)
+        end
+end
+
+-- [Fix #100 #4] the Info tab summary lines (real house / vehicle counts).
+-- Counts start at 0 and are refreshed by the getVehicles/getInteriors
+-- callbacks; the label is rebuilt from here so both paths stay in sync.
+local function updateOwnedLabel()
+        if not (UI.label.owned and isElement(UI.label.owned)) then return end
+        local bullet = "${color.primary}• "
+        eui:uiSetText(UI.label.owned, {
+                en = bullet .. "Houses Owned »  #FFFFFF" .. tostring(UI.owned.interiors) .. "\n"
+                        .. bullet .. "Vehicles Owned »  #FFFFFF" .. tostring(UI.owned.vehicles),
+                ar = bullet .. "البيوت المملوكة »  #FFFFFF" .. tostring(UI.owned.interiors) .. "\n"
+                        .. bullet .. "المركبات المملوكة »  #FFFFFF" .. tostring(UI.owned.vehicles),
+        })
+end
+
+-- [Fix #152] LIVE personal-properties list. The house/vehicle systems push
+-- mainmenu:propertyRemoved / mainmenu:propertyAdded to the owning player the
+-- moment a property is sold, deleted or bought, so an OPEN F1 drops (or
+-- re-fetches) the row right away instead of keeping it until the next open /
+-- tab switch. The rows of the last fetch are kept here because the grid is
+-- rebuilt from them - one render path shared with the server callbacks.
+local ownedRows = { vehicles = {}, interiors = {} }
+
+-- kind comes from the other resources; accept their spellings
+local function ownedKindKey(kind)
+        kind = tostring(kind or ""):lower()
+        if kind == "vehicle" or kind == "vehicles" or kind == "car" then
+                return "vehicles"
+        elseif kind == "interior" or kind == "interiors" or kind == "house"
+                or kind == "property" then
+                return "interiors"
+        end
+        return nil
+end
+
+local function renderOwnedVehicles(list, slots)
+        -- [Fix #100 #4] the Info-tab ownership summary moves with the rows
+        UI.owned.vehicles = #list
+        updateOwnedLabel()
+        if not (eui and UI.gridlist.vehicles and isElement(UI.gridlist.vehicles)) then return end
+        eui:uiSetText(UI.label.vehicles, "Vehicles  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
+        eui:uiGridListClear(UI.gridlist.vehicles)
+        for _, car in ipairs(list) do
+                local row = eui:uiGridListAddRow(UI.gridlist.vehicles)
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 1, tostring(car.ID))
+                eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 1, eui:uiGetThemeColor("primary"))
+                local name = tostring(car.Name or "?")
+                if car.impounded then
+                        name = name .. "  |  #FF0000(Impounded)#FFFFFF"
+                elseif car.hidden == 1 then
+                        eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 2, tocolor(180, 180, 180, 255))
+                        name = name .. "  |  (Hidden)"
+                end
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 2, name)
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 3, car.plate or "")
+        end
+end
+
+local function renderOwnedInteriors(list, slots)
+        -- [Fix #100 #4] the Info-tab ownership summary moves with the rows
+        UI.owned.interiors = #list
+        updateOwnedLabel()
+        if not (eui and UI.gridlist.interiors and isElement(UI.gridlist.interiors)) then return end
+        eui:uiSetText(UI.label.interiors, "Interiors  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
+        eui:uiGridListClear(UI.gridlist.interiors)
+        for _, interior in ipairs(list) do
+                local row = eui:uiGridListAddRow(UI.gridlist.interiors)
+                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 1, tostring(interior.id))
+                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 1, eui:uiGetThemeColor("primary"))
+                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 2, tostring(interior.name))
+                local status = tostring(interior.status or "-")
+                if status == "rented" then
+                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(255, 255, 0))
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status .. " ($" .. tostring(interior.price or 0) .. ")")
+                elseif status == "owned" then
+                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(168, 255, 168))
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
+                else
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
+                end
+        end
+end
+
+-- [Fix #152] expire the 10s fetch throttle so the NEXT open / tab switch
+-- always re-queries, and re-query immediately while F1 is on screen (the
+-- closed-menu path only needs the flag - the open flow already re-queries).
+local function refreshOwnedSection(key)
+        state[key] = getTickCount() - 10000
+        if not (state.state and UI.window.MainMenu and isElement(UI.window.MainMenu)) then return end
+        state[key] = getTickCount()
+        if key == "vehicles" then
+                triggerServerEvent("main-menu:characterInfo:getVehicles", localPlayer)
+        else
+                triggerServerEvent("main-menu:characterInfo:getInteriors", localPlayer)
+        end
+end
+
+-- [Fix #152] fired by interior-system / vehicle-system / vehicle-manager /
+-- carshop-system at the owning player: the property just left their name.
+-- Guards: unknown kind, F1 never opened, UI not built and id mismatches are
+-- all no-crash paths (the server fallback re-queries instead).
+addEvent("mainmenu:propertyRemoved", true)
+addEventHandler("mainmenu:propertyRemoved", localPlayer, function(kind, id)
+        local key = ownedKindKey(kind)
+        if not key then return end
+        local rows = ownedRows[key]
+        local want = tonumber(id)
+        local removed = false
+        if type(rows) == "table" and want then
+                -- rows carry ID (vehicles) or id (interiors); tonumber() guards
+                -- the string/number mismatch from the wire
+                for i = #rows, 1, -1 do
+                        local row = rows[i]
+                        local rid = tonumber(type(row) == "table" and (row.ID or row.id))
+                        if rid == want then
+                                table.remove(rows, i)
+                                removed = true
+                        end
+                end
+        end
+        if removed then
+                -- drop it from the grid NOW + header count + Info-tab totals
+                if key == "vehicles" then
+                        renderOwnedVehicles(rows, #rows)
+                else
+                        renderOwnedInteriors(rows, #rows)
+                end
+                -- refresh flag: the next open / tab switch re-reads the DB
+                state[key] = getTickCount() - 10000
+        else
+                -- not fetched yet (or id mismatch): ask the server for the truth
+                refreshOwnedSection(key)
+        end
+end)
+
+-- [Fix #152] reverse freshness: a property was ACQUIRED - we don't know the
+-- new row's name/plate client-side, so just re-run that section's fetch.
+addEvent("mainmenu:propertyAdded", true)
+addEventHandler("mainmenu:propertyAdded", localPlayer, function(kind)
+        local key = ownedKindKey(kind)
+        if not key then return end
+        refreshOwnedSection(key)
+end)
 
 -- notifications with a chat fallback until the notifications mod is restored
 local function notify(text, duration, kind)
@@ -329,25 +501,34 @@ local WORDMARK_LEN = 560 -- Fix #26: bigger wordmark (user)
      (the RT is drawn from the same "high-2" handler). ]]
 local chromeRT = false
 local chromeDirty = true
+-- [Fix #76] true only after the RT actually painted WITHOUT error. The old
+-- code set chromeDirty=false even when the paint pcall failed, so a partial
+-- RT (strip but no gradient/logo/wordmark) was drawn forever: a bare black
+-- line on the left while the logo+name flashed during the live animation and
+-- vanished the moment the menu settled.
+local chromePainted = false
 
-local function drawChromeLive()
+local function drawChromeLive(postGUI)
+        local pg = postGUI ~= false
         -- dark veil over the game
-        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), true)
+        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), pg)
         -- branding strip sliding in from the left
-        dxDrawRectangle(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), true)
+        dxDrawRectangle(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), pg)
         if bgGradient then
-                dxDrawImage(state.sideX, 0, sx, sy, bgGradient, 0, 0, 0, tocolor(0, 3, 8, state.alpha), true)
+                dxDrawImage(state.sideX, 0, sx, sy, bgGradient, 0, 0, 0, tocolor(0, 3, 8, state.alpha), pg)
         end
         -- divider line (old: sideX + 2, 1px, alpha 10)
         if state.sideX > 0 then
-                dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), true)
-        end
-        if state.sideX > 60 then
-                -- logo at the top of the strip, alpha 200 like the old draw
+                dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), pg)
+                -- logo at the top of the strip, alpha 200 like the old draw.
+                -- [Fix #76] the old ">60" gate + unclamped centering kept the
+                -- branding out of the early frames; clamp so any strip width
+                -- shows it without the logo sliding off the left edge
                 if logoTex then
                         local size = LOGO_SIZE * SCALE_Y
-                        dxDrawImage((state.sideX - size) / 2, 26 * SCALE_Y, size, size,
-                                logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), true)
+                        local w = math.max(state.sideX, size)
+                        dxDrawImage((w - size) / 2, 26 * SCALE_Y, size, size,
+                                logoTex, 0, 0, 0, tocolor(255, 255, 255, 200), pg)
                 end
                 -- wordmark watermark: rotated -90 (reads bottom -> top, V at
                 -- the bottom), alpha 50, centered on the strip — the old
@@ -360,7 +541,7 @@ local function drawChromeLive()
                         local cy = 26 * SCALE_Y + LOGO_SIZE * SCALE_Y
                                 + (sy - (26 * SCALE_Y + LOGO_SIZE * SCALE_Y)) * 0.38
                         dxDrawImage(cx - len / 2, cy - thick / 2, len, thick,
-                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), true)
+                                wordmarkTex, -90, 0, 0, tocolor(255, 255, 255, 85), pg)
                 end
         end
 end
@@ -368,16 +549,28 @@ end
 local function paintChromeRT()
         if not isElement(chromeRT) then
                 local ok, rt = pcall(dxCreateRenderTarget, sx, sy, true)
-                if not ok or not rt then chromeDirty = false return false end
+                if not ok or not rt then chromeDirty = false chromePainted = false return false end
                 chromeRT = rt
         end
-        local ok = pcall(function()
+        local ok, err = pcall(function()
                 dxSetRenderTarget(chromeRT, true)
-                drawChromeLive()
+                -- [Fix #76] postGUI must be false while painting into a render
+                -- target (the live path keeps postGUI=true)
+                drawChromeLive(false)
                 dxSetRenderTarget()
         end)
+        -- [Fix #76] always release the RT, even when the paint errored above
+        -- (the inner restore never runs then, and every later dx draw of the
+        -- frame would keep rendering INTO the chrome RT)
+        pcall(dxSetRenderTarget)
         chromeDirty = false
-        return ok
+        if not ok then
+                chromePainted = false
+                outputDebugString("[F1] chrome RT paint failed: " .. tostring(err), 1)
+                return false
+        end
+        chromePainted = true
+        return true
 end
 
 addEventHandler("onClientRestore", root, function() chromeDirty = true end)
@@ -387,13 +580,15 @@ function main_menu_draw()
         local settled = getTickCount() - state.anim[1] >= state.anim[6]
         if settled then
                 if chromeDirty then paintChromeRT() end
-                if isElement(chromeRT) then
+                -- [Fix #76] only blit the RT when it painted cleanly; on any
+                -- failure keep drawing live so the branding never disappears
+                if chromePainted and isElement(chromeRT) then
                         dxDrawImage(0, 0, sx, sy, chromeRT, 0, 0, 0,
                                 tocolor(255, 255, 255, 255), true)
                         return
                 end
         end
-        drawChromeLive()
+        drawChromeLive(true)
 end
 
 --[[ F1 / ESC-binds cancel while quitting the character ]]
@@ -448,9 +643,10 @@ addCommandHandler("menu", MainMenuKey, false, false)
 -- F2 = reports hub (opens the same sidebar directly on the reports section)
 function ReportsMenuKey()
         if getElementData(localPlayer, "character:id")
-                or getElementData(localPlayer, "loggedin") == 1 then
+                or getElementData(localPlayer, "account:character:id")
+                or tonumber(getElementData(localPlayer, "loggedin")) == 1 then
                 local wasOpen = state.state
-                showSideBar(not wasOpen, "reports")
+                showSideBar(not wasOpen, "report")
         end
 end
 bindKey("F2", "down", ReportsMenuKey)
@@ -497,6 +693,8 @@ local function showSideBarInner(show, openSection)
                         menuDrawRegistered = true
                 end
                 eui:uiSetVisible(UI.window.MainMenu, true)
+                -- [Fix #100 #1] raise status/zone HUD + minimap above the menu
+                setHudLayerAboveMenu(true)
                 -- optional section to land on (F2 -> reports)
                 local target = 1
                 if openSection then
@@ -510,6 +708,8 @@ local function showSideBarInner(show, openSection)
                 menuDrawRegistered = false
                 state.anim = { getTickCount(), state.alpha, state.sideX, 0, -260, 250, false }
                 eui:uiSetVisible(UI.window.MainMenu, false)
+                -- [Fix #100 #1] drop them back to their normal bands
+                setHudLayerAboveMenu(false)
                 -- [Fix #47] free the fullscreen chrome RT while the menu is closed
                 if isElement(chromeRT) then destroyElement(chromeRT) end
                 chromeRT = false
@@ -622,6 +822,12 @@ local function buildMainMenuUI()
         UI.label[4] = eui:uiCreateLabel(15 + (infoW - 20) / 2, 25, (infoW - 20) / 2, 300, "",
                 tocolor(255, 255, 255, 255), "left", "top", rectInfoLeft)
         eui:uiSetProperty(UI.label[4], "line_spacing", 35)
+        -- [Fix #100 #4] ownership summary sits in the free space below the two
+        -- info columns (label[1] ends ~y=340, the card runs to y=infoH+25).
+        -- clip is off for labels, so height only guards the layout math.
+        UI.label.owned = eui:uiCreateLabel(15, infoH - 90, infoW - 20, 70, "",
+                tocolor(255, 255, 255, 255), "left", "top", rectInfoLeft)
+        eui:uiSetProperty(UI.label.owned, "line_spacing", 35)
 
         local sideW = (contentW - 40) * 0.3
         local sideH = (infoH - 10) * 0.5
@@ -1129,10 +1335,10 @@ local function buildMainMenuUI()
                         triggerServerEvent("main-menu:linkdiscord:unlink", localPlayer, charId)
                         currentLinkCode = false
                 elseif source == UI.button.goto_level_awards then
-                        -- old jumped to the awards section row (our leaderboard)
+                        -- old jumped to the awards section row (row 9 in the old menu)
                         local target = 1
                         for i, section in ipairs(SECTIONS) do
-                                if section.id == "leaderboard" then target = i end
+                                if section.id == "awards" then target = i end
                         end
                         eui:uiMenuSetSelectedRow(menu, target)
                 end
@@ -1235,13 +1441,30 @@ local function buildMainMenuUI()
                 return fallback or "#ffffff"
         end
 
+        -- [Fix #100 #3] may THIS player see a hidden admin's real name/account?
+        -- Mirrors the server-side gate (admin_level / rank:index >= 4) plus the
+        -- hidden-admin flag itself, with the global resource as a fallback.
+        local function localSeesHiddenAdmins()
+                if tonumber(getElementData(localPlayer, "hiddenadmin")) == 1 then return true end
+                local ridx = tonumber(getElementData(localPlayer, "rank:index"))
+                if ridx and ridx >= 4 then return true end
+                local lvl = tonumber(getElementData(localPlayer, "admin_level"))
+                if lvl and lvl > 0 then return true end
+                if resRunning("global") then
+                        local ok, v = pcall(function()
+                                return exports.global:getPlayerAdminLevel(localPlayer)
+                        end)
+                        if ok and tonumber(v) and tonumber(v) > 0 then return true end
+                end
+                return false
+        end
+
         addEvent("admin:showStaff", true)
         addEventHandler("admin:showStaff", root, function(list)
                 eui:uiGridListClear(UI.gridlist.staff)
                 eui:uiGridListClear(UI.gridlist.staff2)
                 if type(list) ~= "table" then return end
                 local adminCount, supportCount = 0, 0
-                local nameHex = "#ffffff"
                 -- [Fix #47] `eui:uiGetThemeColor` used as a VALUE is a syntax
                 -- error ("function arguments expected") - it killed the WHOLE
                 -- c_main.lua compile, so F1/F2 binds never registered and the
@@ -1254,9 +1477,12 @@ local function buildMainMenuUI()
                         pc = nil
                 end
                 local idHex = staffHex(pc, "#8f7bff")
+                -- [Fix #100 #3] Hidden only masks the row from players who are
+                -- not staff themselves - admins get the real name + account.
+                local seesHidden = localSeesHiddenAdmins()
                 for _, entry in ipairs(list) do
                         local isSupport = entry[1] == true
-                        local hidden = entry[4] == true
+                        local hidden = entry[4] == true and not seesHidden
                         local pid = tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
@@ -1264,11 +1490,13 @@ local function buildMainMenuUI()
                         if rank ~= "" then
                                 line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
                         end
-                        -- hidden admins read as "Anonymous" (old client), no account shown
+                        -- [Fix #100 #3] names are always plain white: the rank
+                        -- color belongs to the [rank] tag only. A masked admin
+                        -- reads "Anonymous (Hidden)" instead of its rank color.
                         if hidden then
-                                line = line .. staffHex(entry[6], nameHex) .. "Anonymous"
+                                line = line .. "#ffffffAnonymous" .. idHex .. " (Hidden)"
                         else
-                                line = line .. nameHex .. name
+                                line = line .. "#ffffff" .. name
                                 local acc = tostring(entry[7] or "")
                                 if acc ~= "" and acc ~= "-" then
                                         line = line .. " " .. idHex .. "(" .. acc .. ")"
@@ -1278,8 +1506,11 @@ local function buildMainMenuUI()
                         local row = eui:uiGridListAddRow(grid)
                         eui:uiGridListSetItemText(grid, row, 1, line)
                         eui:uiGridListSetItemText(grid, row, 2, idHex .. "ID: " .. pid)
-                        eui:uiGridListSetItemText(grid, row, 3, hidden and "#c8c8c8Hidden"
-                                or (entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty"))
+                        -- [Fix #100 #3] the Duty column always reports the real
+                        -- duty state; it used to be overwritten with "Hidden",
+                        -- which left no way to see whether a member was on duty.
+                        eui:uiGridListSetItemText(grid, row, 3,
+                                entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty")
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")
@@ -1333,22 +1564,24 @@ local function buildMainMenuUI()
                                         .. bullet .. "بصمة الأصابع »  #FFFFFF" .. fingerprint .. "\n"
                                         .. bullet .. "الوصف »  #FFFFFF" .. tostring(desc or "-"),
                         })
-                        -- a REAL level: derived from total play time (1 level per
-                        -- 5 hours) with progress to the next one
+                        -- [Fix #63] REAL level from level-system (old client:
+                        -- "Level ${color.primary} N" + "exp / required" + progress).
+                        -- The decompile inlined getPlayerLevel() everywhere and lost
+                        -- the 2nd/3rd returns (same artifact repaired in c_level.lua)
+                        -- - unpacked with explicit locals here.
                         local hours = tonumber(getElementData(localPlayer, "hoursplayed")) or 0
                         local minutes = math.floor((tonumber(getElementData(localPlayer, "timeinserver")) or 0))
-                        local totalHours = hours + minutes / 60
-                        local levelNum = math.floor(totalHours / 5) + 1
-                        local nextIn = math.max(0, math.ceil(levelNum * 5 - totalHours))
+                        local lv, lvExp, lvReq = exports["level-system"]:getPlayerLevel()
+                        if not lv or lv < 1 then lv, lvExp, lvReq = 1, 0, 50 end
                         eui:uiSetText(UI.label.level, {
-                                en = "Level ${color.primary}" .. tostring(levelNum),
-                                ar = "المستوى ${color.primary}" .. tostring(levelNum),
+                                en = "Level ${color.primary}" .. tostring(lv),
+                                ar = "المستوى ${color.primary}" .. tostring(lv),
                         })
                         eui:uiSetText(UI.label.level_exp, {
-                                en = "Next level in " .. tostring(nextIn) .. "h",
-                                ar = "المستوى التالي بعد " .. tostring(nextIn) .. " ساعة",
+                                en = tostring(lvExp) .. " / " .. tostring(lvReq),
+                                ar = tostring(lvExp) .. " / " .. tostring(lvReq),
                         })
-                        eui:uiProgressBarSetProgress(UI.progressbar[1], math.floor((totalHours % 5) / 5 * 100))
+                        eui:uiProgressBarSetProgress(UI.progressbar[1], lvExp / lvReq * 100)
                         -- cash + bank balance live in the play-time card
                         -- Fix #26: this server stores money in elementData "money" (custom economy)
                         local money = tonumber(getElementData(localPlayer, "money"))
@@ -1386,6 +1619,18 @@ local function buildMainMenuUI()
                         local accName = getElementData(localPlayer, "account:username")
                         if type(accName) ~= "string" or accName == "" then accName = getPlayerName(localPlayer) end
                         eui:uiSetText(UI.label.username, "Current Username: " .. tostring(accName))
+                        -- [Fix #100 #4] refresh the ownership summary: show what
+                        -- we already know immediately, then ask the server for
+                        -- fresh counts (same 10s throttle as the tab switch).
+                        updateOwnedLabel()
+                        if getTickCount() - state.vehicles >= 10000 then
+                                state.vehicles = getTickCount()
+                                triggerServerEvent("main-menu:characterInfo:getVehicles", localPlayer)
+                        end
+                        if getTickCount() - state.interiors >= 10000 then
+                                state.interiors = getTickCount()
+                                triggerServerEvent("main-menu:characterInfo:getInteriors", localPlayer)
+                        end
                 end
         end)
 
@@ -1407,44 +1652,20 @@ local function buildMainMenuUI()
 
         addEvent("main-menu:characterInfo:getVehicles:callback", true)
         addEventHandler("main-menu:characterInfo:getVehicles:callback", localPlayer, function(list, slots)
-                eui:uiSetText(UI.label.vehicles, "Vehicles  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
-                eui:uiGridListClear(UI.gridlist.vehicles)
-                for _, car in ipairs(list) do
-                        local row = eui:uiGridListAddRow(UI.gridlist.vehicles)
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 1, tostring(car.ID))
-                        eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 1, eui:uiGetThemeColor("primary"))
-                        local name = tostring(car.Name or "?")
-                        if car.impounded then
-                                name = name .. "  |  #FF0000(Impounded)#FFFFFF"
-                        elseif car.hidden == 1 then
-                                eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 2, tocolor(180, 180, 180, 255))
-                                name = name .. "  |  (Hidden)"
-                        end
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 2, name)
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 3, car.plate or "")
-                end
+                -- [Fix #152] keep the rows: a live mainmenu:propertyRemoved push
+                -- re-renders this cache so the row disappears without a refetch
+                if type(list) ~= "table" then list = {} end
+                ownedRows.vehicles = list
+                renderOwnedVehicles(list, slots)
         end)
 
         addEvent("main-menu:characterInfo:getInteriors:callback", true)
         addEventHandler("main-menu:characterInfo:getInteriors:callback", localPlayer, function(list, slots)
-                eui:uiSetText(UI.label.interiors, "Interiors  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
-                eui:uiGridListClear(UI.gridlist.interiors)
-                for _, interior in ipairs(list) do
-                        local row = eui:uiGridListAddRow(UI.gridlist.interiors)
-                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 1, tostring(interior.id))
-                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 1, eui:uiGetThemeColor("primary"))
-                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 2, tostring(interior.name))
-                        local status = tostring(interior.status or "-")
-                        if status == "rented" then
-                                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(255, 255, 0))
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status .. " ($" .. tostring(interior.price or 0) .. ")")
-                        elseif status == "owned" then
-                                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(168, 255, 168))
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
-                        else
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
-                        end
-                end
+                -- [Fix #152] keep the rows: a live mainmenu:propertyRemoved push
+                -- re-renders this cache so the row disappears without a refetch
+                if type(list) ~= "table" then list = {} end
+                ownedRows.interiors = list
+                renderOwnedInteriors(list, slots)
         end)
 
         addEvent("leaderboard:get:response", true)
@@ -1488,21 +1709,92 @@ addEventHandler("onClientUIKitReady", root, UIKitReady)
 
 --[[ Fix #26 (user): "البلاغات م تقدر تكتب بها ولاحرف" — UIKit's own pipeline
      does not always hand keyboard focus to the report edit/memo. A raw click
-     on their rects focuses them explicitly (same trick the staff panel uses). ]]
+     on their rects focuses them explicitly (same trick the staff panel uses).
+     [Fix #76] the pcall(eui.uiGetPosition, el) form called the export WITHOUT
+     its receiver -> the pcall always errored -> focus never set -> the chatbox
+     stayed armed and every keystroke went to chat (nothing could be typed).
+     uiGetAbsoluteBounds (Fix #32) returns the true on-screen rect including
+     parent offsets; uiGetPosition would be parent-relative. ]]
 addEventHandler("onClientClick", root, function(button, press)
         if not press or button ~= "left" then return end
         if not (UI.window.report_center and eui:uiGetVisible(UI.window.report_center)) then return end
         local cx, cy = getCursorPosition()
         if not cx then return end
         cx, cy = cx * sx, cy * sy
-        local okM, mx, my = pcall(eui.uiGetPosition, UI.memo.report_text)
-        if okM and cx >= mx and cx <= mx + 530 * SCALE_Y and cy >= my and cy <= my + 175 * SCALE_Y then
+        local okM, mx, my, mw, mh = pcall(function() return eui:uiGetAbsoluteBounds(UI.memo.report_text) end)
+        if okM and mx and cx >= mx and cx <= mx + (mw or 0) and cy >= my and cy <= my + (mh or 0) then
                 pcall(function() eui:uiSetFocusedElement(UI.memo.report_text) end)
                 return
         end
-        local okE, ex, ey = pcall(eui.uiGetPosition, UI.edit.report_target)
-        if okE and cx >= ex and cx <= ex + 530 * SCALE_Y and cy >= ey and cy <= ey + 25 * SCALE_Y then
+        local okE, ex, ey, ew, eh = pcall(function() return eui:uiGetAbsoluteBounds(UI.edit.report_target) end)
+        if okE and ex and cx >= ex and cx <= ex + (ew or 0) and cy >= ey and cy <= ey + (eh or 0) then
                 pcall(function() eui:uiSetFocusedElement(UI.edit.report_target) end)
+        end
+end)
+
+--------------------------------------------------------------------------------
+-- [Fix #100 #2] FULL-ROW hit layer for the report type list.
+-- UIKit resolves a row through the hover stack and (pre-fix) only within
+-- width-10, so clicks on the right edge of a row, or under an overlapping
+-- element, never selected anything - and the double-click flow then saw
+-- selected_row == -1, so nothing opened. This layer maps the raw click straight
+-- to the painted row over the WHOLE row width (uiGridListGetRowAtPoint mirrors
+-- the draw geometry incl. scroll) and opens the confirm window itself, so the
+-- flow no longer depends on the hover stack at all.
+--------------------------------------------------------------------------------
+local function reportRowAt(ax, ay)
+        if not (state.state and UI.gridlist.report_types) then return nil end
+        if not (UI.window.MainMenu and isElement(UI.window.MainMenu)) then return nil end
+        if not isElement(UI.gridlist.report_types) then return nil end
+        local function shown(el)
+                if not (el and isElement(el)) then return false end
+                local ok, v = pcall(function() return eui:uiGetVisible(el) end)
+                return ok and v == true
+        end
+        if not shown(UI.window.MainMenu) then return nil end
+        if not shown(UI.container.report) then return nil end
+        -- modal windows on top: let UIKit handle those clicks
+        if shown(UI.window.report_confirm) or shown(UI.window.report_center) then return nil end
+        local okB, gx, gy, gw, gh = pcall(function()
+                return eui:uiGetAbsoluteBounds(UI.gridlist.report_types)
+        end)
+        if not okB or type(gx) ~= "number" then return nil end
+        gw, gh = tonumber(gw) or 0, tonumber(gh) or 0
+        if ax < gx or ax > gx + gw or ay < gy or ay > gy + gh then return nil end
+        local okR, row = pcall(function()
+                return eui:uiGridListGetRowAtPoint(UI.gridlist.report_types, ay)
+        end)
+        if not okR or type(row) ~= "number" or row < 0 then return nil end
+        return row
+end
+
+addEventHandler("onClientClick", root, function(button, press, ax, ay)
+        if not press or button ~= "left" then return end
+        local row = reportRowAt(ax, ay)
+        if row == nil then return end
+        pcall(function() eui:uiGridListSetSelectedItem(UI.gridlist.report_types, row) end)
+end)
+
+addEventHandler("onClientDoubleClick", root, function(button, ax, ay)
+        if button ~= "left" then return end
+        local row = reportRowAt(ax, ay)
+        if row == nil then return end
+        -- same body as the onClientUIDoubleClick handler in buildMainMenuUI,
+        -- but independent of what UI.HoveredElement resolved to
+        local ok, err = pcall(function()
+                local data = eui:uiGridListGetItemData(UI.gridlist.report_types, row, 1)
+                local t = type(data) == "number" and data or (row + 1)
+                if not REPORT_TYPES[t] then return false end
+                selectedReportType = t
+                eui:uiGridListSetSelectedItem(UI.gridlist.report_types, row)
+                eui:uiSetText(UI.label.report_confirm_type, tostring(REPORT_TYPES[t]))
+                eui:uiBringToFront(UI.window.report_confirm)
+                eui:uiSetVisible(UI.window.report_confirm, true)
+                return true
+        end)
+        if not ok then
+                -- Fix #33/#35 style: never fail silently
+                outputChatBox("#ff6b6b[F2] " .. tostring(err), 255, 107, 107, true)
         end
 end)
 

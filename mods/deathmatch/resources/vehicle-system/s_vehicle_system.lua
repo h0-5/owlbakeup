@@ -1117,6 +1117,12 @@ function sellVehicle(thePlayer, commandName, targetPlayerName)
 													exports.global:giveItem(targetPlayer, 3, vehicleID)
 												end
 
+												-- [Fix #152] seller's open F1 drops the car row NOW, the
+												-- buyer's refetches and shows it (both fire only at the
+												-- player's own client - nothing changes elsewhere)
+												triggerClientEvent(thePlayer, "mainmenu:propertyRemoved", thePlayer, "vehicle", vehicleID)
+												triggerClientEvent(targetPlayer, "mainmenu:propertyAdded", targetPlayer, "vehicle")
+
 												exports.logs:logMessage("[SELL] car #" .. vehicleID .. " was sold from " .. getPlayerName(thePlayer):gsub("_", " ") .. " to " .. targetPlayerName, 9)
 
 												outputChatBox("You've successfully sold your " .. getVehicleName(theVehicle) .. " to " .. targetPlayerName .. ".", thePlayer, 0, 255, 0)
@@ -1271,7 +1277,7 @@ addEventHandler("lockUnlockOutsideVehicle", getRootElement(), lockUnlockOutside)
 function storeVehicleLockState(vehicle, dbid)
 	if (isElement(vehicle)) then
 		local newdbid = getElementData(vehicle, "dbid")
-		if tonumber(newdbid) > 0 then
+		if (tonumber(newdbid) or 0) > 0 then
 			local locked = isVehicleLocked(vehicle)
 
 			local state = 0

@@ -77,6 +77,14 @@ local function findElementUnderPosition(wx, wy, wz)
 			return element
 		end
 	end
+	-- [Fix #63] vehicles (the mechanic panel injects its option on
+	-- onClientElementMenuShow - the encrypted Owl interaction client
+	-- supported vehicle right-clicks the same way)
+	for _, element in ipairs(getElementsWithinRange(wx, wy, wz, 20, "vehicle", int, dim)) do
+		if getElementData(element, "rightclick:menu") then
+			return element
+		end
+	end
 	for _, element in ipairs(getElementsWithinRange(wx, wy, wz, 20, "pickup", int, dim)) do
 		return element
 	end

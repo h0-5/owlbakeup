@@ -588,12 +588,19 @@ local function broadcastRankChange(action, target, toRank, isNegative)
         -- colored actor, rank name in its panel color when known
         local rankColor = ""
         if toRank and mysql then
-                local q = mysql:query("SELECT ColorCode FROM staff_roles WHERE LevelName = '"
+                local q = mysql:query("SELECT Color FROM staff_roles WHERE LevelName = '"
                         .. mysql:escape_string(tostring(toRank)) .. "' LIMIT 1")
                 if q then
                         local row = mysql:fetch_assoc(q)
-                        if row and row.ColorCode and tostring(row.ColorCode) ~= "" then
-                                rankColor = "#" .. tostring(row.ColorCode):gsub("^#", "")
+                        if row and row.Color and tostring(row.Color) ~= "" then
+                                local c = fromJSON(tostring(row.Color)) or {}
+                                if type(c[1]) == "table" then
+                                        c = c[1]
+                                end
+                                local cr, cg, cb = tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+                                if cr and cg and cb then
+                                        rankColor = ("#%02X%02X%02X"):format(cr, cg, cb)
+                                end
                         end
                         mysql:free_result(q)
                 end
@@ -799,8 +806,17 @@ local function updateRoleImpl(sender, levelID, rights, color)
         -- NOT valid JSON, fromJSON returned nil and the rank silently fell
         -- back to WHITE on the next read (tab/chat/nametag colors died after
         -- every panel save). Encode the whole {r,g,b,a} table in ONE call.
+        -- [Fix #86] one toJSON call for the whole {r,g,b,a} table (see Fix
+        -- #34 above). NOTE: MTA has no "compact" mode — toJSON always emits
+        -- the spaced "[ [ r, g, b, a ] ]" form; that is FINE now because the
+        -- setup pass parses Color with fromJSON instead of the old
+        -- `LIKE '[[%'` string test that wiped every saved color to white.
+        -- [Fix #153] alpha is ALWAYS 255 here: every in-game renderer draws a
+        -- rank color opaque, and the panel's picker preview does too - saving
+        -- a < 255 (an 8-digit hex pick) made the panel blend the row with its
+        -- background while the game showed the pure RGB.
         local colorJSON = toJSON({ tonumber(color[1]) or 255, tonumber(color[2]) or 255,
-                tonumber(color[3]) or 255, tonumber(color[4]) or 255 })
+                tonumber(color[3]) or 255, 255 })
         mysql:query_free("UPDATE staff_roles SET Rights='"
                 .. rightsToJSON(rights) .. "', Color='"
                 .. mysql:escape_string(colorJSON) .. "' WHERE ID=" .. levelID)

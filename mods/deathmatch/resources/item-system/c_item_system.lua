@@ -537,8 +537,12 @@ function useItem(itemSlot)
 		
 		if (itemID==2) then -- cellphone
 			hideInventory()
-			--triggerServerEvent("phone:requestShowPhoneGUI", getLocalPlayer(), tostring(itemValue))
-			triggerEvent("phone:slidePhoneIn", localPlayer, itemValue)
+			-- [Fix #72] the OLD phone resource is disabled - this dead local
+			-- event ("phone:slidePhoneIn") meant using the phone from the
+			-- inventory did NOTHING (never reached triggerServerEvent("useItem")
+			-- below). Route through the server useItem branch instead: it fires
+			-- phone:itemUse on the new phone-system (toggles the phone UI).
+			triggerServerEvent("useItem", getLocalPlayer(), itemSlot, additional)
 			return
 		elseif (itemID==6) then -- radio
 			exports.hud:sendBottomNotification(getLocalPlayer(), "Item Usage", "Press Y to use this item. You can also use /tuneradio to tune your radio.", 255, 194, 14)

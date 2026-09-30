@@ -41,7 +41,11 @@ addEventHandler('onResourceStart', resourceRoot,
 			end
 		end
 		--local worldItems = pool:getPoolElementsByType("object")
-		local worldItems = getElementsByType("object", getResourceRootElement(getResourceFromName("item-world"))) or { }
+		-- [Fix #94] at boot item-world has not started yet, so its root is
+		-- false and getElementsByType(false) threw a bad-argument warning;
+		-- the existing 60s retry picks the items up once it is running
+		local iwRoot = getResourceRootElement(getResourceFromName("item-world"))
+		local worldItems = (iwRoot and getElementsByType("object", iwRoot)) or { }
 		--for k,v in ipairs(getElementsByType("object", getResourceRootElement(getResourceFromName("item-system")))) do
 		--	table.insert(worldItems, v)
 		--end

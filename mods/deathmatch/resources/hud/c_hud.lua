@@ -561,6 +561,10 @@ end
 
 local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 2, current = -80 } }
 local statusHudDraw -- forward declaration
+-- [Fix #100 #1] priority band of statusHudDraw. "high-5" (default) keeps the
+-- panel in the high band; "low" drops it below the F1 menu window ("normal")
+-- so the zone/status HUD paints ABOVE the menu while it is open.
+local statusHudPriority = "high-5"
 local moneyBlockBottom = false   -- bottom Y of the money block (publishes hud:topRightBottom for the reports dock)
 local zoneText, zoneLabel = "", ""
 local zoneLabelColor = tocolor(255, 255, 255, 255)
@@ -717,7 +721,7 @@ function showStatusHud(state)
                 -- [Fix #31 -> #32 - user] rest at the top of the screen but
                 -- NOT glued to the edges: ~17px top rest, 14px right margin
                 statusHud.anims.to = 12
-                addEventHandler("onClientRender", root, statusHudDraw, false, "high-5")
+                addEventHandler("onClientRender", root, statusHudDraw, false, statusHudPriority)
                 -- seed from life-system if the real one is running (old client)
                 local life = getResourceFromName("life-system")
                 if life and getResourceState(life) == "running" then
@@ -736,6 +740,21 @@ function showStatusHud(state)
         statusHud.visible = state
 end
 
+-- [Fix #100 #1] called by main-menu when F1 opens/closes: move the status +
+-- zone HUD into the "low" band so it draws on top of the menu window, and put
+-- it back to "high-5" once the menu is gone. Idempotent (early return) and
+-- only re-registers when the panel is actually on screen.
+function setHudOverMenu(over)
+        local want = over and "low" or "high-5"
+        if want == statusHudPriority then return false end
+        statusHudPriority = want
+        if statusHud.visible then
+                removeEventHandler("onClientRender", root, statusHudDraw)
+                addEventHandler("onClientRender", root, statusHudDraw, false, statusHudPriority)
+        end
+        return true
+end
+
 --------------------------------------------------------------------------------
 -- MONEY (Fix #19): no background rectangle at all. The green $ dot hugs the
 -- amount and the whole slot is FLEXIBLE — it smoothly widens as the money
@@ -747,6 +766,15 @@ local function formatMoney(n)
         repeat s, k = s:gsub("^(-?%d+)(%d%d%d)", "%1,%2") until k == 0
         return s
 end
+
+-- [Fix #74] the server fires moneyUpdateFX on every money change
+-- (global/s_money_globals.lua) but NO client resource ever added the event ->
+-- "Server triggered clientside event moneyUpdateFX, but event is not added
+-- clientside" logged on every transaction. Declared + absorbed here: the money
+-- row already animates live off the elementData change (moneyFlex above), so
+-- no visual work is needed for this event.
+addEvent("moneyUpdateFX", true)
+addEventHandler("moneyUpdateFX", root, function() end)
 
 local moneyFlex = nil   -- smoothed text width driving the icon position
 local lastTopRightBottom = nil   -- [Fix #33] published for the reports list

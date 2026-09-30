@@ -1,0 +1,6 @@
+<meta>
+	<info author="Owl Gaming (decompiled by Owl Decompiler v1.0 - ported by owlbakeup Fix #63)" type="script" description="Air Travel: ticket window at the airport.travel peds + timed flights (drives the pilot:flight countdown)" />
+
+	<script src="s_airport.lua" type="server" />
+	<script src="c_airport.lua" type="client" cache="false" />
+</meta>

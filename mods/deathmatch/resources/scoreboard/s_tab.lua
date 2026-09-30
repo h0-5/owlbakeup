@@ -161,6 +161,25 @@ addEventHandler ( "onResourceStart", resourceRoot, function ( )
 end )
 setTimer ( syncRankColors, 30000, 0 )         -- keep mirroring staff_roles
 
+-- [Fix #93] clients pull both payloads on start, so a broadcast that fired
+-- while their scoreboard script was still loading ("event is not added
+-- clientside") can never leave them permanently out of sync
+addEvent ( "scoreboard:requestSync", true )
+addEventHandler ( "scoreboard:requestSync", root, function ( )
+        local p = client
+        if not p then return end
+        triggerClientEvent ( p, "scoreboard:highestPlayerCount:sync", p, highestPlayerCount )
+        local adminSys = getResourceFromName ( "admin-system" )
+        if adminSys and getResourceState ( adminSys ) == "running" then
+                local ok, tbl = pcall ( function ( )
+                        return exports [ "admin-system" ]:getAllRankColors ( )
+                end )
+                if ok and type ( tbl ) == "table" and next ( tbl ) then
+                        triggerClientEvent ( p, "scoreboard:rankColors", root, tbl )
+                end
+        end
+end )
+
 --------------------------------------------------------------------------------
 -- Fix #24 (user): FIXED MOD ID per account
 --   * every account gets a permanent sequential id the first time it logs in
@@ -204,8 +223,17 @@ local function getOrCreateModId(accountName)
         accountName = tostring(accountName)
         local id = modIds[accountName]
         if not id then
+                -- [Fix #96] never hand out an id that is already reserved by
+                -- any other account, even if the next counter went stale
+                local taken = {}
+                for _, other in pairs(modIds) do
+                        taken[other] = true
+                end
                 id = nextModId
-                nextModId = nextModId + 1
+                while taken[id] do
+                        id = id + 1
+                end
+                nextModId = id + 1
                 modIds[accountName] = id
                 saveModIds()
         end
@@ -247,6 +275,12 @@ local function assignModId(player)
         local id = getOrCreateModId(user)
         if id and getElementData(player, "mod:id") ~= id then
                 setElementData(player, "mod:id", id)
+        end
+        -- [Fix #90] full replacement: keep the session id equal to the
+        -- persistent mod id on every login (silently skipped when the slot
+        -- is already held by another online player - see setPlayerSlot)
+        if id and tonumber(getElementData(player, "playerid")) ~= id then
+                exports["id-system"]:setPlayerSlot(player, id)
         end
 end
 
@@ -454,6 +488,7 @@ addCommandHandler("setid", function(player, cmd, query, newId)
                 return
         end
         newId = tonumber(newId)
+        if newId then newId = math.floor(newId) end
         if not query or query == "" or not newId or newId < 1 then
                 outputChatBox("USAGE: /setid <account | current mod id> <new id>", player, 255, 195, 14)
                 return
@@ -470,10 +505,26 @@ addCommandHandler("setid", function(player, cmd, query, newId)
                 outputChatBox("No account matches '" .. query .. "'.", player, 255, 140, 60)
                 return
         end
+        -- [Fix #96 - user] PERMANENT RESERVATION: an id bound to ANY account
+        -- (online or offline) can never be re-issued - only the owner can
+        -- release it later by moving to a different id. A live session id
+        -- worn by another player is rejected too.
         for user, id in pairs(modIds) do
                 if id == newId and user ~= targetUser then
-                        outputChatBox("Mod id " .. newId .. " already belongs to " .. user .. ".", player, 255, 80, 80)
+                        outputChatBox("REJECTED: id " .. newId .. " is permanently reserved for account '" .. user .. "'.", player, 255, 80, 80)
                         return
+                end
+        end
+        local online = findPlayerByNamePart(targetUser)
+        for _, p in ipairs(getElementsByType("player")) do
+                if p ~= online then
+                        local sessionId = tonumber(getElementData(p, "playerid"))
+                        local theirModId = tonumber(getElementData(p, "mod:id"))
+                        if sessionId == newId or theirModId == newId then
+                                local who = tostring(getElementData(p, "account:username") or getPlayerName(p) or "?")
+                                outputChatBox("REJECTED: id " .. newId .. " is currently worn by '" .. who .. "' in this session.", player, 255, 80, 80)
+                                return
+                        end
                 end
         end
         modIds[targetUser] = newId
@@ -481,9 +532,14 @@ addCommandHandler("setid", function(player, cmd, query, newId)
                 nextModId = newId + 1
         end
         saveModIds()
-        local online = findPlayerByNamePart(targetUser)
         if online then
                 setElementData(online, "mod:id", newId)
+                -- [Fix #90] full replacement: the session id (playerid, the
+                -- one nametags / /id / chat show) follows the new mod id too
+                local ok, err = exports["id-system"]:setPlayerSlot(online, newId)
+                if not ok then
+                        outputChatBox("Mod id updated, but the session id could not change: " .. tostring(err) .. ".", player, 255, 195, 14)
+                end
         end
         outputChatBox("[SETID] " .. targetUser .. " now has mod id " .. newId .. ".", player, 120, 220, 120)
 end, false, false)

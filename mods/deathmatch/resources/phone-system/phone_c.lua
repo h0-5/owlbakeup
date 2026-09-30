@@ -197,7 +197,10 @@ local function UIKitReady()
             eui:uiSetProperty(UI.appIcon[i], "HoverOpacityEffect", true)
         end
         -- icon -> app name (decompile var0 map)
-        local iconApps = { "phone", "contacts", "messages", "settings", "bank", "notes",
+        -- [Fix #72] position 5 was "bank": the Wallet.png icon opened the
+        -- EMPTY bank stub while the fully built UI.app.wallet (with server
+        -- data request) was unreachable - remapped so the Wallet icon works
+        local iconApps = { "phone", "contacts", "messages", "settings", "wallet", "notes",
             "taxi", "safari", "whatsapp", "airport", "electricity", "health", "traffic", "activities" }
         UI.iconApp = {}
         for i, name in ipairs(iconApps) do UI.iconApp[UI.appIcon[i]] = name end
@@ -501,7 +504,9 @@ local function UIKitReadyPart2()
         -- ====================== STUB APPS (v1.0 faithful) =================
         -- electricity / traffic / bank / activities shipped EMPTY in the
         -- original v1.0 client - kept as dark containers with a title only
-        for _, name in ipairs({ "electricity", "traffic", "bank", "activities" }) do
+        -- [Fix #72] taxi is the iconApps name too (gridNames "taxi" -> openApp
+        -- "taxi"); without a container uiSetVisible(nil) errored on every tap
+        for _, name in ipairs({ "electricity", "traffic", "bank", "activities", "taxi" }) do
             UI.app[name] = eui:uiCreateContainer(5, 0, DW - 10, DH, UI.image.device)
             eui:uiSetVisible(UI.app[name], false)
         end
@@ -632,11 +637,25 @@ end
 -- open / close / openApp (decompile: app.open / app.close / openApp)
 --------------------------------------------------------------------------------
 local function openApp(name)
+    -- [Fix #72] guard: an icon whose app name has no container (e.g. taxi
+    -- before the stub was added) must not error inside onClientUIClick
+    if not (name and UI.app and UI.app[name]) then
+        outputDebugString("[phone-system] openApp: no container for app '"
+            .. tostring(name) .. "'", 2)
+        return
+    end
     if app.currentApp then
         eui:uiSetVisible(UI.app[app.currentApp], false)
     else
         eui:uiSetVisible(UI.image.wallpaper, false)
         eui:uiSetVisible(UI.label.home_screen, false)
+    end
+    -- Fix #61: external app modules (e.g. taxi) build into a stub via
+    -- phone:app:request(name, parent, x, y, w, h)
+    if not UI.app[name] then
+        UI.app[name] = eui:uiCreateContainer(5, 0, DW - 10, DH, UI.image.device)
+        eui:uiSetVisible(UI.app[name], false)
+        triggerEvent("phone:app:request", localPlayer, name, UI.app[name], 0, 0, DW - 10, DH)
     end
     app.currentApp = name
     eui:uiSetVisible(UI.app[name], true)
@@ -687,7 +706,12 @@ addEventHandler("phone:data:request:callback", localPlayer, function(item, data)
         eui:uiSetVisible(UI.label.home_screen, true)
         eui:uiSetVisible(UI.image.screen, true)
         bindKey("mouse2", "down", cursor_visible)
-        cursorStatus = false
+        -- [Fix #72] the screen opened with NO cursor - onClientUIClick only
+        -- fires on cursor clicks, so every tap did nothing ("phone broken,
+        -- nothing works"). Open with the cursor on (right-click still toggles
+        -- it off/on via cursor_visible); closePhone/showCursor(false) resets.
+        cursorStatus = true
+        showCursor(true)
         eui:uiSetText(UI.label.device_info, "Serial Number: " .. tostring(item.serial or "N/A") ..
             "\nPhone Number: " .. tostring(item.phone_number or "N/A") ..
             "\nVoucher: " .. tostring(item.voucher or 0))
@@ -1093,6 +1117,32 @@ end
 
 addEventHandler("onClientUIClick", root, function()
     if not built then return end
+    -- [Fix #76] the home indicator was matched by element identity
+    -- (source == UI.rectangle.HOME_BUTTON): UIKit's hit-test returns the
+    -- element that was CREATED LAST among those under the cursor, so any
+    -- later-created element overlapping the 5px bar (app containers, the
+    -- device frame) stole the click and the home button never fired.
+    -- Test the cursor against the bar's own on-screen rect instead.
+    do
+        local hx, hy, hw, hh = eui:uiGetAbsoluteBounds(UI.rectangle.HOME_BUTTON)
+        local ccx, ccy = getCursorPosition()
+        if hx and ccx then
+            local pw, ph = guiGetScreenSize()
+            ccx, ccy = ccx * pw, ccy * ph
+            if ccx >= hx and ccx <= hx + hw and ccy >= hy and ccy <= hy + hh then
+                if app.currentApp then
+                    eui:uiSetVisible(UI.app[app.currentApp], false)
+                    eui:uiSetVisible(UI.image.wallpaper, true)
+                    eui:uiSetVisible(UI.label.home_screen, true)
+                    app.currentApp = false
+                    focusBrowser()
+                else
+                    closePhone()
+                end
+                return
+            end
+        end
+    end
     if source == UI.button["SIM:Close"] then
         eui:uiSetVisible(UI.window.SIM, false)
         showCursor(false)

@@ -227,9 +227,11 @@ addEventHandler("onClientRender", root, renderDirective)
 -- output() pill notifications (bottom-center slide-in)
 -------------------------------------------------------------------------------
 local PILL_H = 40
+-- [Fix #92] file-scope: reflowPills() below used these names too and was
+-- reading them as GLOBALS -> nil -> "arithmetic on global 'stackBottom'"
+local stackBottom = screenH - 60 * scale
+local stackTop = 60 * scale
 local function renderPills()
-	local stackBottom = screenH - 60 * scale
-	local stackTop = 60 * scale
 	for _, pill in ipairs(pills) do
 		local progress = (getTickCount() - pill.tick) / 500
 		if progress > 1 then progress = 1 end

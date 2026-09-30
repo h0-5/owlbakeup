@@ -41,6 +41,64 @@ UI = {
   scaleYFactor = sy / 768
 }
 newLinePrefix = "@@@@@@@@@@@@@@@NEWS_LINE@@@@@@@@@@@@@@@@"
+-- [Fix #82 - memo] the decompiled memo code assigned into a FRESH table
+-- returned by split(...) and then concatenated the UNCHANGED original text,
+-- so every memo edit (type / backspace / delete / enter / paste) silently
+-- discarded the change: the report window could not accept a single letter.
+-- One shared pair of helpers keeps the "prefix each split line" convention
+-- the rest of the memo code expects.
+function memoSplitLines(text)
+  local raw = tostring(text or ""):gsub("\n", "\n" .. newLinePrefix)
+  if raw:find("\n", 1, true) then
+    return split(raw, 10)
+  end
+  return { raw }
+end
+function memoJoinLines(lines)
+  return (table.concat(lines, "\n"):gsub(newLinePrefix, ""))
+end
+function memoSetText(el, newText)
+  local db = UI.DB[el]
+  uiSetText(el, newText)
+  -- the old code also refreshed the visible window from line_i after an edit
+  local lines = memoSplitLines(db.text)
+  local fontH = dxGetFontHeight(db.font.size, db.font.name)
+  local first = math.max(1, math.min(tonumber(db.data.line_i) or 1, #lines))
+  local last = math.min(#lines, first + math.floor(db.dimensions.height / fontH) + 1)
+  db.data.showtext = (table.concat(lines, "\n", first, last):gsub(newLinePrefix, ""))
+end
+function memoDeleteChar(el, key)
+  local db = UI.DB[el]
+  if not db or not db.data or not db.text then return end
+  local lines = memoSplitLines(db.text)
+  if #lines == 0 then return end
+  local li = math.max(1, math.min(db.data.caretLine or 1, #lines))
+  local line = (lines[li] or ""):gsub(newLinePrefix, "")
+  if key == "backspace" then
+    if db.data.caret == 1 then
+      if li == 1 then return end
+      local prev = (lines[li - 1] or ""):gsub(newLinePrefix, "")
+      db.data.caret = utfLen(prev) + 1
+      lines[li - 1] = prev .. line
+      table.remove(lines, li)
+      db.data.caretLine = li - 1
+    elseif db.data.caret > 1 then
+      lines[li] = utfSub(line, 1, db.data.caret - 2) .. utfSub(line, db.data.caret, utfLen(line))
+      db.data.caret = db.data.caret - 1
+    else
+      return
+    end
+  else
+    if db.data.caret > utfLen(line) then
+      if li >= #lines then return end
+      lines[li] = line .. ((lines[li + 1] or ""):gsub(newLinePrefix, ""))
+      table.remove(lines, li + 1)
+    else
+      lines[li] = utfSub(line, 1, db.data.caret - 1) .. utfSub(line, db.data.caret + 1, utfLen(line))
+    end
+  end
+  memoSetText(el, memoJoinLines(lines))
+end
 dxFont = dxCreateFont("fonts/Font2.ttf", 11.5 * SCALE_Y)
 dxFontLarge = dxCreateFont("fonts/Font2.ttf", 15 * SCALE_Y)
 dxFontHUD = dxCreateFont("fonts/PFDinDisplayPro-Regular.ttf", 15 * SCALE_Y, false) or "default"

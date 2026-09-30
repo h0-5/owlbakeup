@@ -64,13 +64,26 @@ local function buildVehiclesList(characterId)
         -- table, so the WHOLE query errored and the F1 list was always empty.
         -- Select only columns that really exist (verified against
         -- vehicle-system/s_vehicle_system.lua: id/model/plate/Impounded).
+        -- [Fix #100 #4] `mysql:query` was a call on a NIL global (this resource
+        -- has no `mysql` table), so the pcall always failed and both lists came
+        -- back empty -> "0 vehicles". The driver is reached through its export,
+        -- and query_rows_assoc returns the ROWS (query() only returns a
+        -- result id, which would have been a number here).
         local ok, rows = pcall(function()
-                return mysql:query(
+                return exports.mysql:query_rows_assoc(
                         "SELECT v.id, v.model, v.plate, v.Impounded, " ..
                         "       s.vehbrand, s.vehmodel, s.vehyear " ..
                         "FROM `vehicles` v " ..
                         "LEFT JOIN `vehicles_shop` s ON v.vehicle_shop_id = s.id " ..
-                        "WHERE v.owner = " .. mysql:escape_string(characterId) .. " " ..
+                        "WHERE v.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
+                        -- [Fix #152] admin/system-deleted cars (deleted = -1, or the
+                        -- deleting admin's account id) have the owner cleared only
+                        -- sometimes, so without this filter a deleted car came back
+                        -- on the very next fetch and reappeared in F1 right after
+                        -- the live mainmenu:propertyRemoved push dropped the row.
+                        -- Numeric compare (loadAllVehicles convention): '0' -> 0,
+                        -- '1'/admin id/-1 -> non-zero -> hidden. NULL stays visible.
+                        "AND (v.deleted = 0 OR v.deleted IS NULL) " ..
                         "ORDER BY v.id ASC"
                 )
         end)
@@ -106,12 +119,22 @@ local function buildInteriorsList(characterId)
         -- (verified against interior-system/s_interior_system.lua): the query
         -- always errored and the F1 list stayed empty. Real columns are
         -- locked/cost + deleted; status is derived from them.
+        -- [Fix #100 #4] same nil-global bug as buildVehiclesList above:
+        -- reach the driver through its exports and take the ROWS back.
         local ok, rows = pcall(function()
-                return mysql:query(
+                return exports.mysql:query_rows_assoc(
                         "SELECT i.id, i.name, i.locked, i.cost " ..
                         "FROM `interiors` i " ..
-                        "WHERE i.owner = " .. mysql:escape_string(characterId) .. " " ..
-                        "AND (i.deleted = 0 OR i.deleted IS NULL) " ..
+                        "WHERE i.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
+                        -- [Fix #152] interiors.deleted holds the deleting admin's
+                        -- USERNAME (interior-system/s_interior_admin.lua: DELETE
+                        -- sets deleted = '<adminname>'), not a flag. The old NUMERIC
+                        -- compare matched those rows ('adminname' converts to 0 in
+                        -- MySQL), so a deleted house stayed in F1 forever - the bug
+                        -- behind "sold/deleted property keeps showing until relog".
+                        -- String compare matches loadAllInteriors' own
+                        -- `WHERE deleted = '0'` (see interior-system:1047).
+                        "AND (i.deleted = '0' OR i.deleted IS NULL) " ..
                         "ORDER BY i.id ASC"
                 )
         end)
@@ -199,16 +222,41 @@ function getPlayerIDStrSafe(player)
                 or "-")
 end
 
---[[ ==================== leaderboard ==================== ]]
--- placeholder until the level-system mod is restored: replies with an
--- empty list so the client grid simply renders empty (same as PDZ bridge)
+--[[ ==================== leaderboard ====================
+        [Fix #63] real leaderboards. "levels" = level_system (per-character
+        level/exp, the same table level-system maintains) joined with the
+        characters table for names - the old client grid has #/Name/Level.
+        "activities" has no server data source yet (play-time points placeholder
+        kept empty until its system is ported) - the grid renders empty. ]]
 
 addEvent("leaderboard:get", true)
 addEventHandler("leaderboard:get", root, function(kind)
         local thePlayer = client or source
         if not isElement(thePlayer) then return end
         if kind ~= "levels" and kind ~= "activities" then return end
-        reply(thePlayer, "leaderboard:get:response", kind, {})
+        local list = {}
+        if kind == "levels" then
+                local q = exports.mysql:query([[
+                        SELECT ls.character_id, ls.level, ls.exp, c.charactername
+                        FROM level_system ls
+                        JOIN characters c ON c.id = ls.character_id
+                        ORDER BY ls.level DESC, ls.exp DESC
+                        LIMIT 20
+                ]])
+                if q then
+                        while true do
+                                local row = exports.mysql:fetch_assoc(q)
+                                if not row then break end
+                                list[#list + 1] = {
+                                        name = tostring(row.charactername or "-"),
+                                        level = tonumber(row.level) or 1,
+                                        exp = tonumber(row.exp) or 0
+                                }
+                        end
+                        exports.mysql:free_result(q)
+                end
+        end
+        reply(thePlayer, "leaderboard:get:response", kind, list)
 end)
 
 --[[ ==================== discord link ==================== ]]

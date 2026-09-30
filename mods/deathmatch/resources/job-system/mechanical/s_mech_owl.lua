@@ -18,6 +18,21 @@
 -- getPlayerMoney(localPlayer) before removing the price row - verbatim).
 -- No job gating / EXP / salary calls exist in the decompiles - this is a
 -- vehicle service panel, not a gated job (documented).
+-- [Fix #110] the "mechanic_panel" faction permission from the F3 Tools tab
+-- (Mechanic type 7 / Traffic type 9, min rank 3 or faction leader) now gates
+-- every mechanic:* event below. The "no job gating" note above still holds -
+-- no job/EXP requirement was added - but the panel is a faction tool now.
+
+-- [Fix #110] server gate for the panel: pcall + fail-open, the same shape as
+-- the Fix #56 permission gates in spike-system / roadblock-system - if
+-- faction-system is stopped the call fails and the panel keeps its old
+-- (ungated) behaviour.
+local function hasMechanicPanelPermission(player)
+	local okPerm, hasPerm = pcall(function()
+		return exports["faction-system"]:doesPlayerHaveFactionPermission(player, "mechanic_panel")
+	end)
+	return (not okPerm) or (hasPerm ~= false)
+end
 
 local veh_upgrades = {}
 
@@ -55,6 +70,12 @@ end
 addEvent("mechanic:repairBody", true)
 addEventHandler("mechanic:repairBody", root, function(vehicle)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) then
 		return
 	end
@@ -74,6 +95,12 @@ end)
 addEvent("mechanic:repairEngine", true)
 addEventHandler("mechanic:repairEngine", root, function(vehicle)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) then
 		return
 	end
@@ -88,6 +115,12 @@ end)
 addEvent("mechanic:repairWheels", true)
 addEventHandler("mechanic:repairWheels", root, function(vehicle, wheel)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) or not tonumber(wheel) then
 		return
 	end
@@ -102,6 +135,12 @@ end)
 addEvent("mechanic:addUpgrade", true)
 addEventHandler("mechanic:addUpgrade", root, function(vehicle, upgradeID, price)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) or not tonumber(upgradeID) or not tonumber(price) then
 		return
 	end
@@ -121,6 +160,12 @@ end)
 addEvent("mechanic:removeUpgrade", true)
 addEventHandler("mechanic:removeUpgrade", root, function(vehicle, upgradeID, price)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) or not tonumber(upgradeID) then
 		return
 	end
@@ -130,6 +175,12 @@ end)
 addEvent("mechanic:changeVehicleColor", true)
 addEventHandler("mechanic:changeVehicleColor", root, function(vehicle, colors)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) or type(colors) ~= "table" or #colors ~= 4 then
 		return
 	end
@@ -145,6 +196,12 @@ end)
 addEvent("mechanic:changeLightsColor", true)
 addEventHandler("mechanic:changeLightsColor", root, function(vehicle, r, g, b)
 	local player = client
+	-- [Fix #110] F3 Tools "Mechanic Panel" toggle (Faction permission, server
+	-- authority) - denial uses this file's Arabic notification style.
+	if not hasMechanicPanelPermission(player) then
+		exports.notifications:outputToPlayer(player, "لا تملك صلاحية لوحة الميكانيكي.", 4000, "error")
+		return
+	end
 	if not isServiceVehicle(vehicle, player) or not tonumber(r) or not tonumber(g) or not tonumber(b) then
 		return
 	end

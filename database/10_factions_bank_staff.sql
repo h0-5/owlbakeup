@@ -31,6 +31,11 @@ CREATE TABLE IF NOT EXISTS factions (
 	fnote TEXT,
 	phone VARCHAR(20),
 	max_interiors INT DEFAULT 20,
+	-- [Fix #147] live columns (added to the live DB too): اللون/الضمان/الهوتلاين/الراديو
+	color VARCHAR(16) DEFAULT '#FFFFFF',
+	welfare INT NOT NULL DEFAULT 0,
+	hotline VARCHAR(32) DEFAULT '',
+	radio VARCHAR(32) DEFAULT '',
 	PRIMARY KEY (id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
@@ -142,12 +147,7 @@ CREATE TABLE IF NOT EXISTS owl_mta (
 --   مثال:
 --   ALTER TABLE characters ADD COLUMN IF NOT EXISTS newcolumn INT DEFAULT 0;
 --
--- [Fix #142] الأعمدة التصميمية (color/welfare/hotline/radio) كانت في القديم
---   ضمن CREATE لكنها غير موجودة في الجدول الحي — أضفها كـ ALTER لـ installs جديدة:
---   ALTER TABLE factions ADD COLUMN color VARCHAR(16) DEFAULT '#FFFFFF';
---   ALTER TABLE factions ADD COLUMN welfare INT NOT NULL DEFAULT 0;
---   ALTER TABLE factions ADD COLUMN hotline VARCHAR(32) DEFAULT '';
---   ALTER TABLE factions ADD COLUMN radio VARCHAR(32) DEFAULT '';
+--   [Fix #147] color/welfare/hotline/radio أصبحت ضمن CREATE (وأُضيفت للجدول الحي)
 --
 -- [Fix #118] إحداثيات duty_locations كانت INT والكود يكتب FLOAT:
 --   ALTER TABLE duty_locations MODIFY x FLOAT, MODIFY y FLOAT,

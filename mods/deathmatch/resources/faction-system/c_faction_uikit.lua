@@ -23,15 +23,16 @@
             Respawn All, double-click = respawn one
           * DUTY: tab panel (packages / locations / vehicle locations) with
             add/remove per tab
-          * LOGS: session action log
+          * LOGS: session action log + permanent server history
+            (factionlogs via faction:logs:request/receive, Fix #146)
           * sub windows: Promote/Demote rank picker (double click),
             Add Member with live character search, Duty Perks checklist
 
-        SERVER CONTRACT UNCHANGED (s_faction_system.lua / s_faction_admin.lua):
+        SERVER CONTRACT (s_faction_system.lua / s_faction_admin.lua):
           receives showFactionMenu(23 args - append-only, #23 = vehLimit
                    [Fix #136]) / hideFactionMenu /
                    factionmenu:fillFinance / importDutyData / Duty:GotPackages /
-                   gotAllow
+                   gotAllow / faction:logs:receive [Fix #146, additive]
           sends    cguiPromotePlayer, cguiDemotePlayer, cguiInvitePlayer,
                    faction:perks:edit, cguiKickPlayer, cguiToggleLeader,
                    cguiUpdateRanks, cguiRespawnVehicles, cguiRespawnOneVehicle,
@@ -39,7 +40,8 @@
                    factionmenu:hide, factionmenu:getFinance, fetchDutyInfo,
                    Duty:Grab [Fix #127],
                    Duty:GetPackages, Duty:AddDuty, Duty:RemoveDuty,
-                   Duty:AddLocation, Duty:RemoveLocation, Duty:AddVehicle
+                   Duty:AddLocation, Duty:RemoveLocation, Duty:AddVehicle,
+                   faction:logs:request [Fix #146, additive]
 ========================================================================= ]]
 
 local localPlayer = getLocalPlayer()
@@ -85,6 +87,7 @@ F = {
         dutyLocations = {},
         dutyAllow = {},
         actionLog = {},
+        historyLog = {}, -- [Fix #146] permanent factionlogs history (server pushed)
         selectedMember = 0,
         currentRank = 0,
 }
@@ -115,6 +118,15 @@ local function factionColor()
         local c = F.team and getElementData(F.team, "color") or nil
         if type(c) == "table" and tonumber(c[1]) then
                 return tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
+        end
+        -- [Fix #147] factions.color is a varchar, stored as "#RRGGBB" (also
+        -- accepts bare "RRGGBB"); the table shape above stays supported for
+        -- any legacy elementData writer.
+        if type(c) == "string" then
+                local hex = c:match("^#?(%x%x%x%x%x%x)$")
+                if hex then
+                        return tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16)
+                end
         end
         return 255, 55, 95
 end
@@ -480,14 +492,56 @@ local function refreshDutyGrids()
         F.dutyVehicleRows = vehicles
 end
 
+-- [Fix #146] "2026-09-30 14:33:12" -> "30/09/2026 14:33" so the permanent
+-- history reads like the session entries' "%d/%m %H:%M" stamps; raw value is
+-- kept when the DB format is unexpected.
+
+local function formatHistoryDate(raw)
+        local y, mo, d, hm = tostring(raw):match("^(%d%d%d%d)-(%d%d)-(%d%d) (%d%d:%d%d)")
+        if y then
+                return d .. "/" .. mo .. "/" .. y .. " " .. hm
+        end
+        return tostring(raw)
+end
+
 local function refreshLogsGrid()
         eui:uiGridListClear(UI.gridlist.Logs)
+        -- [Fix #146] permanent factionlogs history first, then this session's
+        -- entries; same two columns (Log / Date), only rows are added.
+        for _, l in ipairs(F.historyLog) do
+                local row = eui:uiGridListAddRow(UI.gridlist.Logs)
+                eui:uiGridListSetItemText(UI.gridlist.Logs, row, 1, tostring(l.who) .. ": " .. tostring(l.what))
+                eui:uiGridListSetItemText(UI.gridlist.Logs, row, 2, tostring(l.at))
+        end
         for _, l in ipairs(F.actionLog) do
                 local row = eui:uiGridListAddRow(UI.gridlist.Logs)
                 eui:uiGridListSetItemText(UI.gridlist.Logs, row, 1, tostring(l.text))
                 eui:uiGridListSetItemText(UI.gridlist.Logs, row, 2, tostring(l.at))
         end
 end
+
+-- [Fix #146] server history reply: replace the cached rows and repaint the
+-- grid when the Logs section is the one on screen.
+
+addEvent("faction:logs:receive", true)
+
+addEventHandler("faction:logs:receive", root, function(rows)
+        F.historyLog = {}
+        if type(rows) == "table" then
+                for _, r in ipairs(rows) do
+                        if type(r) == "table" then
+                                F.historyLog[#F.historyLog + 1] = {
+                                        who = tostring(r.who or "?"),
+                                        what = tostring(r.what or ""),
+                                        at = formatHistoryDate(r.date),
+                                }
+                        end
+                end
+        end
+        if built and F.section == "logs" then
+                refreshLogsGrid()
+        end
+end)
 
 -- [Fix #129] Duty Perks checklist: every allow-list row is
 -- {dbid, itemID, itemValue}, so tostring(perk) used to print "table: 0x..." and
@@ -533,9 +587,30 @@ local function refreshHeader()
                 hex .. "• النوع » #FFFFFF" .. typeAr(F.factionType) .. "\n" ..
                 hex .. "• الأعضاء » #FFFFFF" .. tostring(#F.members) .. " / 20" .. "\n" ..
                 hex .. "• متصل الآن » #00FF00" .. tostring(online))
-        eui:uiSetText(UI.label.FactionInfo2,
-                hex .. "• الخط الساخن » #FFFFFF" .. tostring((d and d.phone) or "-") .. "\n" ..
-                hex .. "• رسالة اليوم » #FFFFFF" .. tostring((d and d.motd) or "-"))
+        -- [Fix #147] HOTLINE / RADIO rows (owner approved display addition):
+        -- identical hex-bullet rows as the phone/MOTD ones above, appended
+        -- ONLY when the elementData value is non-empty so the header block
+        -- never stretches (empty values keep the original two-row layout).
+
+        local info2 = {
+                hex .. "• الخط الساخن » #FFFFFF" .. tostring((d and d.phone) or "-"),
+        }
+
+        local hotline = F.team and getElementData(F.team, "hotline") or ""
+
+        if tostring(hotline) ~= "" then
+                info2[#info2 + 1] = hex .. "• الخط الطوارئ » #FFFFFF" .. tostring(hotline)
+        end
+
+        local radio = F.team and getElementData(F.team, "radio") or ""
+
+        if tostring(radio) ~= "" then
+                info2[#info2 + 1] = hex .. "• اللاسلكي » #FFFFFF" .. tostring(radio)
+        end
+
+        info2[#info2 + 1] = hex .. "• رسالة اليوم » #FFFFFF" .. tostring((d and d.motd) or "-")
+
+        eui:uiSetText(UI.label.FactionInfo2, table.concat(info2, "\n"))
         eui:uiSetText(UI.label.level, "الأعضاء")
         eui:uiSetText(UI.label.level_points, tostring(online) .. " متصل من " .. tostring(#F.members) .. " / 20")
 end
@@ -678,6 +753,7 @@ addEventHandler("showFactionMenu", root, function(motd, memberUsernames, memberR
         refreshRanksGrid()
         refreshVehiclesGrid()
         refreshDutyGrids()
+        F.historyLog = {} -- [Fix #146] never show another open's stale history
         refreshLogsGrid()
         applyLeaderRights()
         reloadMenu()
@@ -713,7 +789,10 @@ addEventHandler("onClientUIMenuSelectChange", root, function(row)
         elseif id == "management" and not F.financeLoaded then
                 triggerServerEvent("factionmenu:getFinance", getResourceRootElement())
         elseif id == "logs" then
+                -- [Fix #146] also pull the permanent factionlogs history; the
+                -- faction:logs:receive reply repopulates the same grid.
                 refreshLogsGrid()
+                triggerServerEvent("faction:logs:request", resourceRoot)
         end
 end)
 

@@ -1,5 +1,5 @@
 function marry(thePlayer, commandName, player1, player2)
-	if exports.integration:isPlayerAdmin(thePlayer) then
+	-- [Fix #110] F3 Tools "marry" toggle (Government type 3, min rank 6 /	-- faction leader). The legacy admin check is kept as an explicit bypass,	-- so admins retain exactly today's access; every other player needs the	-- faction permission. pcall + fail-open mirrors the Fix #56 gates in	-- spike-system / roadblock-system: if faction-system is stopped the pcall	-- fails and the admin-only rule below stays authoritative (Fix #46 class).	local adminBypass = exports.integration:isPlayerAdmin(thePlayer)	local okPerm, hasPerm = pcall(function()		return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "marry")	end)		if not adminBypass and (not okPerm or hasPerm == false) then		outputChatBox( "You do not have permission to use this command.", thePlayer, 255, 0, 0 )	else
 		if not player1 or not player2 then
 			outputChatBox( "SYNTAX: /" .. commandName .. " [player] [player]", thePlayer, 255, 194, 14 )
 		else
@@ -40,7 +40,7 @@ end
 addCommandHandler("marry", marry)
 
 function divorce(thePlayer, commandName, targetPlayer)
-	if exports.integration:isPlayerAdmin(thePlayer) then
+	-- [Fix #110] F3 Tools "divorce" toggle (Government type 3, min rank 6 /	-- faction leader); admin bypass + pcall fail-open, see marry above.	local adminBypass = exports.integration:isPlayerAdmin(thePlayer)	local okPerm, hasPerm = pcall(function()		return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "divorce")	end)		if not adminBypass and (not okPerm or hasPerm == false) then		outputChatBox( "You do not have permission to use this command.", thePlayer, 255, 0, 0 )	else
 		if not targetPlayer then
 			outputChatBox( "SYNTAX: /" .. commandName .. " [player]", thePlayer, 255, 194, 14 )
 		else

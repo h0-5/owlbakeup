@@ -2311,6 +2311,18 @@ addCommandHandler("togglenews", togNews, false, false)
 function StartInterview(thePlayer, commandName, targetPartialPlayer)
 	local logged = getElementData(thePlayer, "loggedin")
 	if (logged==1) then
+		-- [Fix #110] F3 Tools "news" toggle (News Tools: News type 6, min rank 1
+		-- or faction leader). Placed before the team/type read so a player with
+		-- no faction is denied with the file's usual message instead of hitting
+		-- getElementData(false); the factionType==6 rule below stays untouched.
+		-- pcall + fail-open mirrors the Fix #56 gates (spike-/roadblock-system).
+		local okPerm, hasPerm = pcall(function()
+			return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "news")
+		end)
+		if okPerm and hasPerm == false then
+			outputChatBox("You do not have permission to use this command.", thePlayer, 255, 0, 0)
+			return
+		end
 		local theTeam = getPlayerTeam(thePlayer)
 		local factionType = getElementData(theTeam, "type")
 		if(factionType==6)then -- news faction
@@ -2345,6 +2357,14 @@ addCommandHandler("interview", StartInterview, false, false)
 function endInterview(thePlayer, commandName, targetPartialPlayer)
 	local logged = getElementData(thePlayer, "loggedin")
 	if (logged==1) then
+		-- [Fix #110] F3 Tools "news" toggle (News Tools); gate see /interview above.
+		local okPerm, hasPerm = pcall(function()
+			return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "news")
+		end)
+		if okPerm and hasPerm == false then
+			outputChatBox("You do not have permission to use this command.", thePlayer, 255, 0, 0)
+			return
+		end
 		local theTeam = getPlayerTeam(thePlayer)
 		local factionType = getElementData(theTeam, "type")
 		if(factionType==6)then -- news faction

@@ -39,7 +39,7 @@ addCommandHandler("fingerprint", fingerprintPlayer, false, false)
 function ticketPlayer(thePlayer, commandName, targetPlayerNick, amount, ...)
 	local logged = getElementData(thePlayer, "loggedin")
 	
-	if (logged==1) then
+	if (logged==1) then		-- [Fix #110] F3 Tools "invoice" toggle (Invoices: min rank 1 for the		-- Law / Government / Medical / News / Mechanic / Electric / Traffic		-- types). Sits above the existing Law-only factionType==2 rule, which is		-- left untouched; it runs before the team/type read so a player with no		-- faction gets a denial message instead of getElementData(false).		-- pcall + fail-open mirrors the Fix #56 gates (spike-/roadblock-system).		local okPerm, hasPerm = pcall(function()			return exports["faction-system"]:doesPlayerHaveFactionPermission(thePlayer, "invoice")		end)		if okPerm and hasPerm == false then			outputChatBox("You do not have permission to use this command.", thePlayer, 255, 0, 0)			return		end		
 		local theTeam = getPlayerTeam(thePlayer)
 		local factionType = getElementData(theTeam, "type")
 		

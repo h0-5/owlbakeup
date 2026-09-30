@@ -30,7 +30,7 @@ function createFaction(thePlayer, commandName, factionType, ...)
 					exports.anticheat:changeProtectedElementDataEx(theTeam, "wages", factionWages, false)
 					exports.anticheat:changeProtectedElementDataEx(theTeam, "motd", "Welcome to the faction.", false)
 					exports.anticheat:changeProtectedElementDataEx(theTeam, "note", "", false)
-					exports.logs:dbLog(thePlayer, 4, theTeam, "MAKE FACTION")
+					exports.logs:dbLog(thePlayer, 4, theTeam, "MAKE FACTION")					logFactionAction(id, getPlayerName(thePlayer), "created the faction '" .. factionName .. "'") -- [Fix #146]
 					-- [Fix #114] row is nil on the INSERT path; use the id fetched above
 					if type(dutyAllow) == "table" then
 						table.insert(dutyAllow, { id, factionName, { --[[Duty information]] } })
@@ -62,7 +62,7 @@ function adminRenameFaction(thePlayer, commandName, factionID, ...)
 					setTeamName(theTeam, factionName)
 					
 					exports.global:sendMessageToAdmins(exports.global:getPlayerFullIdentity(thePlayer).." renamed faction '" .. oldName .. "' to '" .. factionName .. "'.")
-					exports.factions:sendNotiToAllFactionMembers(factionID, "Your faction '"..oldName.."' was renamed to '"..factionName.."' by "..exports.global:getPlayerFullIdentity(thePlayer,1,true))
+					exports.factions:sendNotiToAllFactionMembers(factionID, "Your faction '"..oldName.."' was renamed to '"..factionName.."' by "..exports.global:getPlayerFullIdentity(thePlayer,1,true))					logFactionAction(factionID, getPlayerName(thePlayer), "renamed the faction to '" .. factionName .. "'") -- [Fix #146]
 				else
 					outputChatBox("Invalid Faction ID.", thePlayer, 255, 0, 0)
 				end
@@ -89,7 +89,7 @@ function adminSetPlayerFaction(thePlayer, commandName, partialNick, factionID)
 					return
 				end
 				
-				if mysql:query_free("UPDATE characters SET faction_leader = 0, faction_id = " .. factionID .. ", faction_rank = 1, faction_phone = NULL, duty = 0 WHERE id=" .. getElementData(targetPlayer, "dbid")) then
+				local prevFactionID = tonumber(getElementData(targetPlayer, "faction")) or -1 -- [Fix #146]				if mysql:query_free("UPDATE characters SET faction_leader = 0, faction_id = " .. factionID .. ", faction_rank = 1, faction_phone = NULL, duty = 0 WHERE id=" .. getElementData(targetPlayer, "dbid")) then
 					setPlayerTeam(targetPlayer, theTeam)
 					if factionID > 0 then
 						exports.anticheat:changeProtectedElementDataEx(targetPlayer, "faction", factionID, true)
@@ -104,7 +104,7 @@ function adminSetPlayerFaction(thePlayer, commandName, partialNick, factionID)
 						triggerEvent("onPlayerJoinFaction", targetPlayer, theTeam)
 						outputChatBox("You were set to Faction '" .. getTeamName(theTeam) .. "'.", targetPlayer, 255, 194, 14)
 						
-						exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION")
+						exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION")						logFactionAction(factionID, getPlayerName(thePlayer), "added " .. targetPlayerNick .. " to the faction") -- [Fix #146]
 					else
 						-- Citizen bug fix by Anthony
 						local citizenTeam = getTeamFromName("Citizen")
@@ -122,7 +122,7 @@ function adminSetPlayerFaction(thePlayer, commandName, partialNick, factionID)
 						outputChatBox("Player " .. targetPlayerNick .. " was set to no faction.", thePlayer, 0, 255, 0)
 						outputChatBox("You were removed from your faction.", targetPlayer, 255, 0, 0)
 						
-						exports.logs:dbLog(thePlayer, 4, { targetPlayer }, "REMOVE FROM FACTION")
+						exports.logs:dbLog(thePlayer, 4, { targetPlayer }, "REMOVE FROM FACTION")						if prevFactionID and prevFactionID > 0 then logFactionAction(prevFactionID, getPlayerName(thePlayer), "removed " .. targetPlayerNick .. " from the faction") end -- [Fix #146]
 					end
 				end
 			end
@@ -160,7 +160,7 @@ function adminSetFactionLeader(thePlayer, commandName, partialNick, factionID)
 					triggerEvent("onPlayerJoinFaction", targetPlayer, theTeam)
 					outputChatBox("You were set to the leader of Faction '" .. getTeamName(theTeam) .. "'.", targetPlayer, 255, 194, 14)
 					
-					exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION LEADER")
+					exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION LEADER")					logFactionAction(factionID, getPlayerName(thePlayer), "set " .. targetPlayerNick .. " as faction leader") -- [Fix #146]
 					exports.factions:sendNotiToAllFactionMembers(factionID, targetPlayerNick .. " is now a leader of your faction '" .. getTeamName(theTeam) .. "'!", "Set by "..exports.global:getPlayerFullIdentity(thePlayer))
 				else
 					outputChatBox("Invalid Faction ID.", thePlayer, 255, 0, 0)
@@ -192,7 +192,7 @@ function adminSetFactionRank(thePlayer, commandName, partialNick, factionRank)
 					outputChatBox("Player " .. targetPlayerNick .. " is now rank " .. factionRank .. ".", thePlayer, 0, 255, 0)
 					outputChatBox("Admin " .. getPlayerName(thePlayer):gsub("_"," ") .. " set you to rank " .. factionRank .. ".", targetPlayer, 0, 255, 0)
 					
-					exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION RANK " .. factionRank)
+					exports.logs:dbLog(thePlayer, 4, { targetPlayer, theTeam }, "SET TO FACTION RANK " .. factionRank)					logFactionAction(getElementData(theTeam, "id"), getPlayerName(thePlayer), "set " .. targetPlayerNick .. " to rank " .. factionRank) -- [Fix #146]
 				else
 					outputChatBox("Error #125151 - Report on Mantis.", thePlayer, 255, 0, 0)
 				end
@@ -218,7 +218,7 @@ function adminDeleteFaction(thePlayer, commandName, factionID)
 					mysql:query_free("DELETE FROM factions WHERE id='" .. factionID .. "'")
 					
 					outputChatBox("Faction #" .. factionID .. " was deleted.", thePlayer, 0, 255, 0)
-					exports.logs:dbLog(thePlayer, 4, theTeam, "DELETE FACTION")
+					exports.logs:dbLog(thePlayer, 4, theTeam, "DELETE FACTION")					logFactionAction(factionID, getPlayerName(thePlayer), "deleted the faction") -- [Fix #146]
 					exports.factions:sendNotiToAllFactionMembers(factionID, "Your faction '"..getTeamName( theTeam ).."' was deleted by "..exports.global:getPlayerFullIdentity(thePlayer, 1, true).."!")
 					local civTeam = getTeamFromName("Citizen")
 					for key, value in pairs( getPlayersInTeam( theTeam ) ) do
@@ -329,7 +329,7 @@ function setFactionMoney(thePlayer, commandName, factionID, amount)
 				if (theTeam) then
 					if exports.global:setMoney(theTeam, amount) then
 						outputChatBox("Set faction '" .. getTeamName(theTeam) .. "'s money to " .. amount .. " $.", thePlayer, 255, 194, 14)
-						exports.factions:sendNotiToAllFactionMembers(factionID, exports.global:getPlayerFullIdentity(thePlayer, 1).." has set your faction bank to $"..exports.global:formatMoney(amount)..".", nil, true)
+						exports.factions:sendNotiToAllFactionMembers(factionID, exports.global:getPlayerFullIdentity(thePlayer, 1).." has set your faction bank to $"..exports.global:formatMoney(amount)..".", nil, true)						logFactionAction(factionID, getPlayerName(thePlayer), "set the faction money to $" .. exports.global:formatMoney(amount)) -- [Fix #146]
 					else
 						outputChatBox("Could not set money to that faction.", thePlayer, 255, 194, 14)
 					end
@@ -342,7 +342,7 @@ function setFactionMoney(thePlayer, commandName, factionID, amount)
 		end
 	end
 end
-addCommandHandler("setfactionmoney", setFactionMoney, false, false)
+addCommandHandler("setfactionmoney", setFactionMoney, false, false)-- [Fix #148] live-data setters. Gating is TWO-layered: staff_manager already-- maps both command names (command_gates_s.lua COMMAND_RIGHTS:-- "setfactionhotline" / "setfactioncolor") so the global onPlayerCommand gate-- cancels the typed command for any rank that lacks the right, and the-- explicit isPlayerTrialAdmin check below mirrors the neighbouring-- /setfaction and /respawnfaction handlers for the legacy (no Vortex rank)-- ladder.function adminSetFactionHotline(thePlayer, commandName, factionID, number)	if exports.integration:isPlayerTrialAdmin(thePlayer) then		factionID = tonumber(factionID)		if not factionID or factionID <= 0 or number == nil then			outputChatBox("SYNTAX: /" .. commandName .. " [Faction ID] [Number, or - to clear]", thePlayer, 255, 194, 14)			return		end		local theTeam = exports.pool:getElement("team", factionID)		if not theTeam then			outputChatBox("Invalid Faction ID.", thePlayer, 255, 0, 0)			return		end		local value = tostring(number)		if value == "-" or value == "" then			value = ""		end		if value ~= "" and (not value:match("^[%d%+%-%s%(%)%.]+$") or #value > 32) then			outputChatBox("Invalid hotline number - up to 32 characters, digits and + - ( ) . only.", thePlayer, 255, 0, 0)			return		end		if mysql:query_free("UPDATE factions SET hotline='" .. mysql:escape_string(value) .. "' WHERE id='" .. factionID .. "'") then			exports.anticheat:changeProtectedElementDataEx(theTeam, "hotline", value, true)			if value == "" then				outputChatBox("Cleared the hotline of faction '" .. getTeamName(theTeam) .. "'.", thePlayer, 0, 255, 0)				logFactionAction(factionID, getPlayerName(thePlayer), "cleared the faction hotline") -- [Fix #146]			else				outputChatBox("Set the hotline of faction '" .. getTeamName(theTeam) .. "' to " .. value .. ".", thePlayer, 0, 255, 0)				logFactionAction(factionID, getPlayerName(thePlayer), "set the faction hotline to " .. value) -- [Fix #146]			end		else			outputChatBox("Error setting the faction hotline, Contact an admin.", thePlayer, 255, 0, 0)		end	endendaddCommandHandler("setfactionhotline", adminSetFactionHotline, false, false)function adminSetFactionColor(thePlayer, commandName, factionID, hexColor)	if exports.integration:isPlayerTrialAdmin(thePlayer) then		factionID = tonumber(factionID)		if not factionID or factionID <= 0 or not hexColor then			outputChatBox("SYNTAX: /" .. commandName .. " [Faction ID] [Color, #RRGGBB or RRGGBB]", thePlayer, 255, 194, 14)			return		end		local theTeam = exports.pool:getElement("team", factionID)		if not theTeam then			outputChatBox("Invalid Faction ID.", thePlayer, 255, 0, 0)			return		end		local color = tostring(hexColor):gsub("^#", "")		if not color:match("^%x%x%x%x%x%x$") then			outputChatBox("Invalid color - use #RRGGBB or RRGGBB (hex).", thePlayer, 255, 0, 0)			return		end		color = "#" .. string.upper(color)		if mysql:query_free("UPDATE factions SET color='" .. mysql:escape_string(color) .. "' WHERE id='" .. factionID .. "'") then			exports.anticheat:changeProtectedElementDataEx(theTeam, "color", color, true)			outputChatBox("Set the color of faction '" .. getTeamName(theTeam) .. "' to " .. color .. ".", thePlayer, 0, 255, 0)			logFactionAction(factionID, getPlayerName(thePlayer), "set the faction color to " .. color) -- [Fix #146]		else			outputChatBox("Error setting the faction color, Contact an admin.", thePlayer, 255, 0, 0)		end	endendaddCommandHandler("setfactioncolor", adminSetFactionColor, false, false)
 
 
 -----
@@ -383,7 +383,7 @@ function setFactionBudget(thePlayer, commandName, factionID, amount)
 						if exports.global:takeMoney(getPlayerTeam(thePlayer), amount) then
 							exports.global:giveMoney(theTeam, amount)
 							outputChatBox("You added $" .. exports.global:formatMoney(amount) .. " to the budget of '" .. getTeamName(theTeam) .. "' (Total: " .. exports.global:getMoney(theTeam) .. ").", thePlayer, 255, 194, 14)
-							mysql:query_free( "INSERT INTO wiretransfers (`from`, `to`, `amount`, `reason`, `type`) VALUES (" .. -getElementData(getPlayerTeam(thePlayer), "id") .. ", " .. -getElementData(theTeam, "id") .. ", " .. amount .. ", '', 8)" )
+							mysql:query_free( "INSERT INTO wiretransfers (`from`, `to`, `amount`, `reason`, `type`) VALUES (" .. -getElementData(getPlayerTeam(thePlayer), "id") .. ", " .. -getElementData(theTeam, "id") .. ", " .. amount .. ", '', 8)" )							logFactionAction(factionID, getPlayerName(thePlayer), "added $" .. exports.global:formatMoney(amount) .. " to the faction budget") -- [Fix #146]
 						else
 							outputChatBox("You can't afford this.", thePlayer, 255, 194, 14)
 						end

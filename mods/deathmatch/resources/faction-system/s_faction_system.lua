@@ -29,6 +29,78 @@ local vehPrice = {}
 
 
 
+-- [Fix #146] permanent faction audit trail (factionlogs table). Best effort
+-- only: the INSERT runs inside pcall so a failed log can never abort the
+-- mutation it records. Shared with s_faction_admin.lua.
+
+function logFactionAction(factionID, actorName, text)
+
+        local ok, err = pcall(function()
+
+                mysql:query_free("INSERT INTO factionlogs (factionID, charactername, log) VALUES ('" .. mysql:escape_string(tonumber(factionID) or 0) .. "', '" .. mysql:escape_string(tostring(actorName or "Unknown")) .. "', '" .. mysql:escape_string(tostring(text or "")) .. "')")
+
+        end)
+
+        if not ok then
+
+                outputDebugString("faction-system: logFactionAction failed: " .. tostring(err), 2)
+
+        end
+
+end
+
+
+
+-- [Fix #146] F3 Logs tab history pull. Server-side membership check (the
+-- client may only read its OWN faction's log), last 100 rows returned as a
+-- plain toJSON-able array { {date=..., who=..., what=...}, ... }.
+
+addEvent("faction:logs:request", true)
+
+addEventHandler("faction:logs:request", resourceRoot, function()
+
+        if not client or getElementType(client) ~= "player" then
+
+                return
+
+        end
+
+        local theTeam = getPlayerTeam(client)
+
+        local factionID = theTeam and tonumber(getElementData(theTeam, "id")) or nil
+
+        if not factionID or factionID < 1 then
+
+                return
+
+        end
+
+        local rows = { }
+
+        local result = mysql:query("SELECT date, charactername, log FROM factionlogs WHERE factionID='" .. mysql:escape_string(factionID) .. "' ORDER BY date DESC, id DESC LIMIT 100")
+
+        if result then
+
+                while true do
+
+                        local row = mysql:fetch_assoc(result)
+
+                        if not row then break end
+
+                        rows[#rows + 1] = { date = tostring(row.date or ""), who = tostring(row.charactername or ""), what = tostring(row.log or "") }
+
+                end
+
+                mysql:free_result(result)
+
+        end
+
+        triggerClientEvent(client, "faction:logs:receive", client, rows)
+
+end)
+
+
+
 function loadAllFactions(res)
 
         local counter = 0
@@ -98,6 +170,17 @@ function loadAllFactions(res)
                 setFactionProtectedData(theTeam, "fnote", row.fnote == nil and "" or row.fnote, false)
 
                 setFactionProtectedData(theTeam, "phone", row.phone ~= nil and row.phone or nil, false)
+
+                -- [Fix #147] header live data (SELECT * already returns the new
+                -- color/hotline/radio columns). Synchronized = true, unlike the
+                -- server-only keys above, because the F3 header reads them from
+                -- the client with getElementData(team, ...).
+
+                setFactionProtectedData(theTeam, "color", row.color ~= nil and tostring(row.color) or "#FFFFFF", true)
+
+                setFactionProtectedData(theTeam, "hotline", row.hotline ~= nil and tostring(row.hotline) or "", true)
+
+                setFactionProtectedData(theTeam, "radio", row.radio ~= nil and tostring(row.radio) or "", true)
 
                 setFactionProtectedData(theTeam, "max_interiors", tonumber(row.max_interiors), false, true) --Don't sync at all / Maxime
 
@@ -773,6 +856,10 @@ function callbackUpdateRanks(ranks, wages)
 
         
 
+        -- [Fix #146] rank & wage table edit
+
+        logFactionAction(factionID, getPlayerName(client), "edited the rank & wage tables")
+
         -- [Fix #111] re-sync the permission list outside of the F3 open path
 
         pcall(syncFactionPermissions, client)
@@ -984,6 +1071,8 @@ function callbackUpdateMOTD(motd)
 
                         setFactionProtectedData(theTeam, "motd", motd, false)
 
+                        logFactionAction(factionID, getPlayerName(client), "changed the MOTD") -- [Fix #146]
+
                 else
 
                         outputChatBox("خطأ.", client, 255, 0, 0)
@@ -1025,6 +1114,8 @@ function callbackUpdateNote(note)
                         outputChatBox("لقد غيرت ملاحظة قائد فصيلك بنجاح.", client, 0, 255, 0)
 
                         setFactionProtectedData(theTeam, "note", note, false)
+
+                        logFactionAction(factionID, getPlayerName(client), "changed the leader note") -- [Fix #146]
 
                 else
 
@@ -1076,6 +1167,8 @@ function callbackRemovePlayer(removedPlayerName)
         
 
         if mysql:query_free("UPDATE characters SET faction_id='-1', faction_leader='0', faction_rank='1', duty = 0 WHERE charactername='" .. mysql:escape_string(removedPlayerName) .. "'") then
+
+                logFactionAction(factionID, getPlayerName(client), "kicked " .. removedPlayerName) -- [Fix #146]
 
                 local theTeam = getPlayerTeam(client)
 
@@ -1188,6 +1281,7 @@ function callbackPerkEdit( perkIDTable, playerName)
         if mysql:query_free("UPDATE `characters` SET `faction_perks`='" .. mysql:escape_string(jsonPerkIDTable) .. "' WHERE `charactername`='" .. mysql:escape_string(playerName) .. "'") then
 
                 outputChatBox(" تم عمل ديوتي لـ "..playerName:gsub("_", " ")..".", client, 255, 0, 0)
+                logFactionAction(factionID, getPlayerName(client), "edited the duty perks of " .. playerName) -- [Fix #146]
 
                 local targetPlayer = getPlayerFromName(playerName)
 
@@ -1251,6 +1345,8 @@ function callbackToggleLeader(playerName, isLeader)
 
                         exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " promoted " .. playerName:gsub("_", " ") .. " to leader of your faction '"..getTeamName(theTeam).."'.")
 
+                        logFactionAction(factionID, username, "made " .. playerName .. " leader") -- [Fix #146]
+
                         
 
                         local thePlayer = getPlayerFromName(playerName)
@@ -1295,6 +1391,8 @@ function callbackToggleLeader(playerName, isLeader)
                         -- Send message to everyone in the faction
 
                         exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " demoted " .. playerName:gsub("_", " ") .. " from leader to member of your faction '"..getTeamName(theTeam).."'.")
+
+                        logFactionAction(factionID, username, "removed the leader flag from " .. playerName) -- [Fix #146]
 
                 else
 
@@ -1363,6 +1461,8 @@ function callbackPromotePlayer(playerName, rankNum, oldRank, newRank)
                 -- Send message to everyone in the faction
 
                 exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was promoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
+
+                logFactionAction(factionID, username, "promoted " .. playerName .. " to rank " .. tostring(rankNum)) -- [Fix #146]
 
         else
 
@@ -1434,6 +1534,8 @@ function callbackDemotePlayer(playerName, rankNum, oldRank, newRank)
 
                 exports.factions:sendNotiToAllFactionMembers(factionID, playerName:gsub("_", " ") .. " was demoted from '" .. oldRank .. "' to '" .. newRank .. "' by "..username:gsub("_", " ").." of '"..getTeamName(theTeam).."'")
 
+                logFactionAction(factionID, username, "demoted " .. playerName .. " to rank " .. tostring(rankNum)) -- [Fix #146]
+
         else
 
                 -- [Fix #122] removedPlayerName is undefined here -> playerName
@@ -1501,6 +1603,7 @@ function callbackQuitFaction()
                 local factionID = getElementData(theTeam, "id")
 
                 exports.factions:sendNotiToAllFactionMembers(factionID, username:gsub("_", " ") .. " left your faction '" .. theTeamName .. "'.")
+                logFactionAction(factionID, username, "quit the faction '" .. theTeamName .. "'") -- [Fix #146]
 
         else
 
@@ -1573,6 +1676,7 @@ function callbackInvitePlayer(invitedPlayer)
                         setFactionProtectedData(invitedPlayer, "faction", factionID, false)
 
                         outputChatBox("Player " .. invitedPlayerNick:gsub("_", " ") .. " الان عضو بالفاكشن '" .. tostring(theTeamName) .. "'.", client, 0, 255, 0)
+                        logFactionAction(factionID, getPlayerName(client), "invited " .. invitedPlayerNick) -- [Fix #146]
 
                         exports.factions:sendNotiToAllFactionMembers(factionID, invitedPlayerNick:gsub("_", " ") .. " انضم كعضو جديد في فصيلك '" .. tostring(theTeamName) .. "'.")                              
 

@@ -112,6 +112,29 @@ local function localIsStaff()
                 or (tonumber(getElementData(localPlayer, "account:gmlevel")) or 0) > 0
 end
 
+-- [Fix #98] staff/off-duty detection for OTHER players - mirrors the
+-- scoreboard trio (c_tab.lua isStaff / isOnDuty / isStaffOffDuty):
+-- staff = the 21-rank ladder (rank:index) or an admin/supporter level;
+-- on duty = the server-set duty_admin / duty_supporter flags in any shape
+-- (number 1, DB string "1", boolean true - same as isOne above).
+local function isPlayerStaff(p)
+        if tonumber(getElementData(p, "rank:index")) then return true end
+        if (tonumber(getElementData(p, "admin_level")) or 0) > 0 then return true end
+        if (tonumber(getElementData(p, "supporter_level")) or 0) > 0 then return true end
+        return false
+end
+
+local function isPlayerOnDuty(p)
+        return isOne(getElementData(p, "duty_admin"))
+                or isOne(getElementData(p, "duty_supporter"))
+end
+
+-- a staff member currently OFF duty reads as a plain player (regular
+-- players are never "off duty" - they simply hold no rank)
+local function isPlayerOffDutyStaff(p)
+        return isPlayerStaff(p) and not isPlayerOnDuty(p)
+end
+
 local function buildPlayerEntry(player)
         -- [Fix #33] robust across every way the server stores these flags
         -- (number 1, DB string "1", boolean true)
@@ -141,7 +164,11 @@ local function buildPlayerEntry(player)
         -- [Fix #75 - user] hidden admins show as PLAIN players above the head:
         -- "لو سويت hide admin ما يرجع لون فوق الشخصية كلاير - يبقى لون الرتبة".
         -- Un-hiding restores the rank color (rgb is re-read every build).
-        if hidden then rgb = { 255, 255, 255 } end
+        -- [Fix #98 - user] "لما اسوي hide admin او اطفي الدوتي الاسم يظل بلون
+        -- الرتبة": hidden AND off-duty staff both drop to the plain default
+        -- player color (white). Only VISIBLE ON-DUTY staff keep rank:color;
+        -- plain players were already white (rgb fallback above).
+        if hidden or isPlayerOffDutyStaff(player) then rgb = { 255, 255, 255 } end
 
         -- friends were colored white in the old client (friend-system guarded)
         local friend = player == localPlayer
@@ -204,6 +231,9 @@ local CACHE_KEYS = {
         ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
         ["character:name"] = true, ["duty_admin"] = true, ["duty_supporter"] = true,
         ["temp:heart"] = true, ["hud:badges"] = true,
+        -- [Fix #98] staff detection reads these too (rank ladder / levels) -
+        -- a rank push must re-evaluate the off-duty plain-white color now
+        ["rank:index"] = true, ["admin_level"] = true, ["supporter_level"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key, _, _value)
         if CACHE_KEYS[key] and isElement(source) and getElementType(source) == "player" then
@@ -350,12 +380,12 @@ function drawNametags()
                 -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم
                 -- الإخفاء": the staff half of this gate also matched the
                 -- LOCAL player, so after /hideadmin a hidden admin kept
-                -- seeing their OWN name (plus the " (Hidden)" word) above
-                -- their own head - and that is the only nametag a single
-                -- client session can ever show. Self view is now skipped
-                -- when the local player is hidden; staff still see OTHER
-                -- hidden admins and regular players still see nothing
-                -- (both unchanged).
+                -- seeing their OWN name above their own head - and that is
+                -- the only nametag a single client session can ever show
+                -- (the suffix that used to ride along is gone, Fix #98).
+                -- Self view is now skipped when the local player is hidden;
+                -- staff still see OTHER hidden admins (plain, no marker)
+                -- and regular players still see nothing (both unchanged).
                 if isElement(player) and entry
                         and (not entry.hidden
                                 or (localIsStaff() and player ~= localPlayer)) then
@@ -412,12 +442,13 @@ function drawNametags()
                                                                         nameText = nameText .. " (" .. tostring(pid) .. ")"
                                                                 end
                                                         end
-                                                        -- [Fix #33] staff viewers keep seeing hidden admins
-                                                        -- (with a suffix) exactly like the old client's
-                                                        -- admintag view; regular players see nothing
-                                                        if entry.hidden then
-                                                                nameText = nameText .. " (Hidden)"
-                                                        end
+                                                        -- [Fix #98 - user] "ما ينكتب بكلمة Hidden جنب الاسم": the
+                                                        -- " (Hidden)" suffix is removed for EVERYONE - a hidden admin
+                                                        -- now draws as a completely plain player (plain white name,
+                                                        -- no marker). The visibility gate above is untouched:
+                                                        -- staff still SEE other hidden admins, self view stays skipped.
+                                                        -- [Fix #33] before this, hidden admins were only drawn for
+                                                        -- staff viewers and always carried the suffix.
                                                         -- [Fix #75 - user] "كبر اسم الشخصية اكثر وكبر الشارة اكثر"
                                                         -- name: scale 1 -> 1.3 (wider centered box for long names)
                                                         outlineText(nameText, sX - 150, baseY - 34, 300, 28,

@@ -1204,10 +1204,10 @@ function hideAdmin(thePlayer, commandName)
 
 		if (hiddenAdmin==0) then
 			exports.anticheat:changeProtectedElementDataEx(thePlayer, "hiddenadmin", 1, true)
-			outputChatBox("Hidden Admin - ON", thePlayer, 255, 194, 14)
+			-- [Fix #97] Hide-admin toggle feedback removed at owner's request: outputChatBox("Hidden Admin - ON", thePlayer, 255, 194, 14)
 		elseif (hiddenAdmin==1) then
 			exports.anticheat:changeProtectedElementDataEx(thePlayer, "hiddenadmin", 0, true)
-			outputChatBox("Hidden Admin - OFF", thePlayer, 255, 194, 14)
+			-- [Fix #97] Hide-admin toggle feedback removed at owner's request: outputChatBox("Hidden Admin - OFF", thePlayer, 255, 194, 14)
 		end
 		exports.global:updateNametagColor(thePlayer)
 		mysql:query_free("UPDATE accounts SET hiddenadmin=" .. mysql:escape_string(getElementData(thePlayer, "hiddenadmin")) .. " WHERE id = " .. mysql:escape_string(getElementData(thePlayer, "account:id")) )

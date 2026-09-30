@@ -193,6 +193,8 @@ local UI = {
         tab = {}, progressbar = {}, edit = {}, window = {}, label = {}, checkbox = {},
         switch = {}, button = {}, tabpanel = {}, radiobutton = {}, gridlist = {},
         memo = {}, scrollbar = {}, combobox = {}, container = {}, image = {}, rectangle = {},
+        -- [Fix #100 #4] real ownership counts backing the Info tab summary
+        owned = { vehicles = 0, interiors = 0 },
 }
 
 local menu = false            -- ui-menu element
@@ -233,6 +235,41 @@ local function safeExport(resName, fnName, ...)
         local ok, result = pcall(call, res, fnName, ...)
         if ok then return result end
         return nil
+end
+
+-- [Fix #100 #1] while F1 is open the status/zone HUD and the minimap must
+-- paint ABOVE the menu window instead of behind it. hud and radar re-register
+-- their render handlers in a lower band when this is true; both exports are
+-- idempotent, so the pcall/retry paths in showSideBarInner are harmless.
+local function setHudLayerAboveMenu(over)
+        -- checked live (NOT resRunning): hud/radar may start after this file
+        -- is loaded, and resCache would freeze a stale "not running".
+        local function live(resName)
+                local res = getResourceFromName(resName)
+                if not res then return false end
+                local ok, st = pcall(getResourceState, res)
+                return ok and st == "running"
+        end
+        if live("hud") then
+                pcall(function() exports.hud:setHudOverMenu(over) end)
+        end
+        if live("radar") then
+                pcall(function() exports.radar:setRadarOverMenu(over) end)
+        end
+end
+
+-- [Fix #100 #4] the Info tab summary lines (real house / vehicle counts).
+-- Counts start at 0 and are refreshed by the getVehicles/getInteriors
+-- callbacks; the label is rebuilt from here so both paths stay in sync.
+local function updateOwnedLabel()
+        if not (UI.label.owned and isElement(UI.label.owned)) then return end
+        local bullet = "${color.primary}• "
+        eui:uiSetText(UI.label.owned, {
+                en = bullet .. "Houses Owned »  #FFFFFF" .. tostring(UI.owned.interiors) .. "\n"
+                        .. bullet .. "Vehicles Owned »  #FFFFFF" .. tostring(UI.owned.vehicles),
+                ar = bullet .. "البيوت المملوكة »  #FFFFFF" .. tostring(UI.owned.interiors) .. "\n"
+                        .. bullet .. "المركبات المملوكة »  #FFFFFF" .. tostring(UI.owned.vehicles),
+        })
 end
 
 -- notifications with a chat fallback until the notifications mod is restored
@@ -527,6 +564,8 @@ local function showSideBarInner(show, openSection)
                         menuDrawRegistered = true
                 end
                 eui:uiSetVisible(UI.window.MainMenu, true)
+                -- [Fix #100 #1] raise status/zone HUD + minimap above the menu
+                setHudLayerAboveMenu(true)
                 -- optional section to land on (F2 -> reports)
                 local target = 1
                 if openSection then
@@ -540,6 +579,8 @@ local function showSideBarInner(show, openSection)
                 menuDrawRegistered = false
                 state.anim = { getTickCount(), state.alpha, state.sideX, 0, -260, 250, false }
                 eui:uiSetVisible(UI.window.MainMenu, false)
+                -- [Fix #100 #1] drop them back to their normal bands
+                setHudLayerAboveMenu(false)
                 -- [Fix #47] free the fullscreen chrome RT while the menu is closed
                 if isElement(chromeRT) then destroyElement(chromeRT) end
                 chromeRT = false
@@ -652,6 +693,12 @@ local function buildMainMenuUI()
         UI.label[4] = eui:uiCreateLabel(15 + (infoW - 20) / 2, 25, (infoW - 20) / 2, 300, "",
                 tocolor(255, 255, 255, 255), "left", "top", rectInfoLeft)
         eui:uiSetProperty(UI.label[4], "line_spacing", 35)
+        -- [Fix #100 #4] ownership summary sits in the free space below the two
+        -- info columns (label[1] ends ~y=340, the card runs to y=infoH+25).
+        -- clip is off for labels, so height only guards the layout math.
+        UI.label.owned = eui:uiCreateLabel(15, infoH - 90, infoW - 20, 70, "",
+                tocolor(255, 255, 255, 255), "left", "top", rectInfoLeft)
+        eui:uiSetProperty(UI.label.owned, "line_spacing", 35)
 
         local sideW = (contentW - 40) * 0.3
         local sideH = (infoH - 10) * 0.5
@@ -1265,13 +1312,30 @@ local function buildMainMenuUI()
                 return fallback or "#ffffff"
         end
 
+        -- [Fix #100 #3] may THIS player see a hidden admin's real name/account?
+        -- Mirrors the server-side gate (admin_level / rank:index >= 4) plus the
+        -- hidden-admin flag itself, with the global resource as a fallback.
+        local function localSeesHiddenAdmins()
+                if tonumber(getElementData(localPlayer, "hiddenadmin")) == 1 then return true end
+                local ridx = tonumber(getElementData(localPlayer, "rank:index"))
+                if ridx and ridx >= 4 then return true end
+                local lvl = tonumber(getElementData(localPlayer, "admin_level"))
+                if lvl and lvl > 0 then return true end
+                if resRunning("global") then
+                        local ok, v = pcall(function()
+                                return exports.global:getPlayerAdminLevel(localPlayer)
+                        end)
+                        if ok and tonumber(v) and tonumber(v) > 0 then return true end
+                end
+                return false
+        end
+
         addEvent("admin:showStaff", true)
         addEventHandler("admin:showStaff", root, function(list)
                 eui:uiGridListClear(UI.gridlist.staff)
                 eui:uiGridListClear(UI.gridlist.staff2)
                 if type(list) ~= "table" then return end
                 local adminCount, supportCount = 0, 0
-                local nameHex = "#ffffff"
                 -- [Fix #47] `eui:uiGetThemeColor` used as a VALUE is a syntax
                 -- error ("function arguments expected") - it killed the WHOLE
                 -- c_main.lua compile, so F1/F2 binds never registered and the
@@ -1284,9 +1348,12 @@ local function buildMainMenuUI()
                         pc = nil
                 end
                 local idHex = staffHex(pc, "#8f7bff")
+                -- [Fix #100 #3] Hidden only masks the row from players who are
+                -- not staff themselves - admins get the real name + account.
+                local seesHidden = localSeesHiddenAdmins()
                 for _, entry in ipairs(list) do
                         local isSupport = entry[1] == true
-                        local hidden = entry[4] == true
+                        local hidden = entry[4] == true and not seesHidden
                         local pid = tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
@@ -1294,11 +1361,13 @@ local function buildMainMenuUI()
                         if rank ~= "" then
                                 line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
                         end
-                        -- hidden admins read as "Anonymous" (old client), no account shown
+                        -- [Fix #100 #3] names are always plain white: the rank
+                        -- color belongs to the [rank] tag only. A masked admin
+                        -- reads "Anonymous (Hidden)" instead of its rank color.
                         if hidden then
-                                line = line .. staffHex(entry[6], nameHex) .. "Anonymous"
+                                line = line .. "#ffffffAnonymous" .. idHex .. " (Hidden)"
                         else
-                                line = line .. nameHex .. name
+                                line = line .. "#ffffff" .. name
                                 local acc = tostring(entry[7] or "")
                                 if acc ~= "" and acc ~= "-" then
                                         line = line .. " " .. idHex .. "(" .. acc .. ")"
@@ -1308,8 +1377,11 @@ local function buildMainMenuUI()
                         local row = eui:uiGridListAddRow(grid)
                         eui:uiGridListSetItemText(grid, row, 1, line)
                         eui:uiGridListSetItemText(grid, row, 2, idHex .. "ID: " .. pid)
-                        eui:uiGridListSetItemText(grid, row, 3, hidden and "#c8c8c8Hidden"
-                                or (entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty"))
+                        -- [Fix #100 #3] the Duty column always reports the real
+                        -- duty state; it used to be overwritten with "Hidden",
+                        -- which left no way to see whether a member was on duty.
+                        eui:uiGridListSetItemText(grid, row, 3,
+                                entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty")
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")
@@ -1418,6 +1490,18 @@ local function buildMainMenuUI()
                         local accName = getElementData(localPlayer, "account:username")
                         if type(accName) ~= "string" or accName == "" then accName = getPlayerName(localPlayer) end
                         eui:uiSetText(UI.label.username, "Current Username: " .. tostring(accName))
+                        -- [Fix #100 #4] refresh the ownership summary: show what
+                        -- we already know immediately, then ask the server for
+                        -- fresh counts (same 10s throttle as the tab switch).
+                        updateOwnedLabel()
+                        if getTickCount() - state.vehicles >= 10000 then
+                                state.vehicles = getTickCount()
+                                triggerServerEvent("main-menu:characterInfo:getVehicles", localPlayer)
+                        end
+                        if getTickCount() - state.interiors >= 10000 then
+                                state.interiors = getTickCount()
+                                triggerServerEvent("main-menu:characterInfo:getInteriors", localPlayer)
+                        end
                 end
         end)
 
@@ -1455,6 +1539,9 @@ local function buildMainMenuUI()
                         eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 2, name)
                         eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 3, car.plate or "")
                 end
+                -- [Fix #100 #4] feed the Info tab ownership summary
+                UI.owned.vehicles = #list
+                updateOwnedLabel()
         end)
 
         addEvent("main-menu:characterInfo:getInteriors:callback", true)
@@ -1477,6 +1564,9 @@ local function buildMainMenuUI()
                                 eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
                         end
                 end
+                -- [Fix #100 #4] feed the Info tab ownership summary
+                UI.owned.interiors = #list
+                updateOwnedLabel()
         end)
 
         addEvent("leaderboard:get:response", true)
@@ -1540,6 +1630,72 @@ addEventHandler("onClientClick", root, function(button, press)
         local okE, ex, ey, ew, eh = pcall(function() return eui:uiGetAbsoluteBounds(UI.edit.report_target) end)
         if okE and ex and cx >= ex and cx <= ex + (ew or 0) and cy >= ey and cy <= ey + (eh or 0) then
                 pcall(function() eui:uiSetFocusedElement(UI.edit.report_target) end)
+        end
+end)
+
+--------------------------------------------------------------------------------
+-- [Fix #100 #2] FULL-ROW hit layer for the report type list.
+-- UIKit resolves a row through the hover stack and (pre-fix) only within
+-- width-10, so clicks on the right edge of a row, or under an overlapping
+-- element, never selected anything - and the double-click flow then saw
+-- selected_row == -1, so nothing opened. This layer maps the raw click straight
+-- to the painted row over the WHOLE row width (uiGridListGetRowAtPoint mirrors
+-- the draw geometry incl. scroll) and opens the confirm window itself, so the
+-- flow no longer depends on the hover stack at all.
+--------------------------------------------------------------------------------
+local function reportRowAt(ax, ay)
+        if not (state.state and UI.gridlist.report_types) then return nil end
+        if not (UI.window.MainMenu and isElement(UI.window.MainMenu)) then return nil end
+        if not isElement(UI.gridlist.report_types) then return nil end
+        local function shown(el)
+                if not (el and isElement(el)) then return false end
+                local ok, v = pcall(function() return eui:uiGetVisible(el) end)
+                return ok and v == true
+        end
+        if not shown(UI.window.MainMenu) then return nil end
+        if not shown(UI.container.report) then return nil end
+        -- modal windows on top: let UIKit handle those clicks
+        if shown(UI.window.report_confirm) or shown(UI.window.report_center) then return nil end
+        local okB, gx, gy, gw, gh = pcall(function()
+                return eui:uiGetAbsoluteBounds(UI.gridlist.report_types)
+        end)
+        if not okB or type(gx) ~= "number" then return nil end
+        gw, gh = tonumber(gw) or 0, tonumber(gh) or 0
+        if ax < gx or ax > gx + gw or ay < gy or ay > gy + gh then return nil end
+        local okR, row = pcall(function()
+                return eui:uiGridListGetRowAtPoint(UI.gridlist.report_types, ay)
+        end)
+        if not okR or type(row) ~= "number" or row < 0 then return nil end
+        return row
+end
+
+addEventHandler("onClientClick", root, function(button, press, ax, ay)
+        if not press or button ~= "left" then return end
+        local row = reportRowAt(ax, ay)
+        if row == nil then return end
+        pcall(function() eui:uiGridListSetSelectedItem(UI.gridlist.report_types, row) end)
+end)
+
+addEventHandler("onClientDoubleClick", root, function(button, ax, ay)
+        if button ~= "left" then return end
+        local row = reportRowAt(ax, ay)
+        if row == nil then return end
+        -- same body as the onClientUIDoubleClick handler in buildMainMenuUI,
+        -- but independent of what UI.HoveredElement resolved to
+        local ok, err = pcall(function()
+                local data = eui:uiGridListGetItemData(UI.gridlist.report_types, row, 1)
+                local t = type(data) == "number" and data or (row + 1)
+                if not REPORT_TYPES[t] then return false end
+                selectedReportType = t
+                eui:uiGridListSetSelectedItem(UI.gridlist.report_types, row)
+                eui:uiSetText(UI.label.report_confirm_type, tostring(REPORT_TYPES[t]))
+                eui:uiBringToFront(UI.window.report_confirm)
+                eui:uiSetVisible(UI.window.report_confirm, true)
+                return true
+        end)
+        if not ok then
+                -- Fix #33/#35 style: never fail silently
+                outputChatBox("#ff6b6b[F2] " .. tostring(err), 255, 107, 107, true)
         end
 end)
 

@@ -619,6 +619,11 @@ end
 --------------------------------------------------------------------------------
 -- visibility + input
 --------------------------------------------------------------------------------
+-- [Fix #100 #1] priority band of drawMinimap. "normal" (default) draws below
+-- the F1 menu window's content panel; "low-1" keeps the minimap under the
+-- status HUD ("low") while still painting ABOVE the menu when F1 is open.
+local minimapPriority = "normal"
+
 local function removeFrameHandlers()
         removeEventHandler("onClientRender", root, drawMinimap)
         removeEventHandler("onClientRender", root, bigMapDraw)
@@ -628,7 +633,7 @@ function showRadar(state, dispatchElements)
         if state then
                 if not RADAR.visible then
                         rt = dxCreateRenderTarget(RADAR.w, RADAR.h, true)
-                        addEventHandler("onClientRender", root, drawMinimap, false)
+                        addEventHandler("onClientRender", root, drawMinimap, false, minimapPriority)
                         ensureTexture()
                         setPlayerHudComponentVisible("radar", false)
                         if not rt then
@@ -660,6 +665,21 @@ end
 
 function setRadarDispatchElements(elements)
         RADAR.dispatchElements = elements or RADAR.dispatchElements
+end
+
+-- [Fix #100 #1] called by main-menu when F1 opens/closes: drop the minimap
+-- into the "low-1" band so it draws on top of the menu window (still below
+-- drawHUD at "low-5" and the F11 map at "low-20", still above statusHud at
+-- "low"), and restore "normal" once the menu is gone. Idempotent.
+function setRadarOverMenu(over)
+        local want = over and "low-1" or "normal"
+        if want == minimapPriority then return false end
+        minimapPriority = want
+        if RADAR.visible then
+                removeEventHandler("onClientRender", root, drawMinimap)
+                addEventHandler("onClientRender", root, drawMinimap, false, minimapPriority)
+        end
+        return true
 end
 
 local function toggleBigMap(state)

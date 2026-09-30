@@ -379,6 +379,15 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
     end
     if 1 <= #UI.DB[arg0].data.rows then
       UI.DB[arg0].data.hovered_row = false
+      -- [Fix #100 #2] row hit width: the scrollbar lane is only dead space
+      -- while the scrollbar is shown (it is created hidden, see uiCreateGridList),
+      -- otherwise the right edge of every row painted a selection band but never
+      -- registered a hover -> clicking there deselected instead of selecting.
+      local rowHitW = UI.DB[arg0].dimensions.width
+      if UI.DB[arg0].data.scrollbar and isElement(UI.DB[arg0].data.scrollbar)
+        and uiGetVisible(UI.DB[arg0].data.scrollbar) then
+        rowHitW = rowHitW - 10
+      end
       -- [Vortex fix #14] row banding rebuilt. The decompiled draw painted the
       -- selection rectangle PER CELL (a 5-column list stroked the same rect 5x,
       -- alpha stacking into a near-opaque purple slab that drowned the row
@@ -407,7 +416,7 @@ UI.getDrawFunction["ui-gridlist"] = function(arg0)
           dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, 3, rowH - 1, tocolor(dxGetColor(theme.COLORS.primary), 255), UI.postGUI)
         end
         if not isUIDisabled(arg0) and UI.HoveredElement == arg0
-          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, UI.DB[arg0].data.scrollbar and UI.DB[arg0].dimensions.width - 10 or UI.DB[arg0].dimensions.width, rowH) then
+          and isMouseInPosition(UI.DB[arg0].dimensions.x, rowY, rowHitW, rowH) then
           UI.DB[arg0].data.hovered_row = forvar19 - 1
           if UI.DB[arg0].data.selected_row ~= forvar19 - 1 then
             dxDrawRectangle(UI.DB[arg0].dimensions.x, rowY + 1, UI.DB[arg0].dimensions.width, rowH - 1, tocolor(60, 60, 60, 90), UI.postGUI)

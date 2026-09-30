@@ -209,40 +209,14 @@ local function runSetup()
                 end
         end)
 
-        -- 4b) [Fix #14] luminance floor on every stored rank color: dark seeds
-        -- (navy/maroon/burgundy) were unreadable on the dark panel - the rows
-        -- looked like the names "disappear". Idempotent: already-clamped
-        -- colors are left untouched.
-        pcall(function()
-                local q = mysql:query("SELECT ID, Color FROM staff_roles")
-                if q then
-                        local fixed = 0
-                        while true do
-                                local row = mysql:fetch_assoc(q)
-                                if not row then break end
-                                local c = fromJSON(row.Color or "") or {}
-                                local r = tonumber(c[1]) or 255
-                                local g = tonumber(c[2]) or 255
-                                local b = tonumber(c[3]) or 255
-                                local a = tonumber(c[4]) or 255
-                                local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-                                if lum < 0.45 then
-                                        local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                                        r = math.floor(r + (255 - r) * t + 0.5)
-                                        g = math.floor(g + (255 - g) * t + 0.5)
-                                        b = math.floor(b + (255 - b) * t + 0.5)
-                                        ddl("UPDATE staff_roles SET Color='[[" .. r .. "," .. g .. "," .. b .. "," .. a .. "]]' WHERE ID=" .. tonumber(row.ID),
-                                                "UPDATE dark rank color #" .. tostring(row.ID))
-                                        fixed = fixed + 1
-                                end
-                        end
-                        mysql:free_result(q)
-                        if fixed > 0 then
-                                dbg("brightened " .. fixed .. " dark rank color(s) (readability floor)")
-                                table.insert(SETUP_REPORT.lines, "dark rank colors brightened: " .. fixed)
-                        end
-                end
-        end)
+        -- 4b) [Fix #101] the [Fix #14] "readability floor" that used to sit here
+        -- REWROTE every dark rank color to a lighter shade on every start (log:
+        -- "[Vortex Staff DB] brightened N dark rank color(s)"), so a color the
+        -- owner picked dark never stayed dark - the next restart lightened it
+        -- again and the stored value no longer matched what was saved. Stored
+        -- colors are now left EXACTLY as saved (pass 4 above still repairs
+        -- truly invalid values to white); the panel/TAB/nametags draw them
+        -- as-is.
 
         -- 5) orphaned members (AccountID without an account row) clean-up
         ddl("DELETE m FROM staff_role_members m LEFT JOIN accounts a ON a.id = m.AccountID WHERE a.id IS NULL",

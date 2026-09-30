@@ -284,7 +284,15 @@ function UI.refreshGridlistHoverRow(arg0)
   local ax, ay = cx * sx, cy * sy
   local d = db.dimensions
   local ch = db.properties.column_height.value
-  local rw = db.data.scrollbar and d.width - 10 or d.width
+  -- [Fix #100 #2] only reserve the scrollbar lane while the scrollbar is
+  -- actually on screen: uiCreateGridList ALWAYS creates it (hidden), so the old
+  -- `data.scrollbar and width-10` was unconditionally true -> the right edge of
+  -- every row was dead space, and a click there made hovered_row false, which
+  -- DESELECTS the row (see UI.click) instead of picking it.
+  local rw = d.width
+  if db.data.scrollbar and isElement(db.data.scrollbar) and uiGetVisible(db.data.scrollbar) then
+    rw = rw - 10
+  end
   db.data.hovered_row = false
   for i = db.data.row_i, db.data.row_f do
     local cell = db.data.rows[i] and db.data.rows[i][1]

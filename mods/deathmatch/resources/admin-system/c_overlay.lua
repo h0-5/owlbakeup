@@ -114,7 +114,8 @@ addEventHandler( "onClientPlayerQuit", getRootElement(), updateGUI )
 function drawText ( )
 	if show and exports.hud:isActive() then
 		if ( getPedWeapon( localPlayer ) ~= 43 or not getControlState( "aim_weapon" ) ) then
-			dxDrawText( textString, 5, sy-19, sx, sy, tocolor ( 255, 255, 255, 255 ), 1, "default")
+			-- [Fix #97] Bottom stats line (rank/duty/sup/reports/CK counters) removed at owner's request.
+			-- dxDrawText( textString, 5, sy-19, sx, sy, tocolor ( 255, 255, 255, 255 ), 1, "default")
 		end
 	end
 end

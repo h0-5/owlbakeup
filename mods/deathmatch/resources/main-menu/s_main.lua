@@ -64,13 +64,18 @@ local function buildVehiclesList(characterId)
         -- table, so the WHOLE query errored and the F1 list was always empty.
         -- Select only columns that really exist (verified against
         -- vehicle-system/s_vehicle_system.lua: id/model/plate/Impounded).
+        -- [Fix #100 #4] `mysql:query` was a call on a NIL global (this resource
+        -- has no `mysql` table), so the pcall always failed and both lists came
+        -- back empty -> "0 vehicles". The driver is reached through its export,
+        -- and query_rows_assoc returns the ROWS (query() only returns a
+        -- result id, which would have been a number here).
         local ok, rows = pcall(function()
-                return mysql:query(
+                return exports.mysql:query_rows_assoc(
                         "SELECT v.id, v.model, v.plate, v.Impounded, " ..
                         "       s.vehbrand, s.vehmodel, s.vehyear " ..
                         "FROM `vehicles` v " ..
                         "LEFT JOIN `vehicles_shop` s ON v.vehicle_shop_id = s.id " ..
-                        "WHERE v.owner = " .. mysql:escape_string(characterId) .. " " ..
+                        "WHERE v.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
                         "ORDER BY v.id ASC"
                 )
         end)
@@ -106,11 +111,13 @@ local function buildInteriorsList(characterId)
         -- (verified against interior-system/s_interior_system.lua): the query
         -- always errored and the F1 list stayed empty. Real columns are
         -- locked/cost + deleted; status is derived from them.
+        -- [Fix #100 #4] same nil-global bug as buildVehiclesList above:
+        -- reach the driver through its exports and take the ROWS back.
         local ok, rows = pcall(function()
-                return mysql:query(
+                return exports.mysql:query_rows_assoc(
                         "SELECT i.id, i.name, i.locked, i.cost " ..
                         "FROM `interiors` i " ..
-                        "WHERE i.owner = " .. mysql:escape_string(characterId) .. " " ..
+                        "WHERE i.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
                         "AND (i.deleted = 0 OR i.deleted IS NULL) " ..
                         "ORDER BY i.id ASC"
                 )

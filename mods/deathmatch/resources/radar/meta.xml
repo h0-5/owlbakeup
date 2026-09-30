@@ -40,6 +40,7 @@
         <file src="images/blip/waypoint.png" />
 
         <export function="showRadar" type="client" />
+        <export function="setRadarOverMenu" type="client" />
         <export function="setRadarDispatchElements" type="client" />
         <export function="isRadarVisible" type="client" />
         <!-- [Fix #63] the old Owl jobs call exports.radar:findBestWay for the

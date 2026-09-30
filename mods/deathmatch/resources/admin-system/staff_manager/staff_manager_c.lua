@@ -69,20 +69,22 @@ local rank_to_delete = nil      -- role id pending delete-confirmation
 local canEditMembers = false
 local canEditRanks = false
 
--- [Fix #14] readability floor for every rank color the panel draws
-local function clampRankColorC(c)
-        if type(c) ~= "table" then return c end
-        local r = tonumber(c[1]) or 255
-        local g = tonumber(c[2]) or 255
-        local b = tonumber(c[3]) or 255
-        local a = tonumber(c[4]) or 255
-        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-        if lum < 0.45 then
-                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                r = math.floor(r + (255 - r) * t + 0.5)
-                g = math.floor(g + (255 - g) * t + 0.5)
-                b = math.floor(b + (255 - b) * t + 0.5)
-        end
+-- [Fix #101] EXACT stored rank color for every row the panel paints: dark
+-- stays dark, so the member/role rows show the SAME shade as the scoreboard
+-- TAB and the nametag. This used to be the [Fix #14] "readability floor",
+-- a luminance (0.45) blend toward WHITE that lightened every dark color -
+-- that is what turned a dark red into the light red reported for الهيئة.
+-- The channel values are now returned as stored; the only thing left is the
+-- MTA nested-array unwrap: toJSON writes the color as "[ [ r, g, b, a ] ]",
+-- so fromJSON hands back { { r, g, b, a } } (the same unwrap the
+-- staff_roles -> scoreboard getAllRankColors export does).
+local function normalizeRankColorC(c)
+        if type(c) ~= "table" then return { 255, 255, 255, 255 } end
+        if type(c[1]) == "table" then c = c[1] end
+        local r = math.min(255, math.max(0, tonumber(c[1]) or 255))
+        local g = math.min(255, math.max(0, tonumber(c[2]) or 255))
+        local b = math.min(255, math.max(0, tonumber(c[3]) or 255))
+        local a = math.min(255, math.max(0, tonumber(c[4]) or 255))
         return { r, g, b, a }
 end
 local currentColorLabel = nil   -- which element the color picker writes to
@@ -1126,8 +1128,10 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 LevelNames[tostring(level.ID)] = tostring(level.LevelName)
                 local rights = unwrapRightsC(fromJSON(level.Rights or "{}"))
                 LevelRights[tostring(level.ID)] = rights
-                local color = fromJSON(level.Color or "[[255,255,255,255]]")
-                LevelColor[tostring(level.ID)] = type(color) == "table" and color or { 255, 255, 255, 255 }
+                -- [Fix #101] stored rank color read EXACTLY (nested JSON
+                -- unwrapped, no brightening) - this table feeds the member /
+                -- role / rank rows, the color preview and the save payload
+                LevelColor[tostring(level.ID)] = normalizeRankColorC(fromJSON(level.Color or ""))
                 getLevelByName[tostring(level.LevelName)] = tostring(level.ID)
         end
 
@@ -1150,9 +1154,14 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 -- [Mod 2 fix] LIVE rank for ONLINE staff (bridge element data,
                 -- matched by ACCOUNT id) wins over the stored DB role; offline
                 -- staff keep the DB rank. Panel now always agrees with the tab.
+                -- [Fix #101] both sources are the STORED rank color (rank:color
+                -- element data / staff_roles row) and are painted as-is: the
+                -- old readability floor (clampRankColorC) blended dark colors
+                -- toward white here, which is why a dark red rank rendered as a
+                -- LIGHT red in the الهيئة list while the TAB/nametag stayed dark.
                 local color = (staff.Online and type(staff.LiveColor) == "table") and staff.LiveColor
-                        or LevelColor[tostring(staff.AdminID)] or { 255, 255, 255 }
-                color = clampRankColorC(color)
+                        or LevelColor[tostring(staff.AdminID)] or { 255, 255, 255, 255 }
+                color = normalizeRankColorC(color)
                 local rankName = (staff.Online and staff.LiveRank and staff.LiveRank ~= "")
                         and tostring(staff.LiveRank)
                         or tostring(LevelNames[tostring(staff.AdminID)] or "N/A")
@@ -1186,9 +1195,18 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                         tostring(LevelNames[tostring(member.RoleID)] or "N/A") .. " (#" .. tostring(member.RoleID) .. ")")
                 eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 2,
                         tostring(member.Account))
-                local color = LevelColor[tostring(member.RoleID)]
-                if color then
-                        eui:uiGridListSetItemColor(UI.gridlist.roles_members, row, 1, tocolor(unpack(color)))
+                -- [Fix #101] stored shade exactly as saved: LevelColor is
+                -- normalized at build (MTA nested "[ [ r, g, b, a ] ]" JSON
+                -- unwrapped, no luminance floor) and re-checked here, so the
+                -- row can never receive a TABLE instead of r/g/b - previously a
+                -- nested table reached tocolor(unpack(...)) as ONE argument and
+                -- the "Owner (#21)" rows kept the gridlist default instead of
+                -- the rank color the owner picked
+                local stored = LevelColor[tostring(member.RoleID)]
+                if stored then
+                        local color = normalizeRankColorC(stored)
+                        eui:uiGridListSetItemColor(UI.gridlist.roles_members, row, 1,
+                                tocolor(color[1], color[2], color[3], color[4]))
                 end
         end
         end, 25, 1)
@@ -1206,19 +1224,22 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         eui:uiGridListClear(UI.gridlist.ranks)
         eui:uiGridListClear(UI.gridlist.add_staff_ranks)
         for _, level in ipairs(levels or {}) do
-                local color = fromJSON(level.Color or "[[255,255,255,255]]")
-                if type(color) ~= "table" then color = { 255, 255, 255, 255 } end
+                -- [Fix #101] rank rows paint the stored shade exactly: the
+                -- nested MTA color JSON is unwrapped and the channels are NOT
+                -- lightened (a nested table used to reach color[1] here, so
+                -- tocolor got tables instead of the rank's r/g/b)
+                local color = normalizeRankColorC(fromJSON(level.Color or ""))
                 local row = eui:uiGridListAddRow(UI.gridlist.ranks)
                 eui:uiGridListSetItemText(UI.gridlist.ranks, row, 1, tostring(level.LevelName))
                 eui:uiGridListSetItemData(UI.gridlist.ranks, row, 1, level.ID)
                 eui:uiGridListSetItemColor(UI.gridlist.ranks, row, 1,
-                        tocolor(color[1] or 255, color[2] or 255, color[3] or 255))
+                        tocolor(color[1], color[2], color[3], color[4]))
                 local arow = eui:uiGridListAddRow(UI.gridlist.add_staff_ranks)
                 eui:uiGridListSetItemText(UI.gridlist.add_staff_ranks, arow, 1,
                         tostring(level.LevelName))
                 eui:uiGridListSetItemData(UI.gridlist.add_staff_ranks, arow, 1, level.ID)
                 eui:uiGridListSetItemColor(UI.gridlist.add_staff_ranks, arow, 1,
-                        tocolor(color[1] or 255, color[2] or 255, color[3] or 255))
+                        tocolor(color[1], color[2], color[3], color[4]))
         end
 
         eui:uiCheckBoxSetSelected(UI.checkbox.permissions_select_all, false)

@@ -25,7 +25,11 @@ end
 -- End small hack
 
 function switchGroundSnow( toggle )
-	if getResourceState ( getResourceFromName( "shader_snow_ground" ) ) == "running" then
+	-- [Fix #94] getResourceFromName returns false when the resource does
+	-- not exist on this server - getResourceState(false) threw a
+	-- bad-argument warning on every weather change
+	local snowRes = getResourceFromName( "shader_snow_ground" )
+	if snowRes and getResourceState ( snowRes ) == "running" then
 		triggerClientEvent( thePlayer, "switchGoundSnow", thePlayer, toggle)
 	end
 end

@@ -64,7 +64,11 @@ addEventHandler("onResourceStart", getResourceRootElement(), loadAllPeds)
 
 function resume()
 	for key, value in ipairs(threads) do
-		coroutine.resume(value)
+		-- [Fix #94] only resume live threads - dead/corrupt entries threw
+		-- "cannot resume dead coroutine" at every boot
+		if type(value) == "thread" and coroutine.status(value) == "suspended" then
+			coroutine.resume(value)
+		end
 	end
 end
 

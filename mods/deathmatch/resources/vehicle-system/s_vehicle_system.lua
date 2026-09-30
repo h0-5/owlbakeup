@@ -1271,7 +1271,7 @@ addEventHandler("lockUnlockOutsideVehicle", getRootElement(), lockUnlockOutside)
 function storeVehicleLockState(vehicle, dbid)
 	if (isElement(vehicle)) then
 		local newdbid = getElementData(vehicle, "dbid")
-		if tonumber(newdbid) > 0 then
+		if (tonumber(newdbid) or 0) > 0 then
 			local locked = isVehicleLocked(vehicle)
 
 			local state = 0

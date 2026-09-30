@@ -1,3 +1,7 @@
+-- [Fix #94] this script runs inside the job-system resource, which never
+-- defined the shared `mysql` global that account/integration have - every
+-- mysql:* call here threw "attempt to index global 'mysql'"
+local mysql = exports.mysql
 local fishStat = { }
 
 -- /fish to start fishing.

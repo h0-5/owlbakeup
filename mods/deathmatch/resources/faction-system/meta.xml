@@ -12,4 +12,14 @@
 
         <script src="c_faction_admin.lua" type="client" />
 
+        <!-- [Fix #109] revive the permission layer: without these export tags
+             exports["faction-system"]:doesPlayerHaveFactionPermission(...) always
+             threw inside the roadblock-system / spike-system pcalls, so their
+             early-outs never fired, the legacy fallback always ran and the
+             min-rank-3 gate was never enforced. -->
+        <export function="doesPlayerHaveFactionPermission" type="server" />
+        <export function="getPlayerFactionPermissions" type="server" />
+        <export function="fsExportHasPermission" type="server" />
+        <export function="fsExportGetPermissions" type="server" />
+
 </meta>

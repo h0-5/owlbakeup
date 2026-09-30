@@ -361,7 +361,12 @@ function UI.click(arg0, arg1, arg2, arg3)
   -- priority (it is a child drawn above the menu rect).
   if not isUIElement(UI.HoveredElement, "menu") then
     local m = menuUnderCursor()
-    if m and UI.HoveredElement ~= UI.DB[m].data.scrollbar then
+    -- [Fix #151] ANY scrollbar keeps priority, not only the menu's own one:
+    -- a gridlist/memo/combobox strip that happens to sit inside a menu rect
+    -- would otherwise be re-targeted to the menu, its press would never reach
+    -- onClientUIStartClick and the thumb could not be dragged inside menus.
+    if m and UI.HoveredElement ~= UI.DB[m].data.scrollbar
+      and not isUIElement(UI.HoveredElement, "scrollbar") then
       UI.HoveredElement = m
     end
   end
@@ -387,7 +392,13 @@ function UI.click(arg0, arg1, arg2, arg3)
       end
       UI.FocusElement = UI.HoveredElement
       if arg0 == "left" then
-        if arg1 == "up" then
+        -- [Fix #151] a release that ENDS a scrollbar drag must not activate
+        -- whatever the cursor happens to be over when the button comes up
+        -- (edit caret, checkbox/radio toggle, combobox list, tab switch): the
+        -- press started on the strip, so the release is part of that drag.
+        -- UI.ScrollbarDrag is still set here - it is cleared right after this
+        -- handler returns (onClientClick, c_scrollbar).
+        if arg1 == "up" and not UI.ScrollbarDrag then
           if getElementType(UI.HoveredElement) == "ui-edit" then
             if arg2 > UI.DB[UI.HoveredElement].dimensions.x + 7 + dxGetTextWidth(UI.DB[UI.HoveredElement].text, UI.DB[UI.HoveredElement].font.size, UI.DB[UI.HoveredElement].font.name) then
               uiEditSetCaretIndex(UI.HoveredElement, utfLen(UI.DB[UI.HoveredElement].text) + 1)
@@ -439,7 +450,10 @@ function UI.click(arg0, arg1, arg2, arg3)
             triggerEvent("onClientUIDragEnd", UI.DraggedElement, UI.HoveredElement)
             UI.DraggedElement = nil
           end
-        else
+        -- [Fix #151] was a plain `else`, which also caught the release above:
+        -- with the guard it would have run the press branch, so the down case
+        -- is now stated explicitly.
+        elseif arg1 == "down" then
           if getElementType(UI.HoveredElement) == "ui-gridlist" then
             -- [Vortex fix #12] drawn hovered_row is stale in the click gap
             UI.refreshGridlistHoverRow(UI.HoveredElement)
@@ -568,7 +582,13 @@ function UI.click(arg0, arg1, arg2, arg3)
       if arg1 == "up" and getElementType(UI.HoveredElement) == "ui-button" then
         UI.DB[UI.HoveredElement].state = "normal"
       end
-      triggerEvent(arg1 == "up" and "onClientUIClick" or "onClientUIStartClick", UI.HoveredElement, arg2, arg3)
+      -- [Fix #151] the release that ends a thumb drag produces no click: the
+      -- press was on the scrollbar, so the element under the cursor when the
+      -- button comes up (usually a row or an action button) must not react.
+      -- The press itself still fires onClientUIStartClick as before.
+      if not (arg1 == "up" and UI.ScrollbarDrag) then
+        triggerEvent(arg1 == "up" and "onClientUIClick" or "onClientUIStartClick", UI.HoveredElement, arg2, arg3)
+      end
     else
       if UI.FocusElement then
         UI.DB[UI.FocusElement].state = "normal"

@@ -76,6 +76,14 @@ local function buildVehiclesList(characterId)
                         "FROM `vehicles` v " ..
                         "LEFT JOIN `vehicles_shop` s ON v.vehicle_shop_id = s.id " ..
                         "WHERE v.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
+                        -- [Fix #152] admin/system-deleted cars (deleted = -1, or the
+                        -- deleting admin's account id) have the owner cleared only
+                        -- sometimes, so without this filter a deleted car came back
+                        -- on the very next fetch and reappeared in F1 right after
+                        -- the live mainmenu:propertyRemoved push dropped the row.
+                        -- Numeric compare (loadAllVehicles convention): '0' -> 0,
+                        -- '1'/admin id/-1 -> non-zero -> hidden. NULL stays visible.
+                        "AND (v.deleted = 0 OR v.deleted IS NULL) " ..
                         "ORDER BY v.id ASC"
                 )
         end)
@@ -118,7 +126,15 @@ local function buildInteriorsList(characterId)
                         "SELECT i.id, i.name, i.locked, i.cost " ..
                         "FROM `interiors` i " ..
                         "WHERE i.owner = " .. exports.mysql:escape_string(characterId) .. " " ..
-                        "AND (i.deleted = 0 OR i.deleted IS NULL) " ..
+                        -- [Fix #152] interiors.deleted holds the deleting admin's
+                        -- USERNAME (interior-system/s_interior_admin.lua: DELETE
+                        -- sets deleted = '<adminname>'), not a flag. The old NUMERIC
+                        -- compare matched those rows ('adminname' converts to 0 in
+                        -- MySQL), so a deleted house stayed in F1 forever - the bug
+                        -- behind "sold/deleted property keeps showing until relog".
+                        -- String compare matches loadAllInteriors' own
+                        -- `WHERE deleted = '0'` (see interior-system:1047).
+                        "AND (i.deleted = '0' OR i.deleted IS NULL) " ..
                         "ORDER BY i.id ASC"
                 )
         end)

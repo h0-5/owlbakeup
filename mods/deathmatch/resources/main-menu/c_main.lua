@@ -272,6 +272,135 @@ local function updateOwnedLabel()
         })
 end
 
+-- [Fix #152] LIVE personal-properties list. The house/vehicle systems push
+-- mainmenu:propertyRemoved / mainmenu:propertyAdded to the owning player the
+-- moment a property is sold, deleted or bought, so an OPEN F1 drops (or
+-- re-fetches) the row right away instead of keeping it until the next open /
+-- tab switch. The rows of the last fetch are kept here because the grid is
+-- rebuilt from them - one render path shared with the server callbacks.
+local ownedRows = { vehicles = {}, interiors = {} }
+
+-- kind comes from the other resources; accept their spellings
+local function ownedKindKey(kind)
+        kind = tostring(kind or ""):lower()
+        if kind == "vehicle" or kind == "vehicles" or kind == "car" then
+                return "vehicles"
+        elseif kind == "interior" or kind == "interiors" or kind == "house"
+                or kind == "property" then
+                return "interiors"
+        end
+        return nil
+end
+
+local function renderOwnedVehicles(list, slots)
+        -- [Fix #100 #4] the Info-tab ownership summary moves with the rows
+        UI.owned.vehicles = #list
+        updateOwnedLabel()
+        if not (eui and UI.gridlist.vehicles and isElement(UI.gridlist.vehicles)) then return end
+        eui:uiSetText(UI.label.vehicles, "Vehicles  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
+        eui:uiGridListClear(UI.gridlist.vehicles)
+        for _, car in ipairs(list) do
+                local row = eui:uiGridListAddRow(UI.gridlist.vehicles)
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 1, tostring(car.ID))
+                eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 1, eui:uiGetThemeColor("primary"))
+                local name = tostring(car.Name or "?")
+                if car.impounded then
+                        name = name .. "  |  #FF0000(Impounded)#FFFFFF"
+                elseif car.hidden == 1 then
+                        eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 2, tocolor(180, 180, 180, 255))
+                        name = name .. "  |  (Hidden)"
+                end
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 2, name)
+                eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 3, car.plate or "")
+        end
+end
+
+local function renderOwnedInteriors(list, slots)
+        -- [Fix #100 #4] the Info-tab ownership summary moves with the rows
+        UI.owned.interiors = #list
+        updateOwnedLabel()
+        if not (eui and UI.gridlist.interiors and isElement(UI.gridlist.interiors)) then return end
+        eui:uiSetText(UI.label.interiors, "Interiors  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
+        eui:uiGridListClear(UI.gridlist.interiors)
+        for _, interior in ipairs(list) do
+                local row = eui:uiGridListAddRow(UI.gridlist.interiors)
+                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 1, tostring(interior.id))
+                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 1, eui:uiGetThemeColor("primary"))
+                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 2, tostring(interior.name))
+                local status = tostring(interior.status or "-")
+                if status == "rented" then
+                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(255, 255, 0))
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status .. " ($" .. tostring(interior.price or 0) .. ")")
+                elseif status == "owned" then
+                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(168, 255, 168))
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
+                else
+                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
+                end
+        end
+end
+
+-- [Fix #152] expire the 10s fetch throttle so the NEXT open / tab switch
+-- always re-queries, and re-query immediately while F1 is on screen (the
+-- closed-menu path only needs the flag - the open flow already re-queries).
+local function refreshOwnedSection(key)
+        state[key] = getTickCount() - 10000
+        if not (state.state and UI.window.MainMenu and isElement(UI.window.MainMenu)) then return end
+        state[key] = getTickCount()
+        if key == "vehicles" then
+                triggerServerEvent("main-menu:characterInfo:getVehicles", localPlayer)
+        else
+                triggerServerEvent("main-menu:characterInfo:getInteriors", localPlayer)
+        end
+end
+
+-- [Fix #152] fired by interior-system / vehicle-system / vehicle-manager /
+-- carshop-system at the owning player: the property just left their name.
+-- Guards: unknown kind, F1 never opened, UI not built and id mismatches are
+-- all no-crash paths (the server fallback re-queries instead).
+addEvent("mainmenu:propertyRemoved", true)
+addEventHandler("mainmenu:propertyRemoved", localPlayer, function(kind, id)
+        local key = ownedKindKey(kind)
+        if not key then return end
+        local rows = ownedRows[key]
+        local want = tonumber(id)
+        local removed = false
+        if type(rows) == "table" and want then
+                -- rows carry ID (vehicles) or id (interiors); tonumber() guards
+                -- the string/number mismatch from the wire
+                for i = #rows, 1, -1 do
+                        local row = rows[i]
+                        local rid = tonumber(type(row) == "table" and (row.ID or row.id))
+                        if rid == want then
+                                table.remove(rows, i)
+                                removed = true
+                        end
+                end
+        end
+        if removed then
+                -- drop it from the grid NOW + header count + Info-tab totals
+                if key == "vehicles" then
+                        renderOwnedVehicles(rows, #rows)
+                else
+                        renderOwnedInteriors(rows, #rows)
+                end
+                -- refresh flag: the next open / tab switch re-reads the DB
+                state[key] = getTickCount() - 10000
+        else
+                -- not fetched yet (or id mismatch): ask the server for the truth
+                refreshOwnedSection(key)
+        end
+end)
+
+-- [Fix #152] reverse freshness: a property was ACQUIRED - we don't know the
+-- new row's name/plate client-side, so just re-run that section's fetch.
+addEvent("mainmenu:propertyAdded", true)
+addEventHandler("mainmenu:propertyAdded", localPlayer, function(kind)
+        local key = ownedKindKey(kind)
+        if not key then return end
+        refreshOwnedSection(key)
+end)
+
 -- notifications with a chat fallback until the notifications mod is restored
 local function notify(text, duration, kind)
         if type(text) ~= "table" then text = { en = tostring(text), ar = tostring(text) } end
@@ -1523,50 +1652,20 @@ local function buildMainMenuUI()
 
         addEvent("main-menu:characterInfo:getVehicles:callback", true)
         addEventHandler("main-menu:characterInfo:getVehicles:callback", localPlayer, function(list, slots)
-                eui:uiSetText(UI.label.vehicles, "Vehicles  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
-                eui:uiGridListClear(UI.gridlist.vehicles)
-                for _, car in ipairs(list) do
-                        local row = eui:uiGridListAddRow(UI.gridlist.vehicles)
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 1, tostring(car.ID))
-                        eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 1, eui:uiGetThemeColor("primary"))
-                        local name = tostring(car.Name or "?")
-                        if car.impounded then
-                                name = name .. "  |  #FF0000(Impounded)#FFFFFF"
-                        elseif car.hidden == 1 then
-                                eui:uiGridListSetItemColor(UI.gridlist.vehicles, row, 2, tocolor(180, 180, 180, 255))
-                                name = name .. "  |  (Hidden)"
-                        end
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 2, name)
-                        eui:uiGridListSetItemText(UI.gridlist.vehicles, row, 3, car.plate or "")
-                end
-                -- [Fix #100 #4] feed the Info tab ownership summary
-                UI.owned.vehicles = #list
-                updateOwnedLabel()
+                -- [Fix #152] keep the rows: a live mainmenu:propertyRemoved push
+                -- re-renders this cache so the row disappears without a refetch
+                if type(list) ~= "table" then list = {} end
+                ownedRows.vehicles = list
+                renderOwnedVehicles(list, slots)
         end)
 
         addEvent("main-menu:characterInfo:getInteriors:callback", true)
         addEventHandler("main-menu:characterInfo:getInteriors:callback", localPlayer, function(list, slots)
-                eui:uiSetText(UI.label.interiors, "Interiors  #FFFFFF( ${color.primary}" .. tostring(#list) .. "#ffffff / " .. tostring(slots or #list) .. " )")
-                eui:uiGridListClear(UI.gridlist.interiors)
-                for _, interior in ipairs(list) do
-                        local row = eui:uiGridListAddRow(UI.gridlist.interiors)
-                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 1, tostring(interior.id))
-                        eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 1, eui:uiGetThemeColor("primary"))
-                        eui:uiGridListSetItemText(UI.gridlist.interiors, row, 2, tostring(interior.name))
-                        local status = tostring(interior.status or "-")
-                        if status == "rented" then
-                                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(255, 255, 0))
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status .. " ($" .. tostring(interior.price or 0) .. ")")
-                        elseif status == "owned" then
-                                eui:uiGridListSetItemColor(UI.gridlist.interiors, row, 3, tocolor(168, 255, 168))
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
-                        else
-                                eui:uiGridListSetItemText(UI.gridlist.interiors, row, 3, status)
-                        end
-                end
-                -- [Fix #100 #4] feed the Info tab ownership summary
-                UI.owned.interiors = #list
-                updateOwnedLabel()
+                -- [Fix #152] keep the rows: a live mainmenu:propertyRemoved push
+                -- re-renders this cache so the row disappears without a refetch
+                if type(list) ~= "table" then list = {} end
+                ownedRows.interiors = list
+                renderOwnedInteriors(list, slots)
         end)
 
         addEvent("leaderboard:get:response", true)

@@ -1,4 +1,30 @@
-local mysql = exports.mysql
+local mysql = exports.mysql
+
+-- [Fix #152] tell the owner's open F1 (main-menu) that the property just
+-- left their name - used by the two faction-transfer paths below. Each
+-- resource keeps its own global environment, hence this local copy of
+-- interior-system's notifyF1PropertyRemoved.
+local function notifyF1PropertyRemoved(ownerCharId, propertyKind, id)
+	ownerCharId = tonumber(ownerCharId)
+	-- owner -1/0 = government, faction or unowned: nobody to notify
+	if not ownerCharId or ownerCharId < 1 then
+		return
+	end
+	id = tonumber(id)
+	if not id then
+		return
+	end
+	for _, player in ipairs(getElementsByType("player")) do
+		-- same id keys main-menu/s_main.lua resolves the F1 query with
+		local pid = tonumber(getElementData(player, "account:character:id"))
+			or tonumber(getElementData(player, "character:id"))
+			or tonumber(getElementData(player, "dbid"))
+		if pid == ownerCharId then
+			triggerClientEvent(player, "mainmenu:propertyRemoved", player, propertyKind or "interior", id)
+			return
+		end
+	end
+end
 
 function setElementDataEx(source, field, parameter, streamtoall, streamatall)
 	exports.anticheat:changeProtectedElementDataEx( source, field, parameter, streamtoall, streamatall)
@@ -292,6 +318,11 @@ function setInteriorFaction(thePlayer, cmd, ...)
 		call( getResourceFromName( "item-system" ), "deleteAll", interiorType == 1 and 5 or 4, dbid )
 		exports.global:giveItem(thePlayer, interiorType == 1 and 5 or 4, dbid)
 
+		-- [Fix #152] the house just went to the faction: the previous owner's
+		-- open F1 drops the row (element data still holds them - reload is below)
+		local f1Status = interiorElement and getElementData(interiorElement, "status")
+		notifyF1PropertyRemoved(f1Status and f1Status[INTERIOR_OWNER], "interior", dbid)
+
 		exports.logs:dbLog(thePlayer, 37, { "in"..tostring(dbid) } , "SETINTFACTION INTERIOR ID#"..dbid.." TO FACTION '"..factionName.."'")
 		exports['interior-system']:realReloadInterior(tonumber(dbid))
 		triggerClientEvent(thePlayer, "createBlipAtXY", thePlayer, entrance[INTERIOR_TYPE], entrance[INTERIOR_X], entrance[INTERIOR_Y])
@@ -352,6 +383,11 @@ function setInteriorToMyFaction(thePlayer, cmd)
 	call( getResourceFromName( "item-system" ), "deleteAll", interiorType == 1 and 5 or 4, dbid )
 	exports.global:giveItem(thePlayer, interiorType == 1 and 5 or 4, dbid)
 
+	-- [Fix #152] the house just went to your faction: the previous owner's
+	-- open F1 drops the row (element data still holds them - reload is below)
+	local f1Status = interiorElement and getElementData(interiorElement, "status")
+	notifyF1PropertyRemoved(f1Status and f1Status[INTERIOR_OWNER], "interior", dbid)
+
 	exports.logs:dbLog(thePlayer, 37, { "in"..tostring(dbid) } , "SETINTTOMYFACTION INTERIOR ID#"..dbid.." TO FACTION '"..factionName.."'")
 	exports['interior-system']:realReloadInterior(tonumber(dbid))
 	triggerClientEvent(thePlayer, "createBlipAtXY", thePlayer, entrance[INTERIOR_TYPE], entrance[INTERIOR_X], entrance[INTERIOR_Y])

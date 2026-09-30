@@ -115,7 +115,11 @@ function crushCar()
 					removePedFromVehicle(thePlayer)
 					exports.anticheat:changeProtectedElementDataEx(thePlayer, "realinvehicle", 0)	
 					--mysql:query_free("DELETE FROM vehicles WHERE id='" .. mysql:escape_string(dbid) .. "'")
-					mysql:query_free("UPDATE `vehicles` SET `deleted`='1' WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+					mysql:query_free("UPDATE `vehicles` SET `deleted`='1' WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+
+					-- [Fix #152] crushed (owner was cleared a moment ago, and only the
+					-- owner may crush): their own open F1 drops the car row right now
+					triggerClientEvent(thePlayer, "mainmenu:propertyRemoved", thePlayer, "vehicle", dbid)
 					destroyElement(theVehicle)
 				else
 					outputChatBox("Error 9004 - Report on Forums.", thePlayer, 255, 0, 0)

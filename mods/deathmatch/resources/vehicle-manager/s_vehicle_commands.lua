@@ -1,4 +1,31 @@
-local mysql = exports.mysql
+local mysql = exports.mysql
+
+-- [Fix #152] push "this car just left <character id>'s name" to that
+-- character's online player, so an OPEN F1 (main-menu/c_main.lua) drops the
+-- vehicle row immediately instead of keeping it until the next open/tab
+-- switch. Mirrors interior-system's notifyF1PropertyRemoved: resources do not
+-- share a global environment, so each resource defines its own copy.
+function notifyF1VehicleRemoved(ownerCharId, vehicleId)
+	ownerCharId = tonumber(ownerCharId)
+	-- owner -1/0 = dealership, faction or system: nobody to notify
+	if not ownerCharId or ownerCharId < 1 then
+		return
+	end
+	vehicleId = tonumber(vehicleId)
+	if not vehicleId then
+		return
+	end
+	for _, player in ipairs(getElementsByType("player")) do
+		-- same id keys main-menu/s_main.lua resolves the F1 query with
+		local pid = tonumber(getElementData(player, "account:character:id"))
+			or tonumber(getElementData(player, "character:id"))
+			or tonumber(getElementData(player, "dbid"))
+		if pid == ownerCharId then
+			triggerClientEvent(player, "mainmenu:propertyRemoved", player, "vehicle", vehicleId)
+			return
+		end
+	end
+end
 
 armoredCars = { [427]=true, [528]=true, [432]=true, [601]=true, [428]=true } -- Enforcer, FBI Truck, Rhino, SWAT Tank, Securicar
 totalTempVehicles = 0
@@ -1764,7 +1791,8 @@ function removeVehicle(thePlayer, commandName, id)
 			end
 		end
 
-		local query1 = mysql:query("SELECT `deleted` FROM `vehicles` WHERE id='" .. mysql:escape_string(dbid) .. "'")
+		-- [Fix #152] owner comes along so the previous owner's open F1 can be told
+		local query1 = mysql:query("SELECT `deleted`, `owner` FROM `vehicles` WHERE id='" .. mysql:escape_string(dbid) .. "'")
 		local row = {}
 		if query1 then
 			row = mysql:fetch_assoc(query1) or false
@@ -1787,7 +1815,11 @@ function removeVehicle(thePlayer, commandName, id)
 
 			triggerEvent("onVehicleDelete", theVehicle)
 			destroyElement(theVehicle)
-			mysql:query_free("DELETE FROM `vehicles` WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+			mysql:query_free("DELETE FROM `vehicles` WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+
+			-- [Fix #152] owner's open F1 drops the row right now (row is gone
+			-- from the DB, so a later fetch would hide it anyway)
+			notifyF1VehicleRemoved(row and row["owner"], dbid)
 			mysql:query_free("DELETE FROM `vehicle_logs` WHERE `vehID`='" .. mysql:escape_string(dbid) .. "'")
 			mysql:query_free("DELETE FROM `vehicles_custom` WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
 			mysql:query_free("DELETE FROM `vehicle_notes` WHERE `vehid`='" .. mysql:escape_string(dbid) .. "'")
@@ -1983,7 +2015,10 @@ function deleteVehicle(thePlayer, commandName, id)
 				if (dbid<0) then -- TEMP vehicle
 					destroyElement(theVehicle)
 				else
-					mysql:query_free("UPDATE `vehicles` SET `deleted`='"..tostring(adminID).."' WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+					mysql:query_free("UPDATE `vehicles` SET `deleted`='"..tostring(adminID).."' WHERE `id`='" .. mysql:escape_string(dbid) .. "'")
+
+					-- [Fix #152] owner's open F1 drops the deleted car row right now
+					notifyF1VehicleRemoved(owner, dbid)
 					exports.logs:dbLog(thePlayer, 6, { theVehicle }, "DELVEH" )
 					destroyElement(theVehicle)
 
@@ -2053,7 +2088,15 @@ function setVehicleFaction(thePlayer, theCommand, vehicleID, factionID)
 					end
 				end
 
-				mysql:query_free("UPDATE `vehicles` SET `owner`='".. mysql:escape_string(owner) .."', `faction`='" .. mysql:escape_string(factionID) .. "' WHERE id = '" .. mysql:escape_string(vehicleID) .. "'")
+				mysql:query_free("UPDATE `vehicles` SET `owner`='".. mysql:escape_string(owner) .."', `faction`='" .. mysql:escape_string(factionID) .. "' WHERE id = '" .. mysql:escape_string(vehicleID) .. "'")
+
+				-- [Fix #152] the previous owner's open F1 drops the car row now
+				-- (element data still holds them - reloadVehicle below refreshes it)
+				notifyF1VehicleRemoved(getElementData(theVehicle, "owner"), vehicleID)
+				-- ...and the player who just received it (owner above) refetches
+				if owner and tonumber(owner) and tonumber(owner) > 0 then
+					triggerClientEvent(thePlayer, "mainmenu:propertyAdded", thePlayer, "vehicle")
+				end
 
 				local x, y, z = getElementPosition(theVehicle)
 				local int = getElementInterior(theVehicle)

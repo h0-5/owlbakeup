@@ -300,20 +300,24 @@ local function getRank(p)
         return "-" -- regular players show a dash, like the reference
 end
 
--- [Fix #14] readability floor: dark rank colors (navy/maroon) vanished on
--- the dark board - the user read this as "the name disappears"
+-- [Fix #153] the board draws the rank color EXACTLY as stored. The old
+-- [Fix #14] luminance floor brightened every dark rank (navy, dark-orange,
+-- burgundy...) toward white, so the tab never matched the shade chosen in
+-- the rank editor. Readability is handled by the theme itself, not by
+-- rewriting the user's color. Invalid channels still fall back to white.
 local function clampSB(c)
+        if type(c) ~= "table" then return 255, 255, 255 end
+        -- [Fix #153] MTA toJSON writes a color as "[ [ r, g, b, a ] ]" and
+        -- fromJSON may hand back either shape depending on the build - unwrap
+        -- one level before reading the channels.
+        if type(c[1]) == "table" then c = c[1] end
         local r = tonumber(c[1]) or 255
         local g = tonumber(c[2]) or 255
         local b = tonumber(c[3]) or 255
-        local lum = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255
-        if lum < 0.45 then
-                local t = (0.45 - lum) / math.max(1 - lum, 0.001)
-                r = math.floor(r + (255 - r) * t + 0.5)
-                g = math.floor(g + (255 - g) * t + 0.5)
-                b = math.floor(b + (255 - b) * t + 0.5)
-        end
-        return r, g, b
+        if r < 0 then r = 0 elseif r > 255 then r = 255 end
+        if g < 0 then g = 0 elseif g > 255 then g = 255 end
+        if b < 0 then b = 0 elseif b > 255 then b = 255 end
+        return math.floor(r), math.floor(g), math.floor(b)
 end
 
 local function getRankColor(p, rankName)

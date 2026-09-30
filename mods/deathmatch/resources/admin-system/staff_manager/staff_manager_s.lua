@@ -811,8 +811,12 @@ local function updateRoleImpl(sender, levelID, rights, color)
         -- the spaced "[ [ r, g, b, a ] ]" form; that is FINE now because the
         -- setup pass parses Color with fromJSON instead of the old
         -- `LIKE '[[%'` string test that wiped every saved color to white.
+        -- [Fix #153] alpha is ALWAYS 255 here: every in-game renderer draws a
+        -- rank color opaque, and the panel's picker preview does too - saving
+        -- a < 255 (an 8-digit hex pick) made the panel blend the row with its
+        -- background while the game showed the pure RGB.
         local colorJSON = toJSON({ tonumber(color[1]) or 255, tonumber(color[2]) or 255,
-                tonumber(color[3]) or 255, tonumber(color[4]) or 255 })
+                tonumber(color[3]) or 255, 255 })
         mysql:query_free("UPDATE staff_roles SET Rights='"
                 .. rightsToJSON(rights) .. "', Color='"
                 .. mysql:escape_string(colorJSON) .. "' WHERE ID=" .. levelID)

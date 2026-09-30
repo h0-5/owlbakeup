@@ -239,9 +239,14 @@ function systemDeleteVehicle(vehid, reason) --This function is meant to be used 
 	call( getResourceFromName( "item-system" ), "deleteAll", 3 , vehid )
 
 	--Now we process in database first.
-	local veh = mysql:query_fetch_assoc("SELECT id FROM vehicles WHERE id="..vehid.." LIMIT 1")
+	-- [Fix #152] owner comes along so the previous owner's open F1 can be told
+	local veh = mysql:query_fetch_assoc("SELECT id, owner FROM vehicles WHERE id="..vehid.." LIMIT 1")
 	if veh and veh.id ~= nil then
-		mysql:query_free("UPDATE vehicles SET deleted=-1 WHERE id='" .. vehid .. "'")
+		mysql:query_free("UPDATE vehicles SET deleted=-1 WHERE id='" .. vehid .. "'")
+
+		-- [Fix #152] owner's open F1 drops the deleted car row right now
+		-- (s_vehicle_commands.lua owns the helper - same resource, loaded first)
+		notifyF1VehicleRemoved(veh and veh.owner, vehid)
 		mysql:query_free("DELETE FROM vehicles_custom WHERE id='" .. vehid .. "'")
 	else
 		return false, "veh does not existed in database."

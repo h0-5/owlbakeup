@@ -330,7 +330,12 @@ function carshop_buyVehicle(paymentMethod)
 		destroyElement(tempPickup)
 	end
 	destroyElement(source)					
-	exports['vehicle-system']:reloadVehicle(insertid)
+	exports['vehicle-system']:reloadVehicle(insertid)
+
+	-- [Fix #152] buyer's open F1 refetches so the new car shows up right away
+	if client and isElement(client) then
+		triggerClientEvent(client, "mainmenu:propertyAdded", client, "vehicle")
+	end
 	
 	local license = (getElementData(client, "license.car") == 1) and "" or "You don't have a drivers license. You better not drive this on the street."
 	

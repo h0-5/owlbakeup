@@ -193,6 +193,16 @@ local function runSetup()
                                 if type(raw) == "string" and raw ~= "" then
                                         c = fromJSON(raw)
                                 end
+                                -- [Fix #153] fromJSON unpacks a JSON array into
+                                -- its elements, so toJSON's "[ [ r, g, b, a ] ]"
+                                -- normally comes back FLAT as { r, g, b, a }.
+                                -- Some builds hand back the nested shape
+                                -- { { r, g, b, a } } instead - unwrap one level
+                                -- so a VALID color is never mistaken for a
+                                -- broken one and wiped to white here.
+                                if type(c) == "table" and type(c[1]) == "table" then
+                                        c = c[1]
+                                end
                                 local ok = type(c) == "table"
                                         and tonumber(c[1]) and tonumber(c[2]) and tonumber(c[3])
                                 if not ok then

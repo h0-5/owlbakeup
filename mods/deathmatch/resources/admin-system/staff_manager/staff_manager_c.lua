@@ -84,7 +84,14 @@ local function normalizeRankColorC(c)
         local r = math.min(255, math.max(0, tonumber(c[1]) or 255))
         local g = math.min(255, math.max(0, tonumber(c[2]) or 255))
         local b = math.min(255, math.max(0, tonumber(c[3]) or 255))
-        local a = math.min(255, math.max(0, tonumber(c[4]) or 255))
+        -- [Fix #153] alpha is always 255: the picker preview, the nametags,
+        -- the chat and the scoreboard all render a rank color OPAQUE, so a
+        -- stored a < 255 (8-digit hex "#RRGGBBAA") only made THIS panel paint
+        -- the row blended with the panel background - the RGB looked like a
+        -- different shade than the one shown in game. Normalizing at the one
+        -- choke point every panel paint goes through keeps picker, panel and
+        -- game identical.
+        local a = 255
         return { r, g, b, a }
 end
 local currentColorLabel = nil   -- which element the color picker writes to
@@ -1000,10 +1007,13 @@ addEvent("onClientColorPickerConfirm", true)
 addEventHandler("onClientColorPickerConfirm", root, function(r, g, b, a)
         if not currentColorLabel then return end
         if isElement(currentColorLabel) then
-                eui:uiSetColor(currentColorLabel, r, g, b, a or 255)
+                -- [Fix #153] rank colors are always drawn opaque - see
+                -- normalizeRankColorC: a picked alpha must not survive into
+                -- the paint/save, or the panel shade differs from the game.
+                eui:uiSetColor(currentColorLabel, r, g, b, 255)
         end
         if currentColorLabel == UI.rectangle.rank_color then
-                RankColor = { r, g, b, a or 255 }
+                RankColor = { r, g, b, 255 }
         end
         currentColorLabel = nil
         -- [Fix #34] the picked color belongs to ONE rank: if anything managed
@@ -1024,8 +1034,8 @@ addEventHandler("onClientColorPickerConfirm", root, function(r, g, b, a)
                                         dispatchPanelAction(UI.gridlist.ranks)
                                         -- the reload above resets RankColor from the rank's
                                         -- stored color - re-apply the picked one AFTER it
-                                        RankColor = { r, g, b, a or 255 }
-                                        eui:uiSetColor(UI.rectangle.rank_color, r, g, b, a or 255)
+                                        RankColor = { r, g, b, 255 }
+                                        eui:uiSetColor(UI.rectangle.rank_color, r, g, b, 255)
                                         break
                                 end
                         end

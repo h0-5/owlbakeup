@@ -626,7 +626,7 @@ local GATES_V4_EXTENSION = {
         ["starttv"] = "admin.freecam", ["endtv"] = "admin.freecam",
         ["movetv"] = "admin.freecam", ["watchers"] = "admin.freecam", ["tv"] = "admin.freecam",
         ----------------------------------------------------- scoreboard ----
-        ["checkid"] = "owner.checkid", ["setid"] = "admin.check",
+        ["checkid"] = "owner.checkid", ["changeid"] = "admin.check",
         ----------------------------------------------------- clothing ----
         ["gskin"] = "admin.skin", ["getskin"] = "admin.skin",
         -------------------------------------------------- paynspray/toll ----
@@ -654,6 +654,47 @@ for cmd, right in pairs(GATES_V4_EXTENSION) do
         end
 end
 GATES_VERSION = 4
+
+-- ===========================================================================
+-- [Fix #157] RIGHTS THAT HAD NO COMMAND BEHIND THEM. The panel listed these
+-- rights (and the seed granted them), but nothing anywhere in the server
+-- registered a handler for them, so ticking/unticking changed nothing. The
+-- matching handlers now live at the end of staff_manager_s.lua; this map is
+-- what makes the tick actually enforce them.
+--   NOTE: the setid -> changeid rename above is the owner's exact call
+--   (admin.check, NOT accounts.changeid) - reported, not second-guessed.
+-- ===========================================================================
+local GATES_FIX157 = {
+        ----------------------------------------------------- accounts ----
+        ["changepass"]        = "accounts.changepass",
+        ["changeemail"]       = "accounts.changeemail",
+        ["changeserial"]      = "accounts.changeserial",
+        ["changeaccountname"] = "accounts.changeaccountname",
+        --------------------------------------------------------- owner ----
+        ["checkserial"]       = "owner.checkserial",
+        ["checkaccount"]      = "owner.checkaccount",
+        ["checkemail"]        = "owner.checkemail",
+        ["setactivestatus"]   = "owner.setactivestatus",
+        ["changemode"]        = "owner.changemode",
+        ["giverole"]          = "owner.giverole",
+        ["takerole"]          = "owner.takerole",
+        ["setroleid"]         = "owner.setroleid",
+        -------------------------------------------- read-only helpers ----
+        ["showbans"]          = "admin.showbans",
+        ["showsettings"]      = "admin.showsettings",
+        ["getaccount"]        = "admin.getaccount",
+        -------------------------------- chat rights the gate ignored ----
+        -- chat-system owns the handlers (/a, /g); before this they were
+        -- unmapped = "no opinion" = the panel tick did nothing for them
+        ["a"]                 = "admin.chat /a",
+        ["g"]                 = "support.chat /g",
+}
+
+for cmd, right in pairs(GATES_FIX157) do
+        if COMMAND_RIGHTS[cmd] == nil then
+                COMMAND_RIGHTS[cmd] = right
+        end
+end
 
 -- resources whose commands are admin tools by nature; /staffscan flags any
 -- command they register that the map above still does not cover

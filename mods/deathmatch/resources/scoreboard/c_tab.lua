@@ -479,7 +479,7 @@ local WATCHED_KEYS = {
 addEventHandler("onClientElementDataChange", root, function(key)
         if key == "mod:id" and state then
                 -- [Fix #90] the list is sorted by id - rebuild it when an id
-                -- flips (/setid), otherwise rows keep the old order
+                -- flips (/changeid), otherwise rows keep the old order
                 updatePlayers()
                 return
         end
@@ -594,6 +594,25 @@ addEventHandler("onClientKey", root, function(key, press)
 end)
 
 --[[ ==================== cell data ==================== ]]
+
+-- [Fix #158] on the blue selection band a rank color that would drown
+-- (navy/maroon/black) is lifted toward white just enough to stay readable.
+-- Bright colors (white, gold, light green...) pass through untouched so the
+-- row keeps its own colors - nothing is ever forced white.
+local function liftOnBlue(col)
+        local a, r, g, b = bitExtract(col, 24, 8), bitExtract(col, 16, 8), bitExtract(col, 8, 8), bitExtract(col, 0, 8)
+        local lum = 0.299 * r + 0.587 * g + 0.114 * b
+        if lum >= 200 then
+                return col
+        end
+        local t = (200 - lum) / math.max(1, 255 - lum)
+        return tocolor(
+                math.floor(r + (255 - r) * t + 0.5),
+                math.floor(g + (255 - g) * t + 0.5),
+                math.floor(b + (255 - b) * t + 0.5),
+                a
+        )
+end
 
 local function cellData(colName, p, c, id)
         -- [Fix #47 - user] DYNAMIC RANK COLOR ON ALL COLUMNS: when the player
@@ -790,13 +809,17 @@ local function drawBoard()
 
                         -- row background: [Fix #47 - user] solid black theme -
                         -- the zebra stripes are gone; only my row keeps a faint
-                        -- plate and the hovered row darkens with the accent bar
+                        -- plate. [Fix #158] the highlighted row is now the SAME
+                        -- solid BLUE full-row rectangle every other list uses
+                        -- (it fades in with the hover animation and is drawn
+                        -- UNDER the text); it used to be a translucent black
+                        -- overlay + whitened text, which read as "white".
                         local bgA = isLocal and 12 or 0
                         if bgA > 0.5 then
                                 drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(255, 255, 255, bgA), true, 6 * s)
                         end
                         if rowHover > 0.01 then
-                                drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(0, 0, 0, 110 * rowHover), true, 6 * s)
+                                drawRoundRect(rowX, rowY, rowW, ROW_H - 2, tocolor(45, 110, 225, 255 * rowHover), true, 6 * s)
                         end
 
                         -- left accent bar: permanent on my row, slides in on hover
@@ -841,6 +864,11 @@ local function drawBoard()
                                                         math.floor(b3 + (255 - b3) * rowHover),
                                                         a3
                                                 )
+                                        end
+                                        -- [Fix #158] the highlighted row now sits on the
+                                        -- blue band -> lift colors that would drown on it
+                                        if rowHover > 0.01 then
+                                                hc = liftOnBlue(hc)
                                         end
                                         dxDrawText(tostring(value), cellX + textShift, rowY,
                                                 cellX + cw - 4 * s + textShift, rowY + ROW_H,

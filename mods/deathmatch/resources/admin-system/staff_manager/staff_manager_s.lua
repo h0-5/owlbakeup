@@ -539,11 +539,18 @@ end)
 -- mutations
 -- ============================================================================
 
-local function addChangelog(cType, username, fromRank, toRank)
+local function addChangelog(cType, username, fromRank, toRank, actor)
+        -- [Fix #157] optional actor: command handlers have no event `client`,
+        -- so /giverole and friends pass themselves; event callers stay as-is
+        local src = actor
+        if not (isElement(src) and getElementType(src) == "player")
+                and isElement(client) and getElementType(client) == "player" then
+                src = client
+        end
         local by = "System"
-        if isElement(client) and getElementType(client) == "player" then
-                by = getElementData(client, "account:username")
-                        or getPlayerName(client) or "Unknown"
+        if isElement(src) and getElementType(src) == "player" then
+                by = getElementData(src, "account:username")
+                        or getPlayerName(src) or "Unknown"
         end
         mysql:query_free(string.format(
                 "INSERT INTO staff_rank_changelogs (Date, cType, Username, FromR, ToR, By_) VALUES (NOW(), '%s', '%s', '%s', '%s', '%s')",
@@ -575,15 +582,20 @@ end
 -- [Fix #15] rank changes are PUBLIC chat logs. Format follows the classic
 -- admin-bot line: "[STAFF]: Hade promoted 'BO5' to Head Management."
 -- green = promotion, red = demotion/removal, visible to everyone.
-local function actorName()
-        if isElement(client) and getElementType(client) == "player" then
-                return getElementData(client, "account:username")
-                        or getPlayerName(client) or "?"
+local function actorName(actor)
+        -- [Fix #157] optional actor (command handlers, no event `client`)
+        local src = actor
+        if not (isElement(src) and getElementType(src) == "player")
+                and isElement(client) and getElementType(client) == "player" then
+                src = client
+        end
+        if isElement(src) and getElementType(src) == "player" then
+                return getElementData(src, "account:username") or getPlayerName(src) or "?"
         end
         return "System"
 end
 
-local function broadcastRankChange(action, target, toRank, isNegative)
+local function broadcastRankChange(action, target, toRank, isNegative, actor)
         -- Fix #25 (user, image 3): colored staff log — purple [STAFF] tag,
         -- colored actor, rank name in its panel color when known
         local rankColor = ""
@@ -605,7 +617,7 @@ local function broadcastRankChange(action, target, toRank, isNegative)
                         mysql:free_result(q)
                 end
         end
-        local line = "#a855f7[STAFF]#ffffff " .. actorName() .. " "
+        local line = "#a855f7[STAFF]#ffffff " .. actorName(actor) .. " "
                 .. (isNegative and "#ff5a5a" or "#46c85a") .. action .. "#ffffff '"
                 .. tostring(target) .. "'"
                 .. (toRank and (" to " .. rankColor .. tostring(toRank)) or "") .. "."
@@ -858,3 +870,897 @@ addEvent("rpadmin:saveLevelRights", true)
 addEventHandler("rpadmin:saveLevelRights", root, function(levelID, rights, color)
         updateRoleImpl(source, levelID, rights, color)
 end)
+
+-- ===========================================================================
+-- [Fix #157] COMMAND AUDIT — the /staffs rank editor lists command-looking
+-- rights that had NO working command behind them, so ticking or unticking
+-- them changed nothing. Every one of them now has a real handler below:
+--
+--   accounts family : /changepass /changeemail /changeserial
+--                     /changeaccountname
+--   owner family    : /checkserial /checkaccount /checkemail
+--                     /setactivestatus /changemode
+--                     /giverole /takerole /setroleid
+--   mapped, no code : /setfpslimit /setgametype /clearchatforall /gotoped
+--                     /setweight /unmute  (gate keys already existed)
+--   read-only help  : /showbans /showsettings /getaccount
+--
+-- They register through the WRAPPED addCommandHandler (command_gates_s.lua is
+-- the FIRST script of admin-system), so for ranked staff the gate map already
+-- enforces them; the helper below is the legacy ladder for players without a
+-- Vortex rank, which the gate deliberately lets through.
+-- ===========================================================================
+
+-- right check: rank rights are the ONLY truth for ranked staff, the legacy
+-- integration ladder decides for everyone else (same rule as hasEditRanks)
+local function fix157HasRight(player, right)
+        if not isElement(player) then return false end
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, right) and true or false
+                end
+                return false
+        end
+        local prefix = tostring(right):match("^([%w]+)%.") or ""
+        if prefix == "owner" or prefix == "accounts" then
+                return exports.integration:isPlayerLeadAdmin(player) and true or false
+        end
+        if prefix == "character" then
+                return exports.integration:isPlayerTrialAdmin(player) and true or false
+        end
+        return exports.integration:isPlayerSeniorAdmin(player) and true or false
+end
+
+local function fix157Check(player, right)
+        if fix157HasRight(player, right) then return true end
+        outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
+        return false
+end
+
+local function fix157Trim(s)
+        s = tostring(s or "")
+        return (s:gsub("^%s+", ""):gsub("%s+$", ""))
+end
+
+local function fix157Syntax(player, cmd, args)
+        outputChatBox("SYNTAX: /" .. tostring(cmd) .. " " .. tostring(args), player, 255, 194, 14)
+end
+
+-- every DB read below goes through this column list (+ salt, used by
+-- /changepass to re-hash with the LIVE login scheme)
+local FIX157_ACCOUNT_COLS = "id, username, salt, email, mtaserial, ip, "
+        .. "activated, appstate, registerdate, lastlogin, admin, supporter, muted, warns"
+
+local function fix157PlayerByAccountID(accountID)
+        accountID = tonumber(accountID)
+        if not accountID then return nil end
+        for _, p in ipairs(getElementsByType("player")) do
+                if tonumber(getElementData(p, "account:id")) == accountID then
+                        return p
+                end
+        end
+        return nil
+end
+
+-- resolve an account from: numeric id -> exact username -> online player nick
+local function fix157Account(query)
+        local q = fix157Trim(query)
+        if q == "" then return nil, nil end
+        local esc = mysql:escape_string(q)
+        local row
+        if q:match("^%d+$") then
+                row = mysql:query_fetch_assoc("SELECT " .. FIX157_ACCOUNT_COLS
+                        .. " FROM accounts WHERE id=" .. tonumber(q))
+        end
+        if not row then
+                row = mysql:query_fetch_assoc("SELECT " .. FIX157_ACCOUNT_COLS
+                        .. " FROM accounts WHERE LOWER(username)=LOWER('" .. esc .. "') LIMIT 1")
+        end
+        if not row then
+                -- partial nick / scoreboard id of an ONLINE player
+                local ok, target = pcall(function()
+                        -- third arg = quiet: no "No such player found." spam
+                        return exports.global:findPlayerByPartialNick(nil, q, true)
+                end)
+                if ok and isElement(target) and getElementType(target) == "player" then
+                        local aid = tonumber(getElementData(target, "account:id"))
+                        if aid then
+                                row = mysql:query_fetch_assoc("SELECT " .. FIX157_ACCOUNT_COLS
+                                        .. " FROM accounts WHERE id=" .. aid)
+                        end
+                end
+        end
+        if not row then return nil, nil end
+        return row, fix157PlayerByAccountID(row.id)
+end
+
+-- [Fix #157] EXACTLY the live login scheme (login-panel/server.lua:60):
+-- lower(md5(lower(md5(password)) .. salt)); the old md5("wedorp"..pw) path
+-- sits inside the commented block in account/s_main.lua, never use it.
+local function fix157HashPassword(password, salt)
+        return string.lower(md5(string.lower(md5(tostring(password))) .. tostring(salt or "")))
+end
+
+local function fix157StaffRankName(accountID)
+        local row = mysql:query_fetch_assoc("SELECT r.LevelName, r.ID FROM staff_role_members m"
+                .. " JOIN staff_roles r ON r.ID = m.RoleID WHERE m.AccountID="
+                .. tonumber(accountID) .. " LIMIT 1")
+        if row and row.LevelName then
+                return tostring(row.LevelName) .. " (#" .. tostring(row.ID) .. ")"
+        end
+        return "-"
+end
+
+local function fix157PrintAccount(actor, row)
+        local online = fix157PlayerByAccountID(row.id)
+        outputChatBox("Account: " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")"
+                .. (online and "  [ONLINE]" or "  [offline]"), actor, 220, 220, 220)
+        outputChatBox("  Email: " .. ((row.email and row.email ~= "") and row.email or "-")
+                .. "  |  IP: " .. ((row.ip and row.ip ~= "") and row.ip or "-"), actor, 200, 200, 200)
+        outputChatBox("  Serial: " .. ((row.mtaserial and row.mtaserial ~= "") and row.mtaserial or "-"),
+                actor, 200, 200, 200)
+        outputChatBox("  activated=" .. tostring(row.activated) .. "  appstate=" .. tostring(row.appstate)
+                .. "  muted=" .. tostring(row.muted) .. "  warns=" .. tostring(row.warns),
+                actor, 200, 200, 200)
+        outputChatBox("  Registered: " .. tostring(row.registerdate or "-")
+                .. "  |  last login: " .. tostring(row.lastlogin or "-"), actor, 200, 200, 200)
+        outputChatBox("  Legacy admin=" .. tostring(row.admin) .. "  supporter=" .. tostring(row.supporter)
+                .. "  |  staff rank: " .. fix157StaffRankName(row.id), actor, 120, 200, 255)
+end
+
+-- admin-command log (action 4 = "Admin command"); affected may be an element
+-- or, for offline accounts, any string
+local function fix157Log(actor, data, affected)
+        pcall(function()
+                exports.logs:dbLog(actor, 4, affected or actor, data)
+        end)
+end
+
+local function fix157ListAccounts(actor, header, q)
+        local n = 0
+        if not q then
+                outputChatBox("Account query failed - run /staffdb", actor, 255, 0, 0)
+                return 0
+        end
+        while true do
+                local row = mysql:fetch_assoc(q)
+                if not row then break end
+                n = n + 1
+                outputChatBox("  (#" .. tostring(row.id) .. ") " .. tostring(row.username),
+                        actor, 220, 220, 220)
+        end
+        mysql:free_result(q)
+        if n == 0 then
+                outputChatBox(header .. ": no account found.", actor, 255, 194, 14)
+        end
+        return n
+end
+
+-- ================================================================ accounts --
+
+-- [Fix #157] accounts.changepass — /setaccountpassword + /changeaccountpassword
+-- are commented out in account/s_main.lua, so the right was display-only.
+addCommandHandler("changepass", function(player, cmd, account, newPass, confirmPass)
+        if not fix157Check(player, "accounts.changepass") then return end
+        if not account or not newPass or not confirmPass then
+                fix157Syntax(player, cmd, "[Account Username] [New Password] [Confirm Password]")
+                return
+        end
+        local row, online = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        if #newPass < 6 or #newPass >= 30 then
+                outputChatBox("Password must be 6-29 characters long.", player, 255, 0, 0)
+                return
+        end
+        if newPass:find("[;'@,%s]") then
+                outputChatBox("Password cannot contain ; ' @ , or a space.", player, 255, 0, 0)
+                return
+        end
+        if newPass ~= confirmPass then
+                outputChatBox("Passwords do not match.", player, 255, 0, 0)
+                return
+        end
+        local hash = fix157HashPassword(newPass, row.salt)
+        mysql:query_free("UPDATE accounts SET password='" .. mysql:escape_string(hash)
+                .. "' WHERE id=" .. tonumber(row.id))
+        outputChatBox("Password changed for '" .. tostring(row.username) .. "' (#"
+                .. tostring(row.id) .. ") - the new password is never shown.", player, 0, 255, 0)
+        if online and online ~= player then
+                outputChatBox("Staff changed your account password - use it on your next login.",
+                        online, 255, 194, 14)
+        end
+        fix157Log(player, "CHANGEPASS " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
+                "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] accounts.changeemail
+addCommandHandler("changeemail", function(player, cmd, account, email)
+        if not fix157Check(player, "accounts.changeemail") then return end
+        if not account or not email then
+                fix157Syntax(player, cmd, "[Account Username] [New Email]")
+                return
+        end
+        if #email > 100 or not email:match("^[%w%._%-]+@[%w%._%-]+%.[%w]+$") then
+                outputChatBox("Invalid email address (max 100 characters).", player, 255, 0, 0)
+                return
+        end
+        local row, online = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        local before = tostring(row.email or "-")
+        mysql:query_free("UPDATE accounts SET email='" .. mysql:escape_string(email)
+                .. "' WHERE id=" .. tonumber(row.id))
+        outputChatBox("Email changed: " .. tostring(row.username) .. " (#" .. tostring(row.id)
+                .. ") '" .. before .. "' -> '" .. email .. "'", player, 0, 255, 0)
+        if online and online ~= player then
+                outputChatBox("Staff set your account email to " .. email .. ".", online, 255, 194, 14)
+        end
+        fix157Log(player, "CHANGEEMAIL " .. tostring(row.username) .. " (#" .. tostring(row.id)
+                .. ") -> " .. email, "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] accounts.changeserial
+addCommandHandler("changeserial", function(player, cmd, account, newSerial)
+        if not fix157Check(player, "accounts.changeserial") then return end
+        if not account or not newSerial then
+                fix157Syntax(player, cmd, "[Account Username / Player] [32-char Serial]")
+                return
+        end
+        -- canonical serial format is what getPlayerSerial returns: 32 A-Z0-9
+        newSerial = fix157Trim(newSerial):upper()
+        if #newSerial ~= 32 or not newSerial:match("^%w+$") then
+                outputChatBox("REJECTED: a serial is exactly 32 letters/digits (0-9 A-Z).",
+                        player, 255, 80, 80)
+                return
+        end
+        local row, online = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        local esc = mysql:escape_string(newSerial)
+        local dup = mysql:query_fetch_assoc("SELECT id, username FROM accounts WHERE mtaserial='"
+                .. esc .. "' AND id<>" .. tonumber(row.id) .. " LIMIT 1")
+        mysql:query_free("UPDATE accounts SET mtaserial='" .. esc .. "' WHERE id="
+                .. tonumber(row.id))
+        outputChatBox("Serial changed: " .. tostring(row.username) .. " (#" .. tostring(row.id)
+                .. ") -> " .. newSerial, player, 0, 255, 0)
+        if dup and dup.username then
+                outputChatBox("NOTE: this serial is already used by '" .. tostring(dup.username)
+                        .. "' (#" .. tostring(dup.id) .. ").", player, 255, 194, 14)
+        end
+        if online then
+                outputChatBox("MTA binds the serial at login, so the change applies from their NEXT login.",
+                        player, 255, 194, 14)
+                if online ~= player then
+                        outputChatBox("Staff changed your account serial - it applies on your next login.",
+                                online, 255, 194, 14)
+                end
+        end
+        fix157Log(player, "CHANGESERIAL " .. tostring(row.username) .. " (#" .. tostring(row.id)
+                .. ") -> " .. newSerial, "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] accounts.changeaccountname
+addCommandHandler("changeaccountname", function(player, cmd, oldName, newName)
+        if not fix157Check(player, "accounts.changeaccountname") then return end
+        if not oldName or not newName then
+                fix157Syntax(player, cmd, "[Current Account] [New Account]")
+                return
+        end
+        if #newName < 3 or #newName > 32 then
+                outputChatBox("The new account name must be 3-32 characters long.", player, 255, 0, 0)
+                return
+        end
+        if newName:find("[;'@,%s]") then
+                outputChatBox("An account name cannot contain ; ' @ , or a space.", player, 255, 0, 0)
+                return
+        end
+        local row, online = fix157Account(oldName)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(oldName), player, 255, 0, 0)
+                return
+        end
+        if tostring(row.username):lower() == newName:lower() then
+                outputChatBox("The account already uses that name.", player, 255, 194, 14)
+                return
+        end
+        local taken = mysql:query_fetch_assoc("SELECT id FROM accounts WHERE LOWER(username)=LOWER('"
+                .. mysql:escape_string(newName) .. "') LIMIT 1")
+        if taken then
+                outputChatBox("Name already taken: " .. newName, player, 255, 0, 0)
+                return
+        end
+        local before = tostring(row.username)
+        mysql:query_free("UPDATE accounts SET username='" .. mysql:escape_string(newName)
+                .. "' WHERE id=" .. tonumber(row.id))
+        if online then
+                -- same call the donator username-change perk uses
+                exports.anticheat:changeProtectedElementDataEx(online, "account:username", newName, true)
+        end
+        outputChatBox("Account renamed: '" .. before .. "' -> '" .. newName .. "' (#"
+                .. tostring(row.id) .. ")", player, 0, 255, 0)
+        if online and online ~= player then
+                outputChatBox("Staff renamed your account to '" .. newName .. "'.", online, 255, 194, 14)
+        end
+        fix157Log(player, "CHANGEACCOUNTNAME '" .. before .. "' -> '" .. newName .. "' (#"
+                .. tostring(row.id) .. ")", "account#" .. tostring(row.id))
+end, false, false)
+
+-- ================================================================== owner --
+
+-- [Fix #157] owner.checkserial — /findserial + /findip cover the ONLINE case,
+-- this one also answers for offline accounts and for a bare 32-char serial.
+addCommandHandler("checkserial", function(player, cmd, query)
+        if not fix157Check(player, "owner.checkserial") then return end
+        query = fix157Trim(query)
+        if query == "" then
+                fix157Syntax(player, cmd, "[Account Username / Player / 32-char Serial]")
+                return
+        end
+        if #query == 32 and query:match("^%w+$") then
+                local q = mysql:query("SELECT id, username FROM accounts WHERE LOWER(mtaserial)=LOWER('"
+                        .. mysql:escape_string(query) .. "') ORDER BY id ASC LIMIT 10")
+                if not q then
+                        outputChatBox("Serial query failed - run /staffdb", player, 255, 0, 0)
+                        return
+                end
+                local n = fix157ListAccounts(player, "serial " .. query, q)
+                if n > 0 then
+                        outputChatBox("serial " .. query .. " is used by the account(s) above.",
+                                player, 120, 200, 255)
+                end
+                return
+        end
+        local row = fix157Account(query)
+        if not row then
+                outputChatBox("Account not found: " .. query, player, 255, 0, 0)
+                return
+        end
+        outputChatBox("Serial for '" .. tostring(row.username) .. "' (#" .. tostring(row.id) .. "): "
+                .. ((row.mtaserial and row.mtaserial ~= "") and row.mtaserial or "-"),
+                player, 120, 200, 255)
+        fix157Log(player, "CHECKSERIAL " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
+                "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] owner.checkaccount — full account card + characters
+addCommandHandler("checkaccount", function(player, cmd, account)
+        if not fix157Check(player, "owner.checkaccount") then return end
+        account = fix157Trim(account)
+        if account == "" then
+                fix157Syntax(player, cmd, "[Account Username / Player / Account ID]")
+                return
+        end
+        local row = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. account, player, 255, 0, 0)
+                return
+        end
+        fix157PrintAccount(player, row)
+        local q = mysql:query("SELECT charactername, hoursplayed, active FROM characters WHERE account="
+                .. tonumber(row.id) .. " ORDER BY lastlogin DESC LIMIT 6")
+        if q then
+                local n = 0
+                while true do
+                        local c = mysql:fetch_assoc(q)
+                        if not c then break end
+                        n = n + 1
+                        outputChatBox("  char: " .. tostring(c.charactername) .. " ("
+                                .. tostring(tonumber(c.hoursplayed) or 0) .. "h)"
+                                .. (tostring(c.active) == "0" and " [inactive]" or ""),
+                                player, 190, 190, 190)
+                end
+                mysql:free_result(q)
+                if n == 0 then
+                        outputChatBox("  no characters on this account.", player, 190, 190, 190)
+                end
+        end
+        fix157Log(player, "CHECKACCOUNT " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
+                "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] owner.checkemail — by email address (who owns it) or by account
+addCommandHandler("checkemail", function(player, cmd, query)
+        if not fix157Check(player, "owner.checkemail") then return end
+        query = fix157Trim(query)
+        if query == "" then
+                fix157Syntax(player, cmd, "[Email Address / Account Username / Player]")
+                return
+        end
+        if query:find("@", 1, true) then
+                local q = mysql:query("SELECT id, username FROM accounts WHERE LOWER(email)=LOWER('"
+                        .. mysql:escape_string(query) .. "') ORDER BY id ASC LIMIT 10")
+                local n = fix157ListAccounts(player, "email " .. query, q)
+                if n > 0 then
+                        outputChatBox("email " .. query .. " belongs to the account(s) above.",
+                                player, 120, 200, 255)
+                end
+                return
+        end
+        local row = fix157Account(query)
+        if not row then
+                outputChatBox("Account not found: " .. query, player, 255, 0, 0)
+                return
+        end
+        outputChatBox("Email for '" .. tostring(row.username) .. "' (#" .. tostring(row.id) .. "): "
+                .. ((row.email and row.email ~= "") and row.email or "-"), player, 120, 200, 255)
+        fix157Log(player, "CHECKEMAIL " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
+                "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] owner.setactivestatus — accounts.activated = "0" is exactly what
+-- the login panel checks (login-panel/server.lua:72) to refuse a login.
+addCommandHandler("setactivestatus", function(player, cmd, account, state)
+        if not fix157Check(player, "owner.setactivestatus") then return end
+        if not account or not state then
+                fix157Syntax(player, cmd, "[Account Username / Player] [0 = locked, 1 = activated]")
+                return
+        end
+        local n = tonumber(state)
+        if n ~= 0 and n ~= 1 then
+                outputChatBox("State must be 0 (login blocked) or 1 (login allowed).", player, 255, 0, 0)
+                return
+        end
+        local row, online = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        local before = tostring(row.activated)
+        if before == tostring(n) then
+                outputChatBox("Account '" .. tostring(row.username) .. "' is already activated="
+                        .. before .. ".", player, 255, 194, 14)
+                return
+        end
+        mysql:query_free("UPDATE accounts SET activated=" .. n .. " WHERE id=" .. tonumber(row.id))
+        outputChatBox("Account '" .. tostring(row.username) .. "' (#" .. tostring(row.id)
+                .. "): activated " .. before .. " -> " .. n
+                .. (n == 0 and " (login blocked)" or " (login allowed)"), player, 0, 255, 0)
+        if online and online ~= player then
+                if n == 0 then
+                        outputChatBox("Staff deactivated your account - you may finish this session "
+                                .. "but cannot log in again until it is reactivated.", online, 255, 100, 100)
+                else
+                        outputChatBox("Staff reactivated your account - you can log in again.",
+                                online, 0, 255, 0)
+                end
+        end
+        fix157Log(player, "SETACTIVESTATUS " .. tostring(row.username) .. " (#" .. tostring(row.id)
+                .. ") activated " .. before .. " -> " .. n, "account#" .. tostring(row.id))
+end, false, false)
+
+-- [Fix #157] owner.changemode — this server has NO /changemode: mapmanager
+-- (the only resource that ships it) is not installed, so the handler works
+-- through its exports when present and says so plainly when not.
+addCommandHandler("changemode", function(player, cmd, ...)
+        if not fix157Check(player, "owner.changemode") then return end
+        local modeName = fix157Trim(table.concat({...}, " "))
+        local mapRes = getResourceFromName("mapmanager")
+        if not mapRes or getResourceState(mapRes) ~= "running" then
+                outputChatBox("Cannot switch gamemode: the 'mapmanager' resource is not "
+                        .. "installed on this server.", player, 255, 0, 0)
+                outputChatBox("Current gamemode: '" .. tostring(getGameType())
+                        .. "' - owner.changemode needs mapmanager.", player, 255, 194, 14)
+                return
+        end
+        if modeName == "" then
+                fix157Syntax(player, cmd, "[Gamemode Resource Name]")
+                local ok, modes = pcall(function() return exports.mapmanager:getGamemodes() end)
+                if ok and type(modes) == "table" and #modes > 0 then
+                        local names = {}
+                        for _, res in ipairs(modes) do
+                                names[#names + 1] = getResourceName(res)
+                        end
+                        outputChatBox("Available gamemodes: " .. table.concat(names, ", "),
+                                player, 200, 200, 200)
+                end
+                return
+        end
+        local ok, result = pcall(function()
+                return exports.mapmanager:changeGamemodeByName(modeName)
+        end)
+        if not ok then
+                outputChatBox("mapmanager refused the gamemode: " .. tostring(result), player, 255, 0, 0)
+                return
+        end
+        if result == false then
+                outputChatBox("Unknown gamemode resource: " .. modeName
+                        .. " (check /gamemodes).", player, 255, 0, 0)
+                return
+        end
+        outputChatBox("Switching gamemode to '" .. modeName .. "' via mapmanager ...",
+                player, 0, 255, 0)
+        fix157Log(player, "CHANGEMODE " .. modeName, "server")
+end, false, false)
+
+-- ================================================================== roles --
+-- The panel (rpadmin:addNewAdmin / rpadmin:removeAdmin) already assigns
+-- staff_role_members, but only through the GUI. /giverole /takerole /
+-- /setroleid are the chat commands the owner.* rights promised.
+
+local function fix157FindRoleByArg(arg)
+        local q = fix157Trim(arg)
+        if q == "" then return nil, nil end
+        local row
+        if q:match("^%d+$") then
+                row = mysql:query_fetch_assoc("SELECT ID, LevelName FROM staff_roles WHERE ID="
+                        .. tonumber(q))
+        else
+                row = mysql:query_fetch_assoc("SELECT ID, LevelName FROM staff_roles"
+                        .. " WHERE LOWER(LevelName)=LOWER('" .. mysql:escape_string(q)
+                        .. "') ORDER BY ID ASC LIMIT 1")
+        end
+        if row and row.ID then return tonumber(row.ID), tostring(row.LevelName) end
+        return nil, nil
+end
+
+local function fix157CurrentRoleName(accountID)
+        local old = mysql:query_fetch_assoc("SELECT m.RoleID FROM staff_role_members m WHERE m.AccountID="
+                .. tonumber(accountID) .. " LIMIT 1")
+        if not old then return nil, nil end
+        local oldName = "-"
+        for _, level in ipairs(fetchLevels()) do
+                if tonumber(level.ID) == tonumber(old.RoleID) then
+                        oldName = level.LevelName
+                end
+        end
+        return tonumber(old.RoleID), oldName
+end
+
+local function fix157AssignRole(actor, row, levelID, levelName)
+        local oldRoleID, oldName = fix157CurrentRoleName(row.id)
+        if oldRoleID then
+                mysql:query_free("UPDATE staff_role_members SET RoleID=" .. levelID
+                        .. " WHERE AccountID=" .. tonumber(row.id))
+        else
+                mysql:query_free("INSERT INTO staff_role_members (RoleID, AccountID) VALUES ("
+                        .. levelID .. ", " .. tonumber(row.id) .. ")")
+        end
+        -- [Fix #14] log tells the truth: compare ladder position old vs new
+        local changeType = "Promotion"
+        if oldRoleID and type(getRankTitleIndex) == "function" then
+                local oldIdx = getRankTitleIndex(oldName)
+                local newIdx = getRankTitleIndex(tostring(levelName or "-"))
+                if oldIdx and newIdx and newIdx < oldIdx then
+                        changeType = "Demotion"
+                end
+        end
+        addChangelog(changeType, row.username, oldName or "-", tostring(levelName or "-"), actor)
+        outputChatBox("Staff updated: " .. tostring(row.username) .. " -> "
+                .. tostring(levelName) .. " (" .. changeType .. ")", actor, 0, 255, 0)
+        broadcastRankChange(changeType == "Demotion" and "demoted" or "promoted",
+                row.username, tostring(levelName or "-"), changeType == "Demotion", actor)
+        refresh(actor)
+        local online = fix157PlayerByAccountID(row.id)
+        if online and type(refreshPlayerRank) == "function" then
+                refreshPlayerRank(online)
+        end
+        fix157Log(actor, "GIVEROLE " .. tostring(row.username) .. " -> " .. tostring(levelName)
+                .. " (" .. changeType .. ")", "account#" .. tostring(row.id))
+end
+
+local function fix157ClearRole(actor, row)
+        local oldRoleID, oldName = fix157CurrentRoleName(row.id)
+        mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(row.id))
+        addChangelog("Demotion", row.username, oldName or "-", "Player", actor)
+        outputChatBox("Staff removed: " .. tostring(row.username)
+                .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), actor, 0, 255, 0)
+        broadcastRankChange("removed", row.username, false, true, actor)
+        refresh(actor)
+        local online = fix157PlayerByAccountID(row.id)
+        if online and type(refreshPlayerRank) == "function" then
+                refreshPlayerRank(online)
+        end
+        fix157Log(actor, "TAKEROLE " .. tostring(row.username)
+                .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), "account#" .. tostring(row.id))
+end
+
+-- [Fix #157] owner.giverole — by rank ID or rank name
+addCommandHandler("giverole", function(player, cmd, account, roleArg)
+        if not fix157Check(player, "owner.giverole") then return end
+        if not account or not roleArg then
+                fix157Syntax(player, cmd, "[Account Username / Player] [Rank ID or Rank Name]")
+                return
+        end
+        local row = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        local levelID, levelName = fix157FindRoleByArg(roleArg)
+        if not levelID then
+                outputChatBox("Rank not found: " .. tostring(roleArg)
+                        .. "  (use a rank ID or an exact rank name)", player, 255, 0, 0)
+                return
+        end
+        fix157AssignRole(player, row, levelID, levelName)
+end, false, false)
+
+-- [Fix #157] owner.setroleid — same, but the argument must be a rank ID
+addCommandHandler("setroleid", function(player, cmd, account, roleID)
+        if not fix157Check(player, "owner.setroleid") then return end
+        if not account or not roleID then
+                fix157Syntax(player, cmd, "[Account Username / Player] [Rank ID]")
+                return
+        end
+        roleID = fix157Trim(roleID)
+        if not roleID:match("^%d+$") then
+                outputChatBox("Rank ID must be a number (see the ID column in the panel).",
+                        player, 255, 0, 0)
+                return
+        end
+        local row = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
+                return
+        end
+        local levelID, levelName = fix157FindRoleByArg(roleID)
+        if not levelID then
+                outputChatBox("Rank not found: ID " .. roleID, player, 255, 0, 0)
+                return
+        end
+        fix157AssignRole(player, row, levelID, levelName)
+end, false, false)
+
+-- [Fix #157] owner.takerole — drop the staff role (same as the panel button)
+addCommandHandler("takerole", function(player, cmd, account)
+        if not fix157Check(player, "owner.takerole") then return end
+        account = fix157Trim(account)
+        if account == "" then
+                fix157Syntax(player, cmd, "[Account Username / Player]")
+                return
+        end
+        local row = fix157Account(account)
+        if not row then
+                outputChatBox("Account not found: " .. account, player, 255, 0, 0)
+                return
+        end
+        local oldRoleID = fix157CurrentRoleName(row.id)
+        if not oldRoleID then
+                outputChatBox("Account has no staff role: " .. tostring(row.username),
+                        player, 255, 194, 14)
+                return
+        end
+        fix157ClearRole(player, row)
+end, false, false)
+
+-- ======================================================== generic admin tools --
+
+-- [Fix #157] admin.setfpslimit — gate key existed, no handler anywhere
+addCommandHandler("setfpslimit", function(player, cmd, limit)
+        if not fix157Check(player, "admin.setfpslimit") then return end
+        local n = tonumber(limit)
+        if not n or n < 10 or n > 100 or n % 1 ~= 0 then
+                fix157Syntax(player, cmd, "[FPS Limit: 10-100]")
+                return
+        end
+        local old = (type(getFPSLimit) == "function") and getFPSLimit() or "?"
+        setFPSLimit(n)
+        outputChatBox("FPS limit changed: " .. tostring(old) .. " -> " .. n, player, 0, 255, 0)
+        fix157Log(player, "SETFPSLIMIT " .. tostring(old) .. " -> " .. n, "server")
+end, false, false)
+
+-- [Fix #157] admin.setgametype
+addCommandHandler("setgametype", function(player, cmd, ...)
+        if not fix157Check(player, "admin.setgametype") then return end
+        local text = fix157Trim(table.concat({...}, " "))
+        if text == "" then
+                fix157Syntax(player, cmd, "[Game Type Text]")
+                return
+        end
+        local old = tostring(getGameType())
+        setGameType(text)
+        outputChatBox("Game type changed: '" .. old .. "' -> '" .. text .. "'", player, 0, 255, 0)
+        fix157Log(player, "SETGAMETYPE '" .. old .. "' -> '" .. text .. "'", "server")
+end, false, false)
+
+-- [Fix #157] admin.clearchatforall — blank-lines every client's chat buffer
+addCommandHandler("clearchatforall", function(player, cmd)
+        if not fix157Check(player, "admin.clearchatforall") then return end
+        for i = 1, 30 do
+                outputChatBox(" ", root, 0, 0, 0)
+        end
+        outputChatBox("Chat cleared by staff.", player, 194, 194, 194)
+        fix157Log(player, "CLEARCHATFORALL", "server")
+end, false, false)
+
+-- [Fix #157] admin.gotoped — nearest ped in the same interior/dimension
+addCommandHandler("gotoped", function(player, cmd)
+        if not fix157Check(player, "admin.gotoped") then return end
+        local x, y, z = getElementPosition(player)
+        local best, bestDist
+        for _, ped in ipairs(getElementsByType("ped")) do
+                if isElement(ped)
+                        and getElementDimension(ped) == getElementDimension(player)
+                        and getElementInterior(ped) == getElementInterior(player) then
+                        local px, py, pz = getElementPosition(ped)
+                        local dist = getDistanceBetweenPoints3D(x, y, z, px, py, pz)
+                        if not bestDist or dist < bestDist then
+                                best, bestDist = ped, dist
+                        end
+                end
+        end
+        if not isElement(best) then
+                outputChatBox("No pedestrians found in your interior/dimension.", player, 255, 0, 0)
+                return
+        end
+        local px, py, pz = getElementPosition(best)
+        setElementPosition(player, px, py, pz + 1)
+        outputChatBox("Teleported to the nearest ped (model " .. getElementModel(best)
+                .. ", " .. math.floor(bestDist) .. " m).", player, 0, 255, 0)
+        fix157Log(player, "GOTOPED model " .. getElementModel(best), player)
+end, false, false)
+
+-- [Fix #157] character.setweight — mirror of /setheight; 40-140 is the range
+-- the game's own weight editor accepts (social-system/g_look.lua)
+addCommandHandler("setweight", function(player, cmd, targetQuery, weight)
+        if not fix157Check(player, "character.setweight") then return end
+        if not targetQuery or not weight then
+                fix157Syntax(player, cmd, "[Player Partial Nick / ID] [Weight in kg: 40-140]")
+                return
+        end
+        local kg = tonumber(weight)
+        if not kg or kg < 40 or kg > 140 or kg % 1 ~= 0 then
+                outputChatBox("Weight must be a whole number between 40 and 140 kg.",
+                        player, 255, 0, 0)
+                return
+        end
+        local target, targetName = exports.global:findPlayerByPartialNick(player, targetQuery)
+        if not isElement(target) then return end
+        local dbid = tonumber(getElementData(target, "dbid"))
+        if not dbid then
+                outputChatBox("That player has no character loaded.", player, 255, 0, 0)
+                return
+        end
+        mysql:query_free("UPDATE characters SET weight='" .. mysql:escape_string(tostring(kg))
+                .. "' WHERE id=" .. dbid)
+        exports.anticheat:changeProtectedElementDataEx(target, "weight", kg, true)
+        outputChatBox("You changed " .. targetName .. "'s weight to " .. kg .. " kg.",
+                player, 0, 255, 0)
+        if target ~= player then
+                outputChatBox("Your weight was set to " .. kg .. " kg.", target, 0, 255, 0)
+        end
+        fix157Log(player, "SETWEIGHT " .. targetName .. " " .. kg .. "kg", target)
+end, false, false)
+
+-- [Fix #157] admin.unmute — /pmute already toggles both elementData + the
+-- accounts column; this is the one-way version the panel right promised
+addCommandHandler("unmute", function(player, cmd, targetQuery)
+        if not fix157Check(player, "admin.unmute") then return end
+        if not targetQuery then
+                fix157Syntax(player, cmd, "[Player Partial Nick / ID]")
+                return
+        end
+        local target, targetName = exports.global:findPlayerByPartialNick(player, targetQuery)
+        if not isElement(target) then return end
+        if tonumber(getElementData(target, "loggedin") or 0) ~= 1 then
+                outputChatBox("Player is not logged in.", player, 255, 0, 0)
+                return
+        end
+        local hiddenAdmin = getElementData(player, "hiddenadmin")
+        exports.anticheat:changeProtectedElementDataEx(target, "muted", 0, false)
+        mysql:query_free("UPDATE accounts SET muted=" .. mysql:escape_string(
+                tostring(getElementData(target, "muted") or 0))
+                .. " WHERE id = " .. mysql:escape_string(
+                tostring(getElementData(target, "account:id") or 0)))
+        outputChatBox(targetName .. " is now unmuted from OOC.", player, 0, 255, 0)
+        if target ~= player then
+                if hiddenAdmin == 0 then
+                        outputChatBox("You were unmuted by '" .. getPlayerName(player) .. "'.",
+                                target, 0, 255, 0)
+                else
+                        outputChatBox("You were unmuted by a Hidden Admin.", target, 0, 255, 0)
+                end
+        end
+        exports.logs:dbLog(player, 4, target, "UNMUTE")
+end, false, false)
+
+-- =============================================================== read-only --
+
+-- [Fix #157] admin.showbans — /showban reads ONE ban record; this lists them
+addCommandHandler("showbans", function(player, cmd, count)
+        if not fix157Check(player, "admin.showbans") then return end
+        local n = tonumber(count) or 10
+        n = math.floor(n)
+        if n < 1 or n > 20 then n = 10 end
+        local totalRow = mysql:query_fetch_assoc("SELECT COUNT(*) AS c FROM bans")
+        local total = (totalRow and tonumber(totalRow.c)) or 0
+        outputChatBox("========== LAST " .. n .. " BANS (of " .. total .. " total) ==========",
+                player, 60, 200, 120)
+        if total == 0 then
+                outputChatBox("No bans on record.", player, 255, 194, 14)
+                return
+        end
+        local q = mysql:query("SELECT b.id, b.date, b.serial, b.ip, b.reason,"
+                .. " au.username AS banned, ad.username AS byName FROM bans b"
+                .. " LEFT JOIN accounts au ON au.id = b.account"
+                .. " LEFT JOIN accounts ad ON ad.id = b.admin"
+                .. " ORDER BY b.id DESC LIMIT " .. n)
+        if not q then
+                outputChatBox("Ban query failed - run /staffdb", player, 255, 0, 0)
+                return
+        end
+        local shown = 0
+        while true do
+                local row = mysql:fetch_assoc(q)
+                if not row then break end
+                shown = shown + 1
+                local reason = tostring(row.reason or "-")
+                if #reason > 60 then reason = reason:sub(1, 57) .. "..." end
+                local who = tostring(row.banned or ("serial " .. tostring(row.serial or "-")))
+                if row.ip and tostring(row.ip) ~= "" then
+                        who = who .. " / " .. tostring(row.ip)
+                end
+                outputChatBox("#" .. tostring(row.id) .. "  " .. tostring(row.date or "?")
+                        .. "  |  " .. who .. "  |  by "
+                        .. tostring(row.byName or "unknown"), player, 220, 220, 220)
+                outputChatBox("      reason: " .. reason, player, 190, 190, 190)
+        end
+        mysql:free_result(q)
+        if shown == 0 then
+                outputChatBox("No bans on record.", player, 255, 194, 14)
+        end
+end, false, false)
+
+-- [Fix #157] admin.showsettings — read-only snapshot of the server settings
+local function fix157Safe(fnName, ...)
+        local fn = _G[fnName]
+        if type(fn) ~= "function" then return "?" end
+        local ok, v = pcall(fn, ...)
+        if not ok then return "?" end
+        return v
+end
+
+addCommandHandler("showsettings", function(player, cmd)
+        if not fix157Check(player, "admin.showsettings") then return end
+        local hour, minute = fix157Safe("getHour"), fix157Safe("getMinute")
+        local timeStr = (type(hour) == "number" and type(minute) == "number")
+                and (tostring(hour) .. ":" .. ("%02d"):format(minute)) or "?"
+        outputChatBox("========== SERVER SETTINGS ==========", player, 60, 200, 120)
+        outputChatBox("name: " .. tostring(fix157Safe("getServerName")), player, 220, 220, 220)
+        outputChatBox("gametype: " .. tostring(fix157Safe("getGameType"))
+                .. "  |  map: " .. tostring(fix157Safe("getMapName")), player, 220, 220, 220)
+        outputChatBox("max players: " .. tostring(fix157Safe("getMaxPlayers"))
+                .. "  |  fps limit: " .. tostring(fix157Safe("getFPSLimit")),
+                player, 220, 220, 220)
+        outputChatBox("weather: " .. tostring(fix157Safe("getWeather"))
+                .. "  |  time: " .. timeStr
+                .. "  |  minute duration: " .. tostring(fix157Safe("getMinuteDuration")) .. " ms",
+                player, 220, 220, 220)
+        local running = (type(getRunningResources) == "function")
+                and #getRunningResources() or "?"
+        outputChatBox("resources: " .. tostring(fix157Safe("getTotalResources"))
+                .. "  |  running: " .. tostring(running), player, 220, 220, 220)
+        fix157Log(player, "SHOWSETTINGS", player)
+end, false, false)
+
+-- [Fix #157] admin.getaccount — quick account card for an ONLINE player
+addCommandHandler("getaccount", function(player, cmd, targetQuery)
+        if not fix157Check(player, "admin.getaccount") then return end
+        if not targetQuery then
+                fix157Syntax(player, cmd, "[Online Player Partial Nick / ID]")
+                return
+        end
+        local target = exports.global:findPlayerByPartialNick(player, targetQuery)
+        if not isElement(target) then return end
+        local aid = tonumber(getElementData(target, "account:id"))
+        if not aid then
+                outputChatBox("That player has no account data loaded.", player, 255, 0, 0)
+                return
+        end
+        local row = mysql:query_fetch_assoc("SELECT " .. FIX157_ACCOUNT_COLS
+                .. " FROM accounts WHERE id=" .. aid)
+        if not row then
+                outputChatBox("Account not found for that player.", player, 255, 0, 0)
+                return
+        end
+        fix157PrintAccount(player, row)
+        fix157Log(player, "GETACCOUNT " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
+                target)
+end, false, false)

@@ -249,8 +249,9 @@ UI.getDrawFunction["ui-menu"] = function(arg0)
         end
       end
       if UI.DB[arg0].data.selected_row == forvar16 then
-        dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.selected_row_color.value, 5)
-        dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y - anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear")) / 2, 2, anim(UI.DB[arg0].animation[1], 200, 0, 0, 0, 0, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2, 0, 0, 0, "Linear"), UI.DB[arg0].properties.selection_color.value, UI.postGUI)
+        -- [Fix #158] SELECTED row = solid BLUE rectangle over the WHOLE row box (same geometry as the hover band), drawn UNDER the icon/text
+        dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(45, 110, 225, 255), UI.postGUI)
+        -- [Fix #158] the old 2px selection_color accent bar is gone: callers colored it white (main-menu) / red (staff panel), so the selection read as a thin colored line instead of a full row. The blue rectangle above is the selection now; the selection_color / selected_row_color properties are no longer used for the fill.
       else
         if UI.DB[arg0].data.hovered_row == forvar16 and 0 < bitExtract(UI.DB[arg0].properties.hovered_row_color.value, 24, 8) then
           dxDrawRoundedRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, UI.DB[arg0].properties.hovered_row_color.value, 5)

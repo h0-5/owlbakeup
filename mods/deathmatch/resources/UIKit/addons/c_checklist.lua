@@ -166,7 +166,10 @@ UI.getDrawFunction["ui-checklist"] = function(arg0)
         end
       end
       if UI.DB[arg0].data.rows[forvar14].selected then
-      else
+        -- [Fix #158] a selected/checked row gets the same solid BLUE rectangle
+        -- as every other list: full row width + full row height, drawn UNDER
+        -- the check box, the checkmark and the text (nothing forced white).
+        dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar14].height + 4) * (forvar14 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.width - 10, UI.DB[arg0].data.rows[forvar14].height, tocolor(45, 110, 225, 255), UI.postGUI)
       end
       dxDrawRectangle(UI.DB[arg0].dimensions.x + 5, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar14].height + 4) * (forvar14 - UI.DB[arg0].data.row_i), UI.DB[arg0].data.rows[forvar14].height, UI.DB[arg0].data.rows[forvar14].height, tocolor(60, 60, 60, 255), UI.postGUI)
       dxDrawRectangle(UI.DB[arg0].dimensions.x + 5 + 2, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar14].height + 4) * (forvar14 - UI.DB[arg0].data.row_i) + 2, UI.DB[arg0].data.rows[forvar14].height - 4, UI.DB[arg0].data.rows[forvar14].height - 4, tocolor(anim(UI.DB[arg0].data.rows[forvar14].animation[1], 500, dxGetColor(UI.DB[arg0].data.rows[forvar14].color))), UI.postGUI)

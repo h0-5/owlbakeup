@@ -78,12 +78,17 @@ local SECTIONS = {
         { id = "rules",          en = "Rules & Terms",  ar = "قوانين ومصطلحات",    icon = "icons/verified.png" },
         { id = "radio",          en = "Radio Channels", ar = "قنوات الراديو",      icon = "icons/radio.png" },
         { id = "commands",       en = "Commands",       ar = "الأوامر",            icon = "icons/menu_chat.png" },
-        { id = "report",         en = "Report",         ar = "البلاغات",           icon = "icons/reportpanel.png" },
+        { id = "report",         en = "Report",           ar = "البلاغات",           icon = "icons/reportpanel.png" },
+        -- [Fix #159] friends list - inserted directly ABOVE the Discord link
+        -- section; every other section (and its row order) stays untouched
+        { id = "friends",        en = "Friends",          ar = "الأصدقاء",           icon = "icons/heart.png" },
         { id = "linkdiscord",    en = "Link Discord",   ar = "ربط الديسكورد",      icon = "icons/discord.png" },
         -- [Fix #63] awards section - the old client jumped to menu row 9 for
         -- "Level Awards" (client_decompiled.lua: uiMenuSetSelectedRow(var2, 9))
         -- and c_level.lua builds its awards tab inside UI.container["awards"]
         -- when uiMenuGetItemID == "awards" - row 9 = this section
+        -- ([Fix #159] the Friends row above shifts its index by one here, but
+        -- c_level hooks uiMenuGetItemID == "awards", never a row number)
         { id = "awards",         en = "Level Awards",    ar = "جوائز المستوى",      icon = "icons/rank.png" },
         { id = "about",          en = "About Server",   ar = "عن السيرفر",         icon = "icons/menu_globe.png" },
         { id = "jobs",           en = "Jobs",            ar = "الوظائف",            icon = "icons/menu_suitcase.png" },
@@ -412,6 +417,145 @@ local function notify(text, duration, kind)
         end
         outputChatBox(text.ar or text.en or "")
 end
+
+--------------------------------------------------------------------------------
+-- [Fix #159] F1 "الأصدقاء" (Friends) section - data + wiring (file scope, so
+-- a UIKit rebuild keeps the rows and never double-registers anything).
+-- Rows come from main-menu:friends:list -> main-menu:friends:list:callback:
+--   { id = friend account id, name = account username, online = bool,
+--     lastlogin = unix ts or false }
+-- online is decided server-side by matching the account:username elementData
+-- of the online players; lastlogin is accounts.lastlogin. Unfriend goes
+-- through social-system's OWN client->server event "social:remove", which
+-- permission-checks the friendship itself (and updates its own list), so
+-- social-system needs no change at all.
+--------------------------------------------------------------------------------
+local friendRows = {}           -- last rows from the server (render source)
+local friendRowsLoaded = false  -- false until the first callback arrives
+local friendRefetchTimer = false
+
+local function friendLastLoginText(ts)
+        ts = tonumber(ts)
+        if not ts or ts <= 0 then
+                -- "never": lastlogin NULL / account never opened the server
+                return "#8a8f98Never"
+        end
+        local ok, text = pcall(function()
+                return os.date("%Y-%m-%d %H:%M", ts)
+        end)
+        if ok and type(text) == "string" then
+                return "#c9ced6" .. text
+        end
+        return "#c9ced6" .. tostring(ts)
+end
+
+local function renderFriendRows()
+        if not (eui and UI.gridlist.friends and isElement(UI.gridlist.friends)) then return end
+        eui:uiGridListClear(UI.gridlist.friends)
+        for _, fr in ipairs(friendRows) do
+                local row = eui:uiGridListAddRow(UI.gridlist.friends)
+                eui:uiGridListSetItemText(UI.gridlist.friends, row, 1, tostring(fr.name or "-"))
+                eui:uiGridListSetItemData(UI.gridlist.friends, row, 1, tonumber(fr.id))
+                if fr.online then
+                        eui:uiGridListSetItemText(UI.gridlist.friends, row, 2, "#00ff00Online")
+                else
+                        eui:uiGridListSetItemText(UI.gridlist.friends, row, 2, "#ff3c3cOffline")
+                end
+                eui:uiGridListSetItemText(UI.gridlist.friends, row, 3, friendLastLoginText(fr.lastlogin))
+        end
+        if UI.label.friends_state and isElement(UI.label.friends_state) then
+                if #friendRows > 0 then
+                        eui:uiSetVisible(UI.label.friends_state, false)
+                else
+                        eui:uiSetText(UI.label.friends_state, friendRowsLoaded
+                                and { en = "You have no friends yet.", ar = "لا يوجد لديك أصدقاء بعد." }
+                                or { en = "Loading friends...", ar = "جاري تحميل الأصدقاء..." })
+                        eui:uiSetVisible(UI.label.friends_state, true)
+                end
+        end
+end
+
+addEvent("main-menu:friends:list:callback", true)
+addEventHandler("main-menu:friends:list:callback", localPlayer, function(rows)
+        friendRows = type(rows) == "table" and rows or {}
+        friendRowsLoaded = true
+        renderFriendRows()
+end)
+
+-- social-system pushes its existing "social:remove" event to BOTH sides of
+-- the friendship (s_friends.lua) - mirror it here so the F1 list stays in
+-- sync when the other player drops us. The event itself is declared by
+-- social-system's c_friends (never re-declared here: a second addEvent could
+-- collide with it), so the handler is attached lazily - at load time
+-- main-menu may still be loading BEFORE social-system - and retried on every
+-- friends fetch until it sticks. The pcall keeps F1 alive either way.
+local socialRemoveSynced = false
+local function syncFriendsRemovalEvent()
+        if socialRemoveSynced then return end
+        local ok = pcall(addEventHandler, "social:remove", root, function(accountID)
+                if isTimer(friendRefetchTimer) then
+                        killTimer(friendRefetchTimer)
+                        friendRefetchTimer = false
+                end
+                accountID = tonumber(accountID)
+                if not accountID then return end
+                local changed = false
+                for i = #friendRows, 1, -1 do
+                        if tonumber(friendRows[i].id) == accountID then
+                                table.remove(friendRows, i)
+                                changed = true
+                        end
+                end
+                if changed then renderFriendRows() end
+        end)
+        socialRemoveSynced = ok == true
+end
+syncFriendsRemovalEvent()
+
+-- [Fix #159] fetch this account's friend rows: fired when the Friends
+-- section is selected and again by the unfriend safety refetch
+local function requestFriendRows()
+        syncFriendsRemovalEvent() -- retry until the mirror handler attached
+        triggerServerEvent("main-menu:friends:list", localPlayer)
+end
+
+-- unfriend button: the row disappears NOW, then social-system confirms it.
+-- When no confirmation arrives (cold social-system cache, resource stopped
+-- meanwhile) the refetch puts the row back - both lists stay identical.
+addEventHandler("onClientUIClick", root, function()
+        if source ~= UI.button.friends_unfriend then return end
+        local grid = UI.gridlist.friends
+        if not (grid and isElement(grid)) then return end
+        local row = eui:uiGridListGetSelectedItem(grid)
+        local accId = (row and row >= 0)
+                and tonumber(eui:uiGridListGetItemData(grid, row, 1)) or nil
+        if not accId then
+                notify({ en = "Select a friend first", ar = "اختر صديقاً أولاً" }, 3000, "warning")
+                return
+        end
+        -- live check (NOT resRunning: it caches the first answer forever)
+        local res = getResourceFromName("social-system")
+        local ok, st = false, nil
+        if res then ok, st = pcall(getResourceState, res) end
+        if not (ok and st == "running") then
+                notify({ en = "The friend system is offline - please try later",
+                          ar = "نظام الأصدقاء متوقف - حاول لاحقاً" }, 4000, "error")
+                return
+        end
+        for i = #friendRows, 1, -1 do
+                if tonumber(friendRows[i].id) == accId then
+                        table.remove(friendRows, i)
+                end
+        end
+        renderFriendRows()
+        triggerServerEvent("social:remove", localPlayer, accId)
+        notify({ en = "Friendship removed", ar = "تم إلغاء الصداقة" }, 3000, "success")
+        if isTimer(friendRefetchTimer) then killTimer(friendRefetchTimer) end
+        friendRefetchTimer = setTimer(function()
+                friendRefetchTimer = false
+                requestFriendRows()
+        end, 2000, 1)
+end)
 
 -- character data: exports.roleplay:getCharacter() when the mod is restored,
 -- element-data fallback meanwhile
@@ -1084,6 +1228,36 @@ local function buildMainMenuUI()
                 { en = "Submit Report", ar = "إرسال البلاغ" }, "primary", UI.window.report_center)
         eui:uiSetProperty(UI.button.report_submit, "TextColor", tocolor(255, 255, 255, 255))
 
+        --[[ ------------------ friends (Fix #159) ------------------
+                Built directly ABOVE the Discord link block, exactly like the
+                sidebar order (Friends -> Link Discord). One gridlist with the
+                three per-friend columns (account / online state / last
+                login) plus the unfriend button underneath - same geometry
+                family as the radio section (grid on top, actions below). ]]
+
+        UI.gridlist.friends = eui:uiCreateGridList(10, 50, contentW - 20, contentH - 140,
+                tocolor(10, 10, 10, 0), UI.container.friends)
+        eui:uiGridListAddColumn(UI.gridlist.friends, { en = "Account", ar = "الحساب" }, 0.38)
+        eui:uiGridListAddColumn(UI.gridlist.friends, { en = "Status", ar = "الحالة" }, 0.22)
+        eui:uiGridListAddColumn(UI.gridlist.friends, { en = "Last Login", ar = "آخر دخول" }, 0.40)
+        eui:uiSetAlign(UI.gridlist.friends, "left", "center")
+        eui:uiSetProperty(UI.gridlist.friends, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.friends, "row_height", 30)
+
+        -- empty-state / loading-state label (renderFriendRows owns its text)
+        UI.label.friends_state = eui:uiCreateLabel(10, 90, contentW - 20, 60,
+                { en = "Loading friends...", ar = "جاري تحميل الأصدقاء..." },
+                tocolor(255, 255, 255, 180), "center", "center", UI.container.friends)
+
+        UI.button.friends_unfriend = eui:uiCreateButton(10, contentH - 70, contentW - 20, 35,
+                { en = "Unfriend selected", ar = "إلغاء صداقة المحدد" },
+                tocolor(0, 0, 0, 240), UI.container.friends)
+        eui:uiSetProperty(UI.button.friends_unfriend, "TextColor", tocolor(255, 255, 255, 230))
+        eui:uiSetProperty(UI.button.friends_unfriend, "HoverGlow", true)
+
+        -- a UIKit rebuild recreates the grid: repaint the cached rows/label
+        renderFriendRows()
+
         --[[ ------------------ link discord (old) ------------------ ]]
 
         UI.container.notlinked = eui:uiCreateContainer(0, 0, contentW, contentH, UI.container.linkdiscord)
@@ -1387,6 +1561,10 @@ local function buildMainMenuUI()
                 if source == menu then
                         if container == UI.container.onlinestaff then
                                 triggerServerEvent("admin:showStaff", localPlayer)
+                        elseif container == UI.container.friends then
+                                -- [Fix #159] fresh rows (online + last login)
+                                -- every time the section is shown
+                                requestFriendRows()
                         elseif container == UI.container.radio then
                                 triggerServerEvent("main-menu:radio:list", localPlayer)
                         elseif container == UI.container.leaderboard then
@@ -1483,7 +1661,30 @@ local function buildMainMenuUI()
                 for _, entry in ipairs(list) do
                         local isSupport = entry[1] == true
                         local hidden = entry[4] == true and not seesHidden
-                        local pid = tostring(entry[2] or "-")
+                        -- [Fix #156] the ID column shows the account-bound
+                        -- mod id (elementData "mod:id" - the id /changeid
+                        -- edits), never the character id (dbid) it used to be.
+                        -- Read it live off the row's player; the payload row[2]
+                        -- carries the same value as the fallback, then the
+                        -- account username, then "-".
+                        local pid
+                        local wantName = tostring(entry[3] or "")
+                        if wantName ~= "" then
+                                for _, p in ipairs(getElementsByType("player")) do
+                                        if tostring(getPlayerName(p)):gsub("_", " ") == wantName then
+                                                local mid = tonumber(getElementData(p, "mod:id"))
+                                                if mid then
+                                                        pid = tostring(mid)
+                                                else
+                                                        local user = tostring(
+                                                                getElementData(p, "account:username") or "")
+                                                        if user ~= "" then pid = user end
+                                                end
+                                                break
+                                        end
+                                end
+                        end
+                        pid = pid or tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
                         local line = " -  "

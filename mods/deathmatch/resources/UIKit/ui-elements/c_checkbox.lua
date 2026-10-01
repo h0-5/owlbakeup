@@ -116,7 +116,11 @@ UI.getDrawFunction["ui-checkbox"] = function(arg0)
   else
   end
   dxDrawRectangle(UI.DB[arg0].dimensions.x, UI.DB[arg0].dimensions.y, 15, 15, tocolor(60, 60, 60, 255), UI.postGUI)
-  dxDrawRectangle(UI.DB[arg0].dimensions.x + 2, UI.DB[arg0].dimensions.y + 2, 15 - 4, 15 - 4, tocolor(anim(UI.DB[arg0].animation[1], 500, dxGetColor(UI.DB[arg0].colors[1]))), UI.postGUI)
+  -- [Vortex fix] the old fill was tocolor(anim(t, 500, dxGetColor(...))):
+  -- anim() with only a START color returns nils once "done", so tocolor got
+  -- nil and the inner fill drew fully transparent (empty-looking box).
+  local cr, cg, cb, ca = dxGetColor(UI.DB[arg0].colors[1])
+  dxDrawRectangle(UI.DB[arg0].dimensions.x + 2, UI.DB[arg0].dimensions.y + 2, 15 - 4, 15 - 4, tocolor(cr, cg, cb, ca), UI.postGUI)
   if UI.DB[arg0].data.selected then
     dxDrawLine(UI.DB[arg0].dimensions.x + 4, UI.DB[arg0].dimensions.y + 6, UI.DB[arg0].dimensions.x + 4, UI.DB[arg0].dimensions.y + 15 - 5, tocolor(255, 255, 255, 255), 1, UI.postGUI)
     dxDrawLine(UI.DB[arg0].dimensions.x + 4, UI.DB[arg0].dimensions.y + 15 - 5, UI.DB[arg0].dimensions.x + 11, UI.DB[arg0].dimensions.y + 3, tocolor(255, 255, 255, 255), 1, UI.postGUI)

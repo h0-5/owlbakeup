@@ -937,6 +937,12 @@ local function dispatchPanelAction(el)
                 or el == UI.button.rename_rank or el == UI.button.save_rank_changes
                 or el == UI.checkbox.permissions_select_all) then
                 outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                -- revert the tick: the UIKit path already flipped the box
+                -- before this gate ran, and the raw path now skips it
+                if el == UI.checkbox.permissions_select_all then
+                        local okC, curC = pcall(eui.uiCheckBoxGetSelected, eui, el)
+                        if okC then pcall(eui.uiCheckBoxSetSelected, eui, el, not curC) end
+                end
                 return
         end
         -- [Fix #160] A5: the Resources/Mods SECTION right gates every control
@@ -1384,6 +1390,15 @@ local function panelDispatch(hitEl, info, ax, ay)
                 pcall(function() playSound(":UIKit/sounds/click.wav") end)
                 dispatchPanelAction(hitEl)
         elseif info.kind == "checkbox" then
+                -- [Fix] the UIKit pipeline runs BEFORE this raw handler and
+                -- already toggled the box + dispatched (latched in
+                -- dispatchPanelAction). Toggling again here flipped it back
+                -- to unchecked while the action had already run - the user
+                -- ticked Select All and no check ever appeared in the box.
+                local nowTick = getTickCount()
+                if panelDispatchTick[hitEl] and nowTick - panelDispatchTick[hitEl] < 300 then
+                        return
+                end
                 local ok, cur = pcall(eui.uiCheckBoxGetSelected, eui, hitEl)
                 if pcall(eui.uiCheckBoxSetSelected, eui, hitEl, not (ok and cur)) then
                         dispatchPanelAction(hitEl)

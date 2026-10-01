@@ -244,6 +244,46 @@ local function setIfChanged(player, key, value)
         end
 end
 
+-- ============================================================================
+-- [Fix #160 / U1] badge rights -> the clients
+-- ============================================================================
+-- ONE synced string on the player, comma separated, holding the badge rights
+-- the player's RANK currently holds:
+--      "admin.badge,admin.badge.developer"  /  ""  = no badge right at all
+-- Consumers (both read ONLY this key):
+--      hud/c_nametags.lua       -> the three 36px badges next to the name chip
+--      scoreboard/c_tab.lua     -> the badge column of the TAB board
+-- Pushed from applyPlayerRank (login/ready, every rank edit, the 3s refresh
+-- after a resource start) and cleared from clearPlayerRank (logout, rank
+-- deleted, no rank assigned). Set with sync=true so every client sees it.
+local FIX160_BADGE_RIGHTS = {
+        "admin.badge",
+        "admin.badge.developer",
+        "admin.badge.support",
+}
+
+function pushFix160BadgeRights(player)
+        if not isElement(player) or getElementType(player) ~= "player" then
+                return false
+        end
+        local value = ""
+        if type(playerHasRight) == "function" then
+                -- playerHasRight reads the live rank:rights element data that
+                -- applyPlayerRank has just written, so no DB round-trip here
+                local held = {}
+                for _, right in ipairs(FIX160_BADGE_RIGHTS) do
+                        if playerHasRight(player, right) then
+                                held[#held + 1] = right
+                        end
+                end
+                value = table.concat(held, ",")
+        end
+        if getElementData(player, "fix160.badgerights") ~= value then
+                setElementData(player, "fix160.badgerights", value, true)
+        end
+        return true
+end
+
 function applyPlayerRank(player, record)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
         if not record then
@@ -275,6 +315,10 @@ function applyPlayerRank(player, record)
                 setIfChanged(player, "supporter_level", compat.supporter)
                 setIfChanged(player, "scripter_level", compat.scripter)
         end
+        -- [Fix #160 / U1] every rank apply also re-pushes the badge rights
+        -- (login / ready, rank edited in the panel, refreshRankMembers, the
+        -- 3s refreshAllPlayerRanks after a resource start)
+        pushFix160BadgeRights(player)
         return true
 end
 
@@ -292,6 +336,14 @@ function clearPlayerRank(player)
                 if getElementData(player, key) ~= nil then
                     setElementData(player, key, nil, true)
                 end
+        end
+        -- [Fix #160 / U1] no rank in hand -> no badge rights. The explicit ""
+        -- (not nil) tells the clients "the rights were pushed and there are
+        -- none"; nil is reserved for "admin-system has not pushed yet", which
+        -- keeps the old duty badge behaviour on a live, not-yet-reloaded
+        -- server. Covers logout, a deleted rank and a player with no rank.
+        if getElementData(player, "fix160.badgerights") ~= "" then
+                setElementData(player, "fix160.badgerights", "", true)
         end
 end
 

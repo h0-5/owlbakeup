@@ -1,4 +1,4 @@
-﻿mysql = exports.mysql
+mysql = exports.mysql
 reports = { }
 local reportsToAward = 30
 local gcToAward = 1
@@ -13,6 +13,19 @@ getPlayerName = function( ... )
 		s = getPlayerName_( ... )
 		return s and s:gsub( "_", " " ) or s
 	end
+end
+
+-- [U4] Accept/reject toast. The server composes the wording, the client
+-- (c_report_toast.lua) only draws it as a timed top-right box.
+-- kind: "accepted" | "rejected" | "info"
+local function sendReportToast(player, text, kind, reportId, sub)
+	if not isElement(player) then return end
+	triggerClientEvent(player, "report-system:notify", player, {
+		text = tostring(text),
+		sub = sub and tostring(sub) or nil,
+		type = kind or "info",
+		reportId = reportId,
+	})
 end
 
 function reportLazyFix(player, cmd) --Lazy fix, Chaos please work on this when you have time / Maxime
@@ -714,6 +727,7 @@ function handleReport(reportedPlayer, reportedReason, reportType)
 	end
 	if wordCount < 15 then
 		outputChatBox("تم رفض البلاغ: اكتب مشكلتك بـ 15 كلمة على الأقل. (كتبت " .. wordCount .. " كلمة فقط)", source, 255, 80, 80, true)
+		sendReportToast(source, "Report rejected: write at least 15 words (" .. wordCount .. "/15)", "rejected")
 		return
 	end
 
@@ -723,6 +737,8 @@ function handleReport(reportedPlayer, reportedReason, reportType)
 	if lastStamp and (nowStamp - lastStamp) < 300 then
 		local remain = 300 - (nowStamp - lastStamp)
 		outputChatBox(string.format("يمكنك فتح بلاغ جديد بعد %d دقيقة و %d ثانية.", math.floor(remain / 60), remain % 60), source, 255, 195, 15, true)
+		sendReportToast(source, "Report rejected: one report every 5 minutes", "rejected",
+			nil, "Try again in " .. math.floor(remain / 60) .. "m " .. (remain % 60) .. "s.")
 		return
 	end
 	reportCooldowns[source] = nowStamp
@@ -1111,6 +1127,8 @@ function falseReport(thePlayer, commandName, id)
 
 					outputChatBox("[" .. timestring .. "] Your report (#" .. id .. ") was marked as false by "..adminTitle.." ".. getPlayerName(thePlayer) .. " ("..adminUsername..").", reportingPlayer, r, g, b)--200, 240, 120)
 					triggerClientEvent ( reportingPlayer, "playNudgeSound", reportingPlayer)
+					sendReportToast(reportingPlayer, "Report #" .. id .. " rejected: marked as false by " .. adminTitle .. " " .. getPlayerName(thePlayer), "rejected", id, "The report was not actioned.")
+					sendReportToast(thePlayer, "Report #" .. id .. " rejected", "rejected", id, "Marked as false by you.")
 					--local accountID = getElementData(thePlayer, "account:id")
 					--exports.logs:dbLog({"ac"..tostring(accountID), thePlayer }, 38, {reportingPlayer, reportedPlayer}, getPlayerName(thePlayer) .. " maked a report as false. Report: " .. reason )
 					sortReports(true)
@@ -1249,6 +1267,8 @@ function acceptReport(thePlayer, commandName, id)
 					triggerClientEvent ( reportingPlayer, "playNudgeSound", reportingPlayer)
 
 					outputChatBox("You accepted report #" .. id .. ". Contact the player ID #" .. playerID .. " (" .. getPlayerName(reportingPlayer) .. ").", thePlayer, r, g, b)--200, 240, 120)
+					sendReportToast(reportingPlayer, "Report #" .. id .. " accepted by " .. adminTitle .. " " .. getPlayerName(thePlayer), "accepted", id, "Please wait for them to contact you.")
+					sendReportToast(thePlayer, "Report #" .. id .. " accepted", "accepted", id, "Contact " .. getPlayerName(reportingPlayer) .. " (ID #" .. tostring(playerID) .. ").")
 
 					if getElementData(thePlayer, "report:autocheck") then
 						triggerClientEvent( thePlayer, "report:onOpenCheck", thePlayer, tostring(playerID) )
@@ -1336,6 +1356,8 @@ function acceptAdminReport(thePlayer, commandName, id, ...)
 
 						outputChatBox("[" .. timestring .. "] "..adminTitle.." " .. getPlayerName(targetAdmin) .. " has accepted your report (#" .. id .. "), Please wait for them to contact you.", reportingPlayer, 200, 240, 120)
 						outputChatBox("A head admin assigned report #" .. id .. " to you. Please proceed to contact the player ( (" .. playerID .. ") " .. getPlayerName(reportingPlayer) .. ").", targetAdmin, 200, 240, 120)
+						sendReportToast(reportingPlayer, "Report #" .. id .. " accepted by " .. adminTitle .. " " .. getPlayerName(targetAdmin), "accepted", id, "Please wait for them to contact you.")
+						sendReportToast(targetAdmin, "Report #" .. id .. " assigned to you", "accepted", id, "Contact " .. getPlayerName(reportingPlayer) .. " (ID #" .. tostring(playerID) .. ").")
 						local alreadyTold = { }
 
 						if staff then
@@ -1716,9 +1738,8 @@ addCommandHandler("er", endReport, false, false)
 -- Output unanswered reports for staff.
 function showUnansweredReports(thePlayer)
 	if exports.integration:isPlayerStaff(thePlayer) then
-		if showTopRightReportBox(thePlayer) then
-			setElementData(thePlayer, "report:topRight", 1, true)
-		else
+		-- [U4] the orange top-right box was removed: always print the list in chat
+		do
 			outputChatBox("~~~~~~~~~ Unanswered Reports ~~~~~~~~~", thePlayer, 0, 255, 15)
 			--reports = sortReportsByTime(reports)
 			local count = 0
@@ -1808,9 +1829,8 @@ addCommandHandler("ur", showUnansweredReportsGMs, false, false)]]
 
 function showReports(thePlayer)
 	if (exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer)) then
-		if showTopRightReportBox(thePlayer) then
-			setElementData(thePlayer, "report:topRight", 3, true)
-		else
+		-- [U4] the orange top-right box was removed: always print the list in chat
+		do
 			outputChatBox("~~~~~~~~~ Reports ~~~~~~~~~", thePlayer, 255, 194, 15)
 			--reports = sortReportsByTime(reports)
 			local count = 0

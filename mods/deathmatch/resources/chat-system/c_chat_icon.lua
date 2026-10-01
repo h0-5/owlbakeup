@@ -1,4 +1,11 @@
-local chatting = false
+local chatting = false
+
+-- [Fix #160 / U1 task 3] the green typing logo (chat.png) above the head is
+-- REPLACED by the word "TYPING" drawn over the name by hud/c_nametags.lua.
+-- Only this file's IMAGE is switched off: checkForChat (chat1/chat0 state
+-- sync), addChatter/delChatter, the render handler registration and the
+-- graphic_typingicon setting below all keep running exactly as before.
+local DRAW_TYPING_IMAGE = false
 local chatters = { }
 
 function checkForChat()
@@ -37,7 +44,12 @@ addEventHandler("delChatter", getRootElement(), delChatter)
 addEventHandler("onClientPlayerQuit", getRootElement(), delChatter)
 
 function render()
-	if not exports.hud:isActive() then return end
+	if not exports.hud:isActive() then return end
+
+	-- [Fix #160 / U1 task 3] image suppressed: hud/c_nametags.lua draws the
+	-- word TYPING above the name instead of this logo. The state sync above
+	-- (chat1/chat0) and the addChatter/delChatter events are untouched.
+	if not DRAW_TYPING_IMAGE then return end
 	local x, y, z = getElementPosition(getLocalPlayer())
 	local reconx = getElementData(getLocalPlayer(), "reconx")
 	for key, value in ipairs(chatters) do

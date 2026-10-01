@@ -19,7 +19,7 @@ function addStatus(message)
 			notfirst = true
 		end
 	end
-	local infotable = {source,message,-1}
+	local infotable = {source,message,0}
 	table.insert(textsToDraw,infotable)
 
 end
@@ -60,7 +60,14 @@ function displayStatus()
 		local cx,cy,cz = getCameraMatrix()
 		local px,py,pz = getElementPosition(infotable[1])
 		local distance = getDistanceBetweenPoints3D(cx,cy,cz,px,py,pz)
-		local posx,posy = getScreenFromWorldPosition(x,y,z+0.020*distance+0.10)
+		local posx,posy = getScreenFromWorldPosition(x,y,z+0.130*distance+0.55)
+		local hx, hy, hz = getPedBonePosition(infotable[1], 8)
+		if hx then
+			local _, namey = getScreenFromWorldPosition(hx, hy, hz + 0.30)
+			if namey then
+				posy = namey - 72
+			end
+		end
 		local blocking = getPedOccupiedVehicle(getLocalPlayer()) or getPedOccupiedVehicle(infotable[1]) or nil
 		if posx and distance <= 45 and isLineOfSightClear(cx,cy,cz,px,py,pz,true,true,false,true,false,true,true, blocking) then -- change this when multiple ignored elements can be specified
 			local width = dxGetTextWidth(infotable[2],1,font)

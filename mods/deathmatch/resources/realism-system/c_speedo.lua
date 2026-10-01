@@ -1,5 +1,14 @@
 fuellessVehicle = { [594]=true, [537]=true, [538]=true, [569]=true, [590]=true, [606]=true, [607]=true, [610]=true, [590]=true, [569]=true, [611]=true, [584]=true, [608]=true, [435]=true, [450]=true, [591]=true, [472]=true, [473]=true, [493]=true, [595]=true, [484]=true, [430]=true, [453]=true, [452]=true, [446]=true, [454]=true, [497]=true, [509]=true, [510]=true, [481]=true }
 enginelessVehicle = { [510]=true, [509]=true, [481]=true }
+-- [U7] the redesigned gauge in hud/c_speedo.lua draws its own disc / needle /
+-- speed / fuel readouts for these vehicle types, so the legacy gauge below is
+-- suppressed for them (street name, district and speed-limit signs still draw
+-- from here) - otherwise the two speedometers double-draw on top of each other.
+local function modernGaugeCovers(theVehicle)
+	local t = getVehicleType(theVehicle)
+	return t == "Automobile" or t == "Boat" or t == "Monster Truck"
+		or t == "Quad" or t == "Bike"
+end
 --local getElementData(localPlayer,"speedo") ~= "0" = true
 local fuel = 0
 local width, height = guiGetScreenSize()
@@ -16,9 +25,9 @@ function drawSpeedo()
 			local streetname = getElementData(getLocalPlayer(), "speedo:street" )
 			if streetname and getVehicleType(vehicle) ~= "Boat" and getVehicleType(vehicle) ~= "Helicopter" and getVehicleType(vehicle) ~= "Plane" then
 				local width = dxGetTextWidth( streetname )
-				local x = width < 200 and ( x - 110 - width / 2 ) or ( x - 10 - width )
-				dxDrawRectangle( x - 8, y - 296, width + 17, 24, tocolor( 5, 5, 5, 220 ) )
-				dxDrawText( streetname, x, y - 292 )
+				local x = width < 260 and ( x - 180 - width / 2 ) or ( x - 68 - width )
+				dxDrawRectangle( x - 8, y - 386, width + 17, 24, tocolor( 5, 5, 5, 220 ) )
+				dxDrawText( streetname, x, y - 382 )
 			end
 			
 			-- district names
@@ -33,16 +42,16 @@ function drawSpeedo()
 				dxDrawText( district, x, y - 72-5 )
 			end
 			
-			if getElementData(localPlayer, "speedo") == "2" then
+			if not modernGaugeCovers(vehicle) and getElementData(localPlayer, "speedo") == "2" then
 				dxDrawImage(x-210, y-275, 256, 256, "discmph.png", 0, 0, 0, tocolor(255, 255, 255, 200))
-			else
+			elseif not modernGaugeCovers(vehicle) then
 				dxDrawImage(x-210, y-275, 256, 256, "disc.png", 0, 0, 0, tocolor(255, 255, 255, 200))
 			end
 			
 			
 			local speedlimit = getElementData(getLocalPlayer(), "speedo:limit")
 			if speedlimit and getVehicleType(vehicle) ~= "Boat" and getVehicleType(vehicle) ~= "Helicopter" and getVehicleType(vehicle) ~= "Plane" then
-				local ax, ay = x - 243, y - 202
+				local ax, ay = x - 366, y - 202
 				local string = speedlimit
 				local factor = 1
 				if getElementData(localPlayer, "speedo") == "2" then
@@ -64,6 +73,8 @@ function drawSpeedo()
 			end
 
 
+			-- [U7] speed digits / needle / unit labels belong to the redesigned gauge now
+			if modernGaugeCovers(vehicle) then return end
 			if (getVehicleType(vehicle) == "Boat" or getVehicleType(vehicle) == "Plane" or getVehicleType(vehicle) == "Helicopter") then
 				dxDrawText("KNOTS", x - 149.5, y - 130, 5, 5, tocolor (255,255,255, 200), 1.8, "default-bold" )
 				if(getVehicleType(vehicle) == "Plane" or getVehicleType(vehicle) == "Helicopter") then
@@ -125,7 +136,6 @@ function drawSpeedo()
 			ny = y + math.cos(math.rad(-(speed)-150)) * 90
 			dxDrawLine(x-110, y-175, nx-110, ny-175, tocolor(255, 0, 0, 255), 2)
 			
-			dxDrawText( "Mileage: "..tostring(math.floor(getDistanceTraveled()/1000)), x - 150, y - 215, x-70, 5, tocolor (255,255,255, 200), 1, 'default', 'center' )
 		end
 	end
 end
@@ -200,7 +210,7 @@ function onVehicleEnter(thePlayer, seat)
 	if (thePlayer==getLocalPlayer()) then
 		if (seat<2) then
 			local id = getElementModel(source)
-			if seat == 0 and not (fuellessVehicle[id]) then
+			if seat == 0 and not (fuellessVehicle[id]) and not (modernGaugeCovers(source)) then
 				addEventHandler("onClientRender", getRootElement(), drawFuel)
 			end
 			if not (enginelessVehicle[id]) then

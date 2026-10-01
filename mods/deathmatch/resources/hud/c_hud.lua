@@ -551,12 +551,22 @@ local STRIP_H = 37
 
 -- Fix #19: light purple frame — thin Vortex-purple border + a fill behind
 -- the states. [Fix #32 - user] "تغمق لون كمان شوي": darker fill than #30/#31
-local FRAME_BORDER = tocolor(149, 84, 255, 115)
-local FRAME_FILL   = tocolor(8, 5, 16, 120)
+-- [U6 #1] user: "clear EXTERNAL BORDER in the server theme purple". The old
+-- band was 2px at alpha 115 (nearly invisible over bright scenes), so it is
+-- now 3px at FULL alpha in the hud theme purple rgb(149, 84, 255) — the same
+-- purple the rest of hud uses (staff theme 144,50,250 was the alternative).
+-- ONLY the border band changed: the outer rounded rect is the exact same
+-- rect/footprint as before and FRAME_FILL keeps its colour/alpha — nothing
+-- inside the frame (logo, rings, icons, clock, money, logic) is touched.
+local FRAME_BORDER   = tocolor(149, 84, 255, 255)
+local FRAME_BORDER_W = 3
+local FRAME_FILL     = tocolor(8, 5, 16, 120)
 
 local function drawStatusFrame(x, y, w, h, postGUI)
         dxDrawRoundedRectangle(x, y, w, h, FRAME_BORDER, 12, postGUI)
-        dxDrawRoundedRectangle(x + 2, y + 2, w - 4, h - 4, FRAME_FILL, 10, postGUI)
+        dxDrawRoundedRectangle(x + FRAME_BORDER_W, y + FRAME_BORDER_W,
+                w - FRAME_BORDER_W * 2, h - FRAME_BORDER_W * 2, FRAME_FILL,
+                12 - FRAME_BORDER_W, postGUI)
 end
 
 local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80, to = 2, current = -80 } }
@@ -816,6 +826,38 @@ local function drawMoneyBlock(rightX, y, postGUI)
         return bottom - y
 end
 
+--------------------------------------------------------------------------------
+-- [U6 #2] F1 MENU ANCHOR for the area banner (City|Zone + SAFE/DANGER ZONE).
+-- The banner is a F1-ONLY element now — main-menu/c_main.lua publishes the
+-- contract (client-side element data localPlayer "ui:f1open", set true on
+-- open / false on close) and the pills dock UNDERNEATH the F1 window instead
+-- of above the radar/board, so normal play has nothing floating over the map.
+-- F1 window geometry (main-menu/c_main.lua, read-only):
+--   uiCreateRectangle(false, false, refSx*0.75-130, refSy*0.65)   <- centred
+--   UIKit scales ref coords by SCALE_X/SCALE_Y, and refSy*SCALE_Y == sy by
+--   construction for every supported resolution, so the window's horizontal
+--   centre is EXACTLY sx/2 and its bottom is EXACTLY sy*0.825
+--   (refY + winH = 0.175*refSy + 0.65*refSy = 0.825*refSy -> * SCALE_Y).
+-- The live UIKit bounds win when reachable (ground truth if the menu ever
+-- moves); the closed-form values are the fallback.
+--------------------------------------------------------------------------------
+local f1MenuElement = false
+local function f1MenuBottomCenter()
+        if not f1MenuElement or not isElement(f1MenuElement) then
+                f1MenuElement = getElementByID("main-menu") or false
+        end
+        if f1MenuElement then
+                local ok, mx, my, mw, mh = pcall(function()
+                        return exports.UIKit:uiGetAbsoluteBounds(f1MenuElement)
+                end)
+                if ok and type(mx) == "number" and type(my) == "number"
+                        and type(mw) == "number" and type(mh) == "number" then
+                        return my + mh, mx + mw / 2
+                end
+        end
+        return sy * 0.825, sx / 2
+end
+
 local function statusHudDrawImpl()
         if not statusHud.visible or not isHudShowing() then return end
         if getElementData(localPlayer, "loggedin") ~= 1
@@ -935,25 +977,32 @@ local function statusHudDrawImpl()
                 setElementData(localPlayer, "hud:topRightBottom", moneyBlockBottom, false)
         end
 
-        -- zone banner, docked above the minimap (Fix #55: the old-client
-        -- reference shot shows two dark pills with a colored side bar:
-        -- "City | Zone" in white, SAFE/DANGER ZONE in its status color;
-        -- geometry = the radar's own rect so they always dock flush)
-        local mapY = sy - 175 * (sy / 1080) - 25
-        local locText = zoneText:gsub("#%x%x%x%x%x%x", "")
-        local locW = math.max(dxGetTextWidth(locText, 1, fontHud()) + 26, 90)
-        local zoneW = math.max(dxGetTextWidth(zoneLabel, 1, fontHud()) + 26, 80)
-        local pillH = 24
-        local safeY = mapY - pillH - 6
-        local locY = safeY - pillH - 6
-        dxDrawRoundedRectangle(15, locY, locW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
-        dxDrawRectangle(15, locY + 4, 3, pillH - 8, tocolor(153, 255, 0, 255), postGUI)
-        outlineText(locText, 15 + 12, locY, locW - 12, pillH,
-                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "center", postGUI)
-        dxDrawRoundedRectangle(15, safeY, zoneW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
-        dxDrawRectangle(15, safeY + 4, 3, pillH - 8, zoneLabelColor, postGUI)
-        outlineText(zoneLabel, 15 + 12, safeY, zoneW - 12, pillH,
-                zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
+        -- zone banner (Fix #55: two dark pills with a colored side bar,
+        -- "City | Zone" in white + SAFE/DANGER/NORMAL ZONE in its status
+        -- color). [U6 #2] it is a F1-MENU ONLY element now: main-menu sets
+        -- the "ui:f1open" contract (see f1MenuBottomCenter above), so the
+        -- pair exists ONLY while the F1 window is open and it docks right
+        -- UNDERNEATH that window (centred, gap 10px) instead of above the
+        -- radar/board — during normal play nothing is drawn here at all.
+        if getElementData(localPlayer, "ui:f1open") then
+                local menuBottom, menuCenterX = f1MenuBottomCenter()
+                local locText = zoneText:gsub("#%x%x%x%x%x%x", "")
+                local locW = math.max(dxGetTextWidth(locText, 1, fontHud()) + 26, 90)
+                local zoneW = math.max(dxGetTextWidth(zoneLabel, 1, fontHud()) + 26, 80)
+                local pillH = 24
+                local locY = menuBottom + 10
+                local safeY = locY + pillH + 6
+                local locX = menuCenterX - locW / 2
+                local safeX = menuCenterX - zoneW / 2
+                dxDrawRoundedRectangle(locX, locY, locW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+                dxDrawRectangle(locX, locY + 4, 3, pillH - 8, tocolor(153, 255, 0, 255), postGUI)
+                outlineText(locText, locX + 12, locY, locW - 12, pillH,
+                        tocolor(255, 255, 255, 255), 1, fontHud(), "left", "center", postGUI)
+                dxDrawRoundedRectangle(safeX, safeY, zoneW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+                dxDrawRectangle(safeX, safeY + 4, 3, pillH - 8, zoneLabelColor, postGUI)
+                outlineText(zoneLabel, safeX + 12, safeY, zoneW - 12, pillH,
+                        zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
+        end
 end
 statusHudDraw = statusHudDrawImpl
 

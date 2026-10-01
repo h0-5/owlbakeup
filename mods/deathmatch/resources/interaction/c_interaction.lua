@@ -162,8 +162,17 @@ function menuRender()
 		hideInteract()
 		return
 	end
-	local baseX, baseY = menu.pos[1], menu.pos[2]
 	local options = menu.currentOptions or {}
+	-- The menu opens for ANY right-click target (players, pickups and markers
+	-- are always "viable" and usually carry no options), which drew a stray
+	-- black rectangle on every right-click. Draw nothing while the option list
+	-- is empty; menu.currentElement stays set so addInteractOption can still
+	-- inject rows (e.g. the async admin "Edit") and they appear afterwards.
+	if #options == 0 then
+		menu.hovered = 0
+		return
+	end
+	local baseX, baseY = menu.pos[1], menu.pos[2]
 	local rows = math.max(#options, 1)
 	local width = 180
 	local height = 25 + rows * 28

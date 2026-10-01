@@ -493,6 +493,13 @@ end, false, false)
 -- =========================================================== badges ========
 -- consumer: hud/c_nametags.lua reads the hud:badges element data list and
 -- draws icons/<name>.png above the head (textures shipped in hud/icons/)
+-- [Fix #160 / U1] display rule: the three RANK badges (admin_badge /
+--   developer_badge / support_badge) are drawn from the element data
+--   fix160.badgerights (the rights the target's rank holds, pushed by
+--   staff_manager_bridge_s.lua pushFix160BadgeRights), NOT from hud:badges -
+--   a hud:badges entry with one of those three names is ignored by the
+--   nametag while the right decides. The commands below are unchanged: same
+--   right gate, same toggle, same chat + log output.
 
 local function fix160MiscToggleBadge(player, cmd, right, badgeName, query)
         if not fix160MiscCheck(player, right) then return end

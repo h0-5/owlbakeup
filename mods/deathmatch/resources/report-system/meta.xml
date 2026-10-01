@@ -5,6 +5,8 @@
     <script src="c_reports.lua" type="client" />
     <!-- [Fix #32] live reports list - old client drawReports port -->
     <script src="c_report_panel.lua" type="client" cache="false" />
+    <!-- [U4] accept/reject toasts (report-system:notify) -->
+    <script src="c_report_toast.lua" type="client" />
 	
 	<script src="s_external_report_box.lua" type="server"/>
     <script src="c_external_report_box.lua" type="client" />

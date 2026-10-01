@@ -4,9 +4,12 @@
 --   * Fix #19: NO rank title text above the head — rank is shown only by the
 --     admin badge icon (user spec)
 --   * name colored by rank, "Unknown Person" for masked players
---   * ((TYPING...)) animated indicator while a player is writing
---   * badge icons above heads (icons/): AFK, admin badge on duty, heart item
---   * 8-unit range + line of sight, tagmode setting respected
+--   * U1: name sits on a FILLED rank-color chip + 36px badges ABOVE the head
+--     (admin/developer/support come from the element data fix160.badgerights,
+--     AFK / heart / hud:badges extras unchanged), "TYPING" replaces the old
+--     ((TYPING...)) text and chat-system's green logo, and nothing at all is
+--     drawn while a menu/window is open (ui:f1open / scoreboard / cursor)
+--   * 20-unit range + line of sight, tagmode setting respected
 --   * Fix #154: drawn in onClientPreRender so F1 / F3 / /staffs / TAB always
 --     cover the tags, and non-friends read the account "mod:id" instead of
 --     the name (friends keep the name - see buildPlayerEntry)
@@ -61,6 +64,15 @@ end
 
 -- badge textures (old client icons/ set)
 local badgeTex = {}
+
+-- [Fix #160 / U1] the three RIGHT-GATED rank badges: their icon names are
+-- owned by fix160.badgerights (server pushes the rights, buildPlayerEntry
+-- maps them), so a hud:badges entry with one of these names is skipped.
+local RANK_BADGE_ICONS = {
+        ["admin_badge"] = true,
+        ["developer_badge"] = true,
+        ["support_badge"] = true,
+}
 
 local function loadBadges()
         badgeTex = {}
@@ -216,16 +228,68 @@ local function buildPlayerEntry(player)
         -- server uses ("hiddenadmin" 0/1) - the old "admin:hideadmin" check
         -- never matched anything server-side, so hidden admins kept their
         -- badge.
+        -- [Fix #160 / U1 task 2] THREE RIGHT-GATED BADGES.
+        -- The server (staff_manager_bridge_s.lua pushFix160BadgeRights) pushes
+        -- the element data "fix160.badgerights": a comma-separated string of
+        -- the badge rights the player's RANK currently holds, e.g.
+        -- "admin.badge,admin.badge.developer" (set on login/ready and re-set
+        -- after every rank change; "" = a rank that holds none).
+        -- RULE (agreed choice, right beats the manual toggle BOTH ways):
+        --   * rank holds admin.badge            -> admin_badge
+        --   * rank holds admin.badge.developer  -> developer_badge
+        --   * rank holds admin.badge.support    -> support_badge
+        --   * rank holds none of them           -> no rank badge at all, and
+        --     a hud:badges entry pushed by /togdevbadge /togsupportbadge for
+        --     those three names is IGNORED (the right decides, never the
+        --     toggle; the commands still run, sync and log server-side).
+        --   * AFK / heart / every OTHER hud:badges entry is untouched.
+        -- Keep-working rules kept from Fix #54 / Fix #98: hidden admins and
+        -- off-duty staff draw NO badge (they read as plain players, which is
+        -- also what the scoreboard column does).
+        -- Legacy fallback: while the key is still missing (admin-system not
+        -- reloaded yet) the old duty + hud:badges behaviour is kept 1:1 so a
+        -- live server never loses its badges.
+        local badgeRights = nil
+        local rawRights = getElementData(player, "fix160.badgerights")
+        if rawRights ~= nil then
+                badgeRights = {}
+                if type(rawRights) == "table" then
+                        for _, token in ipairs(rawRights) do
+                                badgeRights[tostring(token):match("^%s*(.-)%s*$")] = true
+                        end
+                elseif type(rawRights) == "string" then
+                        for token in string.gmatch(rawRights, "[^,]+") do
+                                badgeRights[token:match("^%s*(.-)%s*$")] = true
+                        end
+                end
+        end
+
         local icons = {}
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        if isOne(getElementData(player, "duty_admin")) and not hidden then
-                table.insert(icons, "admin_badge")
-        end
-        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
-        if isOne(getElementData(player, "duty_supporter")) and not hidden then
-                table.insert(icons, "support_badge")
+        if not hidden and isPlayerOnDuty(player) then
+                if badgeRights == nil then
+                        -- legacy path (server has not pushed the key yet)
+                        if isOne(getElementData(player, "duty_admin")) then
+                                table.insert(icons, "admin_badge")
+                        end
+                        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+                        if isOne(getElementData(player, "duty_supporter")) then
+                                table.insert(icons, "support_badge")
+                        end
+                else
+                        -- AllRights order: admin, developer, support
+                        if badgeRights["admin.badge"] then
+                                table.insert(icons, "admin_badge")
+                        end
+                        if badgeRights["admin.badge.developer"] then
+                                table.insert(icons, "developer_badge")
+                        end
+                        if badgeRights["admin.badge.support"] then
+                                table.insert(icons, "support_badge")
+                        end
+                end
         end
         if getElementData(player, "temp:heart") then
                 table.insert(icons, "heart")
@@ -234,7 +298,11 @@ local function buildPlayerEntry(player)
         local extra = getElementData(player, "hud:badges")
         if type(extra) == "table" then
                 for _, badgeName in ipairs(extra) do
-                        if badgeTex[badgeName] then
+                        -- [Fix #160 / U1] once the server pushes the rights the
+                        -- three RANK badge names no longer come from hud:badges
+                        -- (the right alone decides); every other badge does.
+                        if badgeTex[badgeName]
+                                and (badgeRights == nil or not RANK_BADGE_ICONS[badgeName]) then
                                 table.insert(icons, badgeName)
                         end
                 end
@@ -243,6 +311,9 @@ local function buildPlayerEntry(player)
         return {
                 name = name,
                 color = tocolor(rgb[1], rgb[2], rgb[3], 255),
+                -- [U1 task 1] raw channels for the filled rank-color chip
+                rgb = { tonumber(rgb[1]) or 255, tonumber(rgb[2]) or 255,
+                        tonumber(rgb[3]) or 255 },
                 icons = icons,
                 hidden = hidden and true or false,
                 friend = friend,
@@ -263,6 +334,9 @@ local CACHE_KEYS = {
         ["temp:AFK"] = true, ["hiddenadmin"] = true, ["admin:hideadmin"] = true,
         ["character:name"] = true, ["duty_admin"] = true, ["duty_supporter"] = true,
         ["temp:heart"] = true, ["hud:badges"] = true,
+        -- [Fix #160 / U1] the rank's badge rights: an edit / rank change must
+        -- rebuild the entry on the same frame (not 2s later)
+        ["fix160.badgerights"] = true,
         -- [Fix #98] staff detection reads these too (rank ladder / levels) -
         -- a rank push must re-evaluate the off-duty plain-white color now
         ["rank:index"] = true, ["admin_level"] = true, ["supporter_level"] = true,
@@ -457,6 +531,47 @@ local function gateReport(reason)
         outputChatBox("[Nametags] names are hidden because: " .. reason, 255, 220, 120, false)
 end
 
+-- [U1 task 4] while ANY menu/window is open the world under it must be
+-- clean - names + chips + badges + the TYPING word all stop drawing.
+-- Signals that exist today (read-only, nothing owned by other agents is
+-- touched):
+--   1. ui:f1open on localPlayer  - the F1 menu contract pushed by agent U6
+--      (accepted shapes: true / "true" / 1 / "1")
+--   2. exports.scoreboard:isVisible()  - the TAB board (scoreboard/c_tab.lua)
+--   3. exports["main-menu"]:isOpen()   - the F1/F2 sidebar (main-menu/c_main.lua,
+--      same menu the key above reports, kept for older/newer U6 builds)
+--   4. isCursorShowing() (but NOT while the chatbox is focused) - the generic
+--      local fallback for the windows nobody publishes state for: the staff
+--      panel (/staffs -> admin-system/staff_manager), item-system book
+--      windows and every UIKit dialog all call showCursor(true) while open
+--      and showCursor(false) when they close, and normal gameplay (chat
+--      input, driving, aiming) never holds the cursor.
+-- NOT DETECTABLE from here (reported, not implemented): a UIKit window that
+-- opens without showCursor - UIKit exports no "any window visible" query and
+-- its UI table is private to that resource.
+-- (plain functions, not inline closures: this runs every frame)
+local function scoreboardVisible()
+        return exports.scoreboard:isVisible()
+end
+local function mainMenuOpen()
+        return exports["main-menu"]:isOpen()
+end
+
+local function menuCoversWorld()
+        local f1 = getElementData(localPlayer, "ui:f1open")
+        if f1 == true or f1 == "true" or isOne(f1) then return true end
+
+        local ok, vis = pcall(scoreboardVisible)
+        if ok and vis then return true end
+
+        local ok2, open = pcall(mainMenuOpen)
+        if ok2 and open then return true end
+
+        if isCursorShowing() and not isChatBoxInputActive() then return true end
+
+        return false
+end
+
 function drawNametags()
         if isPlayerMapVisibleSafe() then return end
         if not isHudShowing or not isHudShowing() then
@@ -473,6 +588,13 @@ function drawNametags()
         if not localIsLoggedIn() then
                 gateReport("waiting for character select (loggedin="
                         .. tostring(getElementData(localPlayer, "loggedin")) .. ")")
+                return
+        end
+        -- [U1 task 4] a menu/window is open -> draw nothing at all (the old
+        -- stacking only buried the tags UNDER the window, they still showed
+        -- around its edges and through the transparent parts)
+        if menuCoversWorld() then
+                gateReport("a menu / window is open (F1, TAB, staff panel, ...)")
                 return
         end
 
@@ -531,19 +653,12 @@ function drawNametags()
                                                 if not c.blocked or recon then
                                                         local baseY = sY
 
-                                                        -- ((TYPING...)) animated dots (above the title)
-                                                        if typing[player] then
-                                                                local now = getTickCount()
-                                                                if now - WaitTyping > 4000 then
-                                                                        WaitTyping = now
-                                                                end
-                                                                local dots = string.rep(".", math.floor((now - WaitTyping) / 1000) % 4)
-                                                                outlineText("((TYPING" .. dots .. "))", sX - 120, baseY - 54, 240, 15,
-                                                                        tocolor(255, 255, 255, 255), 0.8, fontHud(), "center", "top")
-                                                        end
-
-                                                        -- Fix #19: rank title text removed —
-                                                        -- the admin badge below is the only rank marker
+                                                        -- Fix #19: rank title text removed -
+                                                        -- the filled rank-color chip below is the only
+                                                        -- rank marker; the typing indicator is drawn
+                                                        -- ABOVE that row (U1 task 3: the word TYPING
+                                                        -- replaced the old ((TYPING...)) text and the
+                                                        -- green chat.png logo of chat-system)
 
                                                         -- the name (Alt = ID in parentheses, old client describtion:show)
                                                         local nameText = entry.name
@@ -564,24 +679,84 @@ function drawNametags()
                                                         -- staff viewers and always carried the suffix.
                                                         -- [Fix #75 - user] "كبر اسم الشخصية اكثر وكبر الشارة اكثر"
                                                         -- name: scale 1 -> 1.3 (wider centered box for long names)
-                                                        outlineText(nameText, sX - 150, baseY - 34, 300, 28,
-                                                                entry.color, 1.3, fontDefault(), "center", "top")
+                                                        -- [U1 task 1] distance scaling: the row keeps its
+                                                        -- full size up close and shrinks gently as the
+                                                        -- target walks away, so it stays readable out to
+                                                        -- the NAMETAG_DISTANCE cut-off.
+                                                        local rowScale = 1
+                                                        if distance > 8 then
+                                                                rowScale = math.max(0.75,
+                                                                        1 - (distance - 8) / (NAMETAG_DISTANCE - 8) * 0.25)
+                                                        end
 
-                                                        -- badge icons under the name (old client icons row)
-                                                        -- [Fix #75] 18px -> 26px (user: "كبر الشارة اكثر")
-                                                        if #entry.icons > 0 then
-                                                                local iconSize, iconGap = 26, 4
-                                                                local rowW = #entry.icons * iconSize + (#entry.icons - 1) * iconGap
-                                                                local iconX = sX - rowW / 2
-                                                                local iconY = baseY + 4
-                                                                for _, icon in ipairs(entry.icons) do
-                                                                        local t = badgeTex[icon]
-                                                                        if t then
-                                                                                dxDrawImage(iconX, iconY, iconSize, iconSize, t, 0, 0, 0,
-                                                                                        tocolor(255, 255, 255, 230), true)
-                                                                                iconX = iconX + iconSize + iconGap
-                                                                        end
+                                                        local font = fontDefault()
+                                                        local textScale = 1.3 * rowScale
+                                                        local chipH = 36 * rowScale
+                                                        local iconSize = 36 * rowScale
+                                                        local gap = 4 * rowScale
+
+                                                        -- chip width = measured text + padding (no fixed 300px box)
+                                                        local textW = dxGetTextWidth(nameText, textScale, font, false) or 0
+                                                        if textW < 36 then textW = 36 end
+                                                        local chipW = textW + 16 * rowScale
+
+                                                        -- only icons whose texture actually loaded
+                                                        local drawable = {}
+                                                        for _, icon in ipairs(entry.icons) do
+                                                                if badgeTex[icon] then
+                                                                        drawable[#drawable + 1] = icon
                                                                 end
+                                                        end
+
+                                                        local rowW = chipW
+                                                        if #drawable > 0 then
+                                                                rowW = rowW + gap * 2 + #drawable * iconSize
+                                                                        + (#drawable - 1) * gap
+                                                        end
+                                                        local rowX = sX - rowW / 2
+                                                        -- the whole row sits ABOVE the head anchor
+                                                        local rowTop = baseY - 8 - chipH
+
+                                                        -- [U1 task 1] FILLED rank-color chip behind the name:
+                                                        -- black rim + solid entry.color, 36px tall (bigger than
+                                                        -- the old 26px icons) and always solid, never outline.
+                                                        local rgb = entry.rgb
+                                                        dxDrawRectangle(rowX - 1, rowTop - 1, chipW + 2, chipH + 2,
+                                                                tocolor(0, 0, 0, 170))
+                                                        dxDrawRectangle(rowX, rowTop, chipW, chipH,
+                                                                tocolor(rgb[1], rgb[2], rgb[3], 235))
+                                                        -- white text on a dark chip, near-black on a bright one
+                                                        local lum = 0.299 * rgb[1] + 0.587 * rgb[2] + 0.114 * rgb[3]
+                                                        local nameColor = lum > 170 and tocolor(20, 20, 20, 255)
+                                                                or tocolor(255, 255, 255, 255)
+                                                        outlineText(nameText, rowX, rowTop, chipW, chipH, nameColor,
+                                                                textScale, font, "center", "center")
+
+                                                        -- [U1 task 1/2] badges NEXT to the chip, 36px side by
+                                                        -- side (admin/developer/support come from
+                                                        -- fix160.badgerights; AFK/heart/others unchanged)
+                                                        local iconX = rowX + chipW + gap * 2
+                                                        for _, icon in ipairs(drawable) do
+                                                                dxDrawImage(iconX, rowTop + (chipH - iconSize) / 2,
+                                                                        iconSize, iconSize, badgeTex[icon], 0, 0, 0,
+                                                                        tocolor(255, 255, 255, 240), true)
+                                                                iconX = iconX + iconSize + gap
+                                                        end
+
+                                                        -- [U1 task 3] typing indicator: the word TYPING right
+                                                        -- above the name row (chat-system's green logo no
+                                                        -- longer draws; its chat1/chat0 state sync still runs)
+                                                        if typing[player] then
+                                                                local tnow = getTickCount()
+                                                                if tnow - WaitTyping > 4000 then
+                                                                        WaitTyping = tnow
+                                                                end
+                                                                local dots = string.rep(".",
+                                                                        math.floor((tnow - WaitTyping) / 1000) % 4)
+                                                                outlineText("TYPING" .. dots, sX - 120,
+                                                                        rowTop - 18 * rowScale, 240, 16 * rowScale,
+                                                                        tocolor(255, 255, 255, 255), 0.9 * rowScale,
+                                                                        fontHud(), "center", "bottom")
                                                         end
                                                 end
                                         end

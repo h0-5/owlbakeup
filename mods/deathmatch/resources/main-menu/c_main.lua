@@ -828,6 +828,13 @@ local function showSideBarInner(show, openSection)
                 UIKitReady()
         end
         state.state = show
+        -- [U6 #2 CONTRACT] "ui:f1open" — client-side ONLY (partialSync=false).
+        -- Published at the single open/close funnel (showSideBarInner), so it
+        -- covers EVERY transition: F1 open, F1 re-press close, F2, ESC view,
+        -- quit/change-character (spawn path) and the exported showSideBar /
+        -- showEscapeView callers. hud/c_hud.lua gates the SAFE/DANGER zone
+        -- pill on it and agent U1 reads the same key.
+        setElementData(localPlayer, "ui:f1open", show == true, false)
         showCursor(show)
         if show then
                 state.anim = { getTickCount(), state.alpha, state.sideX, 250, 250, 350, true }
@@ -2004,4 +2011,8 @@ end)
 -- kills the whole file and F1 dies with NO trace), the ping below never
 -- fires and the server warns the player instead of leaving F1 dead silently.
 --------------------------------------------------------------------------------
+-- [U6 #2 CONTRACT] make "ui:f1open" a real boolean from load time on — a
+-- main-menu restart (or a client joined before the first F1 press) must never
+-- leave a stale "true" behind with no menu window on screen.
+setElementData(localPlayer, "ui:f1open", false, false)
 triggerServerEvent("mainmenu:clientLoaded", localPlayer)

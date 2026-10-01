@@ -39,6 +39,7 @@
     <script src="s_fbirancher.lua" type="server" />
     
     <script src="c_vehicle_rightclick.lua" type="client" />
+    <script src="c_windows.lua" type="client" />
     
     <script src="g_doors.lua" type="server" />
     <script src="g_doors.lua" type="client" />

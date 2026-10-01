@@ -66,7 +66,7 @@ end
 
 local COLUMNS = {
         { name = "ID",       frac = 0.075 },
-        { name = "",         frac = 0.070 }, -- badge icons
+        { name = "",         frac = 0.070 }, -- admin right badges (support/developer/admin)
         { name = "Name",     frac = 0.395 },
         { name = "Rank",     frac = 0.210 },
         { name = "Playtime", frac = 0.160 },
@@ -87,7 +87,10 @@ local fontAR, fontARB -- built-ins: they carry Arabic glyphs (PFDin does not)
 local badgeTex = {}
 local groupTex, logoTex, searchTex
 
-local BADGE_NAMES = { "premium", "booster", "classic", "gold_member", "verified", "youtuber" }
+-- [Fix #160] the badge column shows ADMIN rights badges only - the old
+-- membership icons (premium/booster/classic/gold_member/verified/youtuber)
+-- are gone. Textures live at icons/<name>.png and ship via meta.xml.
+local BADGE_NAMES = { "support_badge", "developer_badge", "admin_badge" }
 
 local function loadAssets()
         local base = math.min(BOARD.h / 600, 1.15)
@@ -365,31 +368,40 @@ function getRankColorRaw(p, rankName)
         return tocolor(235, 240, 246, 255)
 end
 
+-- [Fix #160] badge column = the ADMIN rights badges of the player's rank,
+-- nothing else. The server pushes the comma-separated rights the rank holds
+-- in the element-data "fix160.badgerights" (example payload:
+-- "admin.badge,admin.badge.developer"): a right present -> its badge, several
+-- -> side by side in the 20*s slots below. Missing/empty data -> no badge.
+local BADGE_RIGHTS = {
+        { right = "admin.badge.support",   icon = "support_badge" },
+        { right = "admin.badge.developer", icon = "developer_badge" },
+        { right = "admin.badge",           icon = "admin_badge" },
+}
+
 local function getBadges(p)
         local icons = {}
         -- [Vortex] hidden / off-duty staff show no badges - they read as plain
         if isHidden(p) or isStaffOffDuty(p) then return icons end
-        local level = tonumber(getElementData(p, "admin_level")) or 0
-        if level >= 21 then
-                table.insert(icons, "premium")
-        elseif level >= 11 then
-                table.insert(icons, "booster")
-        elseif level >= 4 then
-                table.insert(icons, "classic")
-        end
-        local integ = getResourceFromName("integration")
-        if integ and getResourceState(integ) == "running" then
-                local okScripter, isScripter = pcall(function() return exports.integration:isPlayerScripter(p) end)
-                if okScripter and isScripter then
-                        table.insert(icons, "verified")
+        local raw = getElementData(p, "fix160.badgerights")
+        -- split the comma-separated payload into exact rights (whitespace
+        -- around a token is ignored) so "admin.badge" never matches the
+        -- longer "admin.badge.developer" / "admin.badge.support" by accident
+        local have = {}
+        if type(raw) == "string" then
+                for token in raw:gmatch("[^,]+") do
+                        have[token:match("^%s*(.-)%s*$")] = true
                 end
-                local okVct, isVct = pcall(function() return exports.integration:isPlayerVCTMember(p) end)
-                if okVct and isVct then
-                        table.insert(icons, "gold_member")
+        elseif type(raw) == "table" then -- defensive: a table payload works too
+                for _, token in ipairs(raw) do
+                        have[tostring(token):match("^%s*(.-)%s*$")] = true
                 end
         end
-        if getElementData(p, "donation:nametag") == true then
-                table.insert(icons, "youtuber")
+        if next(have) == nil then return icons end
+        for _, map in ipairs(BADGE_RIGHTS) do
+                if have[map.right] then
+                        table.insert(icons, map.icon)
+                end
         end
         return icons
 end
@@ -475,6 +487,9 @@ local WATCHED_KEYS = {
         ["loggedin"] = true, ["hiddenadmin"] = true,
         ["donation:nametag"] = true, ["account:username"] = true,
         ["fakename"] = true, ["afk"] = true, ["mod:id"] = true,
+        -- [Fix #160] a rank's badge rights edit applies on the same frame
+        -- (not 2s later when the refresh timer happens to run)
+        ["fix160.badgerights"] = true,
 }
 addEventHandler("onClientElementDataChange", root, function(key)
         if key == "mod:id" and state then

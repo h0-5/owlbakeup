@@ -19,12 +19,9 @@
         <file src="fonts/PFDinDisplayPro-Bold.ttf"/>
         <file src="fonts/PFDinDisplayPro-Regular.ttf"/>
 
-        <file src="icons/premium.png"/>
-        <file src="icons/booster.png"/>
-        <file src="icons/classic.png"/>
-        <file src="icons/gold_member.png"/>
-        <file src="icons/verified.png"/>
-        <file src="icons/youtuber.png"/>
+        <file src="icons/support_badge.png"/>
+        <file src="icons/developer_badge.png"/>
+        <file src="icons/admin_badge.png"/>
 
         <export function="isVisible" type="client" />
         <export function="getPlayerFromModID" type="server" />

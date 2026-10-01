@@ -70,8 +70,6 @@
     <export function="getBGTexture" type="client" />
     <export function="showStatusHud" type="client" />
     <export function="setHudOverMenu" type="client" />
-    <!-- [Fix #162] zone/location pills for the open F1 menu (main-menu's late render pass) -->
-    <export function="drawZonePillsOverMenu" type="client" />
     <export function="setProgress" type="client" />
     <export function="fpscheck" type="client" />
     <!-- server: old life-system status API shape -->

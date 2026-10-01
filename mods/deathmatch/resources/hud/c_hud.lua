@@ -296,7 +296,7 @@ end
 --------------------------------------------------------------------------------
 -- HUD SETTINGS + ITEMS API (old client names, used by other resources)
 --------------------------------------------------------------------------------
-local hudSettings = { showhud = true, tagmode = true, seatbelt = false }
+local hudSettings = { showhud = true, tagmode = true, seatbelt = false, admintag = true }
 local hudItems = {}            -- element data mirror {id, state, icon, tip1, tip2, category}
 local visibleItems = {}        -- resolved strip list
 
@@ -347,7 +347,7 @@ end
 function updateHudItemsList(items)
         items = items or getElementData(localPlayer, "hud:items") or {}
         hudItems = items
-        hudSettings = { showhud = hudSettings.showhud, tagmode = hudSettings.tagmode, seatbelt = hudSettings.seatbelt }
+        hudSettings = { showhud = hudSettings.showhud, tagmode = hudSettings.tagmode, seatbelt = hudSettings.seatbelt, admintag = hudSettings.admintag }
         for _, item in ipairs(hudItems) do
                 if type(item[1]) == "string" then
                         hudSettings[item[1]] = item[2] == "on"
@@ -574,9 +574,10 @@ local statusHudDraw -- forward declaration
 -- [Fix #100 #1] priority band of statusHudDraw. "high-5" (default) keeps the
 -- panel in the high band; "low" drops it below the F1 menu window ("normal")
 -- so the status HUD paints ABOVE the menu while it is open. [Fix #162] the
--- zone/location pills no longer depend on this: they are gated off here while
--- F1 is open and issued by main-menu's late pass instead (drawZonePillsOverMenu
--- above) - a priority band can never beat postGUI ordering anyway.
+-- two docked pills do NOT ride this band: while the menu is open they are
+-- skipped entirely (see the f1MenuOpen gate in statusHudDrawImpl) so the map
+-- + zone status stay UNDER the menu, exactly like the radar (user: "خلي
+-- خريطة و حالة منطقة تحت القائمة").
 local statusHudPriority = "high-5"
 local moneyBlockBottom = false   -- bottom Y of the money block (publishes hud:topRightBottom for the reports dock)
 local zoneText, zoneLabel = "", ""
@@ -756,8 +757,9 @@ end
 -- [Fix #100 #1] called by main-menu when F1 opens/closes: move the status +
 -- zone HUD into the "low" band so it draws on top of the menu window, and put
 -- it back to "high-5" once the menu is gone. Idempotent (early return) and
--- only re-registers when the panel is actually on screen. [Fix #162] the two
--- docked pills are NOT carried by this band anymore (see drawZonePillsOverMenu).
+-- only re-registers when the panel is actually on screen. [Fix #162] while
+-- the band is "low" the two docked pills are skipped (f1MenuOpen gate) so
+-- this flip only carries the top-right icons/money - never the pills.
 function setHudOverMenu(over)
         local want = over and "low" or "high-5"
         if want == statusHudPriority then return false end
@@ -830,13 +832,11 @@ local function drawMoneyBlock(rightX, y, postGUI)
         return bottom - y
 end
 
--- [[ [Fix #162] THE TWO DOCKED PILLS live in ONE function so both render
---      paths paint byte-identical geometry:
---        * statusHudDrawImpl -> drawZonePills(postGUI)  (normal, menu closed)
---        * drawZonePillsOverMenu export                 (F1 open - called by
---          main-menu/c_main.lua from its LATE render pass, which runs after
---          the veil, the branding strip AND the UIKit window, so the pills
---          stay on top of the whole menu)
+-- [[ [Fix #162] THE TWO DOCKED PILLS live in ONE function, called from
+--      statusHudDrawImpl only. While the F1 menu is open the call is gated
+--      off (f1MenuOpen below): the branding strip / veil cover this screen
+--      area anyway, so the pills behave exactly like the radar - UNDER the
+--      menu, never over it. There is deliberately NO over-menu render pass.
 --      Geometry is untouched Fix #55 / Fix #47 code (radar rect + 24px rows).
 local function drawZonePills(postGUI)
         local mapY = sy - 175 * (sy / 1080) - 25
@@ -856,7 +856,7 @@ local function drawZonePills(postGUI)
                 zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
 end
 
--- [Fix #162] is the F1 menu open (-> its late pass owns the pills)?
+-- [Fix #162] is the F1 menu open (-> the pills stay drawn BELOW it)?
 -- "ui:f1open" is the contract published by main-menu/c_main.lua at its single
 -- open/close funnel; isOpen() is the LIVENESS check, so a main-menu that ever
 -- stops while its menu is open can never leave the pills hidden in normal
@@ -868,17 +868,6 @@ local function f1MenuOpen()
         if not res then return false end
         local ok, open = pcall(call, res, "isOpen")
         return ok and open == true
-end
-
--- [Fix #162] export for main-menu: paint the pills from the menu's own late
--- render pass. Same visibility gates as statusHudDrawImpl, so they appear
--- exactly when they normally would. Idempotent (plain draw, no state).
-function drawZonePillsOverMenu()
-        if not statusHud.visible or not isHudShowing() then return false end
-        if getElementData(localPlayer, "loggedin") ~= 1
-                and not getElementData(localPlayer, "character:id") then return false end
-        drawZonePills(true)
-        return true
 end
 
 local function statusHudDrawImpl()
@@ -1004,10 +993,12 @@ local function statusHudDrawImpl()
         -- reference shot shows two dark pills with a colored side bar:
         -- "City | Zone" in white, SAFE/DANGER ZONE in its status color;
         -- geometry = the radar's own rect so they always dock flush)
-        -- [Fix #162] while the F1 menu is open the SAME pills are issued by
-        -- main-menu's late render pass (drawZonePillsOverMenu) so they land
-        -- above the menu - skipping them here keeps ONE draw (a second
-        -- 190-alpha pill under the veil would darken the row).
+        -- [Fix #162] while the F1 menu is open do NOT draw the pills: this
+        -- handler rides the "low" band then (Fix #100 #1, top-right icons
+        -- over the menu), so drawing them here would land them OVER the
+        -- branding strip - the user wants map + zone status UNDER the menu
+        -- (the strip/veil cover this corner anyway, so skipping matches the
+        -- radar's look exactly). Band is back to "high-5" once the menu closes.
         if not f1MenuOpen() then
                 drawZonePills(postGUI)
         end
@@ -1365,6 +1356,10 @@ addEventHandler("onClientClick", root, function(button, state)
                         rebuildVisibleItems()
                         triggerEvent("onClientHudVisibilityChange", localPlayer, hudSettings.showhud)
                 elseif item.category ~= "disable-click" then
+                        if item.id == "admintag" then
+                                setHudSetting("admintag", not getHudSetting("admintag"))
+                                rebuildVisibleItems()
+                        end
                         -- old client: server event + local event, both
                         triggerServerEvent("hud:onHudItemClick", localPlayer, item.id)
                         triggerEvent("hud:onClientHudItemClick", localPlayer, item.id, getHudSetting(item.id))

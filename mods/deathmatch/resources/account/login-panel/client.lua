@@ -521,7 +521,7 @@ addEventHandler("beginLogin", root, function()
         startLoginMusic()
         if getElementData(localPlayer, "character:id") then return end
         showChat(false)
-        setTime(0, 0)
+        setTime(12, 0)
         setElementInterior(localPlayer, 0)
         fadeCamera(true)
         if not loginRenderAdded then -- [Fix #45] never stack duplicate renderers

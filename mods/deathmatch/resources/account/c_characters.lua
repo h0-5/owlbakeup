@@ -374,7 +374,7 @@ function Characters_showSelection()
         lobby.cam.pos = { cx, cy, cz }
         lobby.cam.target = { spot[1], spot[2], spot[3] + 0.45 }
 
-        setTime(0, 0)
+        setTime(12, 0)
         setElementInterior(localPlayer, 0)
         setCameraInterior(0)
         setElementDimension(localPlayer, 65499)
@@ -409,6 +409,8 @@ function lobbyHide()
         stopLobbyMusic()
         showCursor(false)
         showChat(true)
+        local rt = getRealTime()
+        setTime(rt.hour, rt.minute)
         showPlayerHudComponent("radar", true)
         setElementAlpha(localPlayer, 255)
         setCameraTarget(localPlayer)

@@ -109,6 +109,26 @@ RANK_GATE = {
         lead_scripter = 19, -- Founder+
 }
 
+-- Legacy column -> closest new rank (highest wins).
+-- [Vortex fix] the OLD ladder only ever held admin 1..4 (plus 10 = scripter);
+-- anything from 5 to 21 was someone writing the NEW 21-rank index straight
+-- into the old column (admin=21 = Owner). migrateLegacyStaff honors those
+-- values 1:1 through RANK_LADDER before these thresholds apply.
+-- [Fix #U1] this table is the SINGLE mapping used by BOTH the write path
+-- (migrateLegacyStaff - runs on resource start) and the read path
+-- (deriveLegacyRankRecord - runs live, so the two can never disagree).
+local LEGACY_MIGRATION = {
+        { column = "admin",     min = 4, rank = "Lead Administrator"  },
+        { column = "admin",     min = 3, rank = "Senior Administrator" },
+        { column = "admin",     min = 2, rank = "Moderator"           },
+        { column = "admin",     min = 1, rank = "Trial Moderator"     },
+        { column = "scripter",  min = 3, rank = "Diverloper"          },
+        { column = "scripter",  min = 2, rank = "Diverloper"          },
+        { column = "scripter",  min = 1, rank = "Tester"              },
+        { column = "supporter", min = 2, rank = "Support"             },
+        { column = "supporter", min = 1, rank = "Trial Support"       },
+}
+
 local function safeToJSON(t)
         local ok, res = pcall(toJSON, t)
         if ok then return res end
@@ -185,13 +205,8 @@ function pushRankColorsToAll()
         triggerClientEvent("scoreboard:rankColors", root, getAllRankColors())
 end
 
--- resolve the rank record (index included) for an account id; nil = no rank
-function getPlayerRankRecordByAccountID(accountID)
-        local member = fetchMemberRow(accountID)
-        if not member then return nil end
-        local role = fetchRankByID(member.RoleID)
-        if not role then return nil end
-
+-- shape every consumer expects, built from a staff_roles row
+local function buildRankRecord(role)
         -- ladder index: prefer the name map (survives rank re-ordering/renames
         -- in the panel); fall back to row order for custom ranks
         local index = 0
@@ -225,6 +240,59 @@ function getPlayerRankRecordByAccountID(accountID)
                 rights = unwrapRights(fromJSON(role.Rights or "")),
                 color = color,
         }
+end
+
+-- [Fix #U1] LIVE legacy derivation.
+-- A staff_role_members row is the normal (panel written) path.  When there is
+-- NONE, the accounts columns still say this account is staff (admin=21, ...),
+-- and migrateLegacyStaff would INSERT exactly that row on the NEXT resource
+-- start.  Deriving it live, without writing anything, makes a live session and
+-- a restart agree: the player gets ONE coherent rank (index/name/color/rights)
+-- instead of the old "no rank at all -> every gate falls back to the legacy
+-- ladder" state, which is what let a revoked permission keep working.
+local function fetchLegacyRankTitle(accountID)
+        if not tonumber(accountID) then return nil end
+        local acc = mysql:query_fetch_assoc("SELECT admin, supporter, scripter FROM accounts WHERE id="
+                .. tonumber(accountID) .. " LIMIT 1")
+        if not acc then return nil end
+        -- direct NEW-ladder index stored in the old column (5..21, excluding 10
+        -- which the old ladder used for Scripter) - same rule as the write path
+        local adminVal = tonumber(acc.admin) or 0
+        if adminVal >= 5 and adminVal <= 21 and adminVal ~= 10 then
+                return RANK_LADDER[adminVal]
+        end
+        for _, rule in ipairs(LEGACY_MIGRATION) do
+                if tonumber(acc[rule.column] or 0) >= rule.min then
+                        return rule.rank
+                end
+        end
+        return nil
+end
+
+local function deriveLegacyRankRecord(accountID)
+        local title = fetchLegacyRankTitle(accountID)
+        if not title then return nil end
+        local role = mysql:query_fetch_assoc(
+                "SELECT ID, LevelName, Rights, Color FROM staff_roles WHERE LevelName='"
+                .. mysql:escape_string(title) .. "' LIMIT 1")
+        if not role then return nil end -- ladder title renamed/removed: no guess
+        local record = buildRankRecord(role)
+        record.derived = true
+        return record
+end
+
+-- resolve the rank record (index included) for an account id; nil = no rank
+function getPlayerRankRecordByAccountID(accountID)
+        if not tonumber(accountID) then return nil end
+        local member = fetchMemberRow(accountID)
+        if member then
+                -- explicit panel assignment always wins; if its rank row is
+                -- gone the account has no rank (unchanged behaviour)
+                local role = fetchRankByID(member.RoleID)
+                if not role then return nil end
+                return buildRankRecord(role)
+        end
+        return deriveLegacyRankRecord(accountID)
 end
 
 function getPlayerRankRecord(player)
@@ -309,11 +377,22 @@ function applyPlayerRank(player, record)
         setIfChanged(player, "rank:color", clampRankColor(record.color))
         setIfChanged(player, "rank:rights", safeToJSON(record.rights))
 
-        local compat = RANK_COMPAT[record.index]
-        if compat then
-                setIfChanged(player, "admin_level", compat.admin)
-                setIfChanged(player, "supporter_level", compat.supporter)
-                setIfChanged(player, "scripter_level", compat.scripter)
+        -- [Fix #U1] a DERIVED rank (legacy column -> ladder, no
+        -- staff_role_members row) must NOT rewrite the legacy numbers: they are
+        -- exactly what the accounts columns hold and what old resources still
+        -- read (resource-keeper admin_level >= 5, interior-manager < 6,
+        -- c_overlay <= 7, the /checkid rank text ...). Only a real panel
+        -- assignment runs RANK_COMPAT, byte-identical to the old behaviour.
+        -- For the old 1..4 columns RANK_COMPAT maps back to the same number
+        -- anyway, so this only changes the "new index written into the old
+        -- column" case (admin=21 -> stays 21) - i.e. nothing regresses.
+        if not record.derived then
+                local compat = RANK_COMPAT[record.index]
+                if compat then
+                        setIfChanged(player, "admin_level", compat.admin)
+                        setIfChanged(player, "supporter_level", compat.supporter)
+                        setIfChanged(player, "scripter_level", compat.scripter)
+                end
         end
         -- [Fix #160 / U1] every rank apply also re-pushes the badge rights
         -- (login / ready, rank edited in the panel, refreshRankMembers, the
@@ -326,11 +405,27 @@ end
 -- restore the legacy column values that were snapshotted on apply
 function clearPlayerRank(player)
         if not isElement(player) then return end
-        local legacy = getElementData(player, "rank:legacy")
-        if type(legacy) == "table" then
-                setIfChanged(player, "admin_level", legacy.admin or 0)
-                setIfChanged(player, "supporter_level", legacy.supporter or 0)
-                setIfChanged(player, "scripter_level", legacy.scripter or 0)
+        -- [Fix #U1] the ACCOUNTS columns are the truth for the legacy numbers.
+        -- Re-read them instead of blindly restoring the snapshot taken when the
+        -- rank was applied: a demotion that also zeroed accounts.admin must NOT
+        -- resurrect admin_level from the snapshot (that is exactly how a
+        -- removal stayed a no-op for legacy staff accounts). The snapshot stays
+        -- as the fallback when the account row is gone / unreadable.
+        local accountID = tonumber(getElementData(player, "account:id"))
+        local fresh = accountID and mysql:query_fetch_assoc(
+                "SELECT admin, supporter, scripter FROM accounts WHERE id="
+                .. accountID .. " LIMIT 1") or nil
+        if fresh then
+                setIfChanged(player, "admin_level", tonumber(fresh.admin) or 0)
+                setIfChanged(player, "supporter_level", tonumber(fresh.supporter) or 0)
+                setIfChanged(player, "scripter_level", tonumber(fresh.scripter) or 0)
+        else
+                local legacy = getElementData(player, "rank:legacy")
+                if type(legacy) == "table" then
+                        setIfChanged(player, "admin_level", legacy.admin or 0)
+                        setIfChanged(player, "supporter_level", legacy.supporter or 0)
+                        setIfChanged(player, "scripter_level", legacy.scripter or 0)
+                end
         end
         for _, key in ipairs({ "rank:index", "rank:name", "rank:color", "rank:rights", "rank:legacy" }) do
                 if getElementData(player, key) ~= nil then
@@ -357,13 +452,25 @@ function refreshPlayerRank(player)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
         if not tonumber(getElementData(player, "account:id")) then return false end
         local record = getPlayerRankRecord(player)
+        local applied = false
         if record then
-                return applyPlayerRank(player, record)
+                applied = applyPlayerRank(player, record)
+        else
+                -- no Vortex rank assigned -> fall back to the legacy columns; drop any
+                -- stale rank data so integration gates use the old path
+                clearPlayerRank(player)
         end
-        -- no Vortex rank assigned -> fall back to the legacy columns; drop any
-        -- stale rank data so integration gates use the old path
-        clearPlayerRank(player)
-        return false
+        -- [Fix #U3] every rank (re)application re-checks the duty flag against
+        -- the duty.adminduty right, so a revocation takes the player off duty
+        -- the moment his rank is refreshed.
+        enforceStaffDutyRights(player)
+        -- [Fix #U6] the panel's mirrored flags are only re-sent when the panel
+        -- opens; re-send them after every rank change too (server re-checks
+        -- anyway - this only keeps an OPEN panel honest).
+        if type(refreshStaffPanelRights) == "function" then
+                pcall(refreshStaffPanelRights, player)
+        end
+        return applied
 end
 
 -- push a rank change to every online member of a role (rank edited/deleted)
@@ -373,7 +480,19 @@ function refreshRankMembers(roleID)
                 local accountID = tonumber(getElementData(player, "account:id"))
                 if accountID then
                         local member = fetchMemberRow(accountID)
-                        if member and tonumber(member.RoleID) == tonumber(roleID) then
+                        local match = false
+                        if member then
+                                match = tonumber(member.RoleID) == tonumber(roleID)
+                        else
+                                -- [Fix #U1] derived members (no staff_role_members
+                                -- row, legacy column -> this very rank) must be
+                                -- refreshed too, otherwise their rank:rights set
+                                -- goes stale and the revocation never bites.
+                                local rec = getPlayerRankRecord(player)
+                                match = rec ~= nil and rec.derived
+                                        and tonumber(rec.ID) == tonumber(roleID)
+                        end
+                        if match then
                                 refreshPlayerRank(player)
                         end
                 end
@@ -389,6 +508,36 @@ function refreshAllPlayerRanks()
         end
         -- [Fix #31] publish the staff-system rank colors to every client
         pushRankColorsToAll()
+end
+
+-- ============================================================================
+-- [Fix #U3] duty enforcement — duty_admin is a RIGHT, not a stored flag
+-- ============================================================================
+-- The duty flag is written by three different paths (/adminduty, the MDC,
+-- and the login restore of account_settings.duty_admin) and none of them
+-- re-checks the right after a revocation - a demoted player stayed "on duty"
+-- (duty badge, on-duty list, admin duty commands) forever. This is the one
+-- place that turns it OFF again; it mirrors the /adminduty off-duty branch
+-- (s_player_commands.lua adminDuty) so the client persists the change too.
+function enforceStaffDutyRights(player)
+        if not isElement(player) or getElementType(player) ~= "player" then return false end
+        if tonumber(getElementData(player, "duty_admin")) ~= 1 then return false end
+        if type(playerHasRight) ~= "function" then return false end
+        if playerHasRight(player, "duty.adminduty") then return false end
+
+        -- server value first (the F1 list / scoreboard read this), then the
+        -- client event so account_settings.duty_admin is written as 0 as well
+        setElementData(player, "duty_admin", 0, true)
+        triggerClientEvent(player, "accounts:settings:updateAccountSettings", player, "duty_admin", 0)
+        outputChatBox("You don't hold the duty.adminduty right anymore - you were taken off admin duty.",
+                player, 255, 80, 80)
+        local name = getPlayerName(player)
+        pcall(function()
+                exports.global:sendMessageToAdmins("AdmDuty: " .. name .. " went off duty.")
+        end)
+        outputDebugString("[Vortex Staff] duty_admin forced OFF for " .. tostring(name)
+                .. " (rank no longer holds duty.adminduty)")
+        return true
 end
 
 -- ============================================================================
@@ -539,22 +688,8 @@ function playerRankAtLeast(player, index)
         return idx >= index
 end
 
--- legacy column -> closest new rank (highest wins).
--- [Vortex fix] the OLD ladder only ever held admin 1..4 (plus 10 = scripter);
--- anything from 5 to 21 was someone writing the NEW 21-rank index straight
--- into the old column (admin=21 = Owner). migrateLegacyStaff honors those
--- values 1:1 through RANK_LADDER before these thresholds apply.
-local LEGACY_MIGRATION = {
-        { column = "admin",     min = 4, rank = "Lead Administrator"  },
-        { column = "admin",     min = 3, rank = "Senior Administrator" },
-        { column = "admin",     min = 2, rank = "Moderator"           },
-        { column = "admin",     min = 1, rank = "Trial Moderator"     },
-        { column = "scripter",  min = 3, rank = "Diverloper"          },
-        { column = "scripter",  min = 2, rank = "Diverloper"          },
-        { column = "scripter",  min = 1, rank = "Tester"              },
-        { column = "supporter", min = 2, rank = "Support"             },
-        { column = "supporter", min = 1, rank = "Trial Support"       },
-}
+-- legacy column -> closest new rank: the table itself lives with the ladder
+-- constants at the top of this file (shared with migrateLegacyStaff).
 
 -- [Fix #14] ladder position of a rank TITLE (nil when unknown/custom)
 function getRankTitleIndex(name)
@@ -675,6 +810,18 @@ addEventHandler("onElementDataChange", root, function(key, oldValue)
                 if oldAccount and type(staffTeamsInvalidateRights) == "function" then
                         staffTeamsInvalidateRights(oldAccount)
                 end
+        end
+        -- [Fix #U3] duty_admin flipping ON (login restore of account_settings,
+        -- /adminduty, the MDC, any setter) re-checks the duty.adminduty right
+        -- immediately: whoever lost it can never stay on duty. The force-off
+        -- inside writes 0, which lands here again and returns right away, so
+        -- there is no loop.
+        if key == "duty_admin" then
+                if isElement(source) and getElementType(source) == "player"
+                        and tonumber(getElementData(source, "duty_admin")) == 1 then
+                        enforceStaffDutyRights(source)
+                end
+                return
         end
         if key ~= "account:id" then return end
         if not isElement(source) or getElementType(source) ~= "player" then return end

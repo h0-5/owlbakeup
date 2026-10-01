@@ -476,6 +476,19 @@ local function afterTeamMutation()
         if type(staffTeamsInvalidateRights) == "function" then
                 staffTeamsInvalidateRights()
         end
+        -- [Fix #U3] a team can grant (or lose) duty.adminduty, and a team
+        -- membership change can also drop the union below what an on-duty
+        -- player needs -> re-check everybody's duty flag right here.
+        if type(enforceStaffDutyRights) == "function" then
+                for _, p in ipairs(getElementsByType("player")) do
+                        enforceStaffDutyRights(p)
+                end
+        end
+        -- [Fix #U6] team rights feed panelRights too -> refresh the mirrored
+        -- flags of every panel viewer (no open/close, no toggle).
+        if type(refreshStaffPanelRightsAll) == "function" then
+                pcall(refreshStaffPanelRightsAll)
+        end
         if type(pushFix160BadgeRights) == "function"
                 or type(teamBadgeRightsValue) == "function" then
                 for _, p in ipairs(getElementsByType("player")) do

@@ -573,7 +573,10 @@ local statusHud = { visible = false, anims = { count = 0, time = 250, from = -80
 local statusHudDraw -- forward declaration
 -- [Fix #100 #1] priority band of statusHudDraw. "high-5" (default) keeps the
 -- panel in the high band; "low" drops it below the F1 menu window ("normal")
--- so the zone/status HUD paints ABOVE the menu while it is open.
+-- so the status HUD paints ABOVE the menu while it is open. [Fix #162] the
+-- zone/location pills no longer depend on this: they are gated off here while
+-- F1 is open and issued by main-menu's late pass instead (drawZonePillsOverMenu
+-- above) - a priority band can never beat postGUI ordering anyway.
 local statusHudPriority = "high-5"
 local moneyBlockBottom = false   -- bottom Y of the money block (publishes hud:topRightBottom for the reports dock)
 local zoneText, zoneLabel = "", ""
@@ -753,7 +756,8 @@ end
 -- [Fix #100 #1] called by main-menu when F1 opens/closes: move the status +
 -- zone HUD into the "low" band so it draws on top of the menu window, and put
 -- it back to "high-5" once the menu is gone. Idempotent (early return) and
--- only re-registers when the panel is actually on screen.
+-- only re-registers when the panel is actually on screen. [Fix #162] the two
+-- docked pills are NOT carried by this band anymore (see drawZonePillsOverMenu).
 function setHudOverMenu(over)
         local want = over and "low" or "high-5"
         if want == statusHudPriority then return false end
@@ -824,6 +828,57 @@ local function drawMoneyBlock(rightX, y, postGUI)
                 bottom = r2y + rowH
         end
         return bottom - y
+end
+
+-- [[ [Fix #162] THE TWO DOCKED PILLS live in ONE function so both render
+--      paths paint byte-identical geometry:
+--        * statusHudDrawImpl -> drawZonePills(postGUI)  (normal, menu closed)
+--        * drawZonePillsOverMenu export                 (F1 open - called by
+--          main-menu/c_main.lua from its LATE render pass, which runs after
+--          the veil, the branding strip AND the UIKit window, so the pills
+--          stay on top of the whole menu)
+--      Geometry is untouched Fix #55 / Fix #47 code (radar rect + 24px rows).
+local function drawZonePills(postGUI)
+        local mapY = sy - 175 * (sy / 1080) - 25
+        local locText = zoneText:gsub("#%x%x%x%x%x%x", "")
+        local locW = math.max(dxGetTextWidth(locText, 1, fontHud()) + 26, 90)
+        local zoneW = math.max(dxGetTextWidth(zoneLabel, 1, fontHud()) + 26, 80)
+        local pillH = 24
+        local safeY = mapY - pillH - 6
+        local locY = safeY - pillH - 6
+        dxDrawRoundedRectangle(15, locY, locW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+        dxDrawRectangle(15, locY + 4, 3, pillH - 8, tocolor(153, 255, 0, 255), postGUI)
+        outlineText(locText, 15 + 12, locY, locW - 12, pillH,
+                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "center", postGUI)
+        dxDrawRoundedRectangle(15, safeY, zoneW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
+        dxDrawRectangle(15, safeY + 4, 3, pillH - 8, zoneLabelColor, postGUI)
+        outlineText(zoneLabel, 15 + 12, safeY, zoneW - 12, pillH,
+                zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
+end
+
+-- [Fix #162] is the F1 menu open (-> its late pass owns the pills)?
+-- "ui:f1open" is the contract published by main-menu/c_main.lua at its single
+-- open/close funnel; isOpen() is the LIVENESS check, so a main-menu that ever
+-- stops while its menu is open can never leave the pills hidden in normal
+-- play (the stale element data alone would do that).
+local function f1MenuOpen()
+        local v = getElementData(localPlayer, "ui:f1open")
+        if not (v == true or v == "true" or v == 1 or v == "1") then return false end
+        local res = getResourceFromName("main-menu")
+        if not res then return false end
+        local ok, open = pcall(call, res, "isOpen")
+        return ok and open == true
+end
+
+-- [Fix #162] export for main-menu: paint the pills from the menu's own late
+-- render pass. Same visibility gates as statusHudDrawImpl, so they appear
+-- exactly when they normally would. Idempotent (plain draw, no state).
+function drawZonePillsOverMenu()
+        if not statusHud.visible or not isHudShowing() then return false end
+        if getElementData(localPlayer, "loggedin") ~= 1
+                and not getElementData(localPlayer, "character:id") then return false end
+        drawZonePills(true)
+        return true
 end
 
 local function statusHudDrawImpl()
@@ -949,21 +1004,13 @@ local function statusHudDrawImpl()
         -- reference shot shows two dark pills with a colored side bar:
         -- "City | Zone" in white, SAFE/DANGER ZONE in its status color;
         -- geometry = the radar's own rect so they always dock flush)
-        local mapY = sy - 175 * (sy / 1080) - 25
-        local locText = zoneText:gsub("#%x%x%x%x%x%x", "")
-        local locW = math.max(dxGetTextWidth(locText, 1, fontHud()) + 26, 90)
-        local zoneW = math.max(dxGetTextWidth(zoneLabel, 1, fontHud()) + 26, 80)
-        local pillH = 24
-        local safeY = mapY - pillH - 6
-        local locY = safeY - pillH - 6
-        dxDrawRoundedRectangle(15, locY, locW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
-        dxDrawRectangle(15, locY + 4, 3, pillH - 8, tocolor(153, 255, 0, 255), postGUI)
-        outlineText(locText, 15 + 12, locY, locW - 12, pillH,
-                tocolor(255, 255, 255, 255), 1, fontHud(), "left", "center", postGUI)
-        dxDrawRoundedRectangle(15, safeY, zoneW, pillH, tocolor(0, 0, 0, 190), 6, postGUI)
-        dxDrawRectangle(15, safeY + 4, 3, pillH - 8, zoneLabelColor, postGUI)
-        outlineText(zoneLabel, 15 + 12, safeY, zoneW - 12, pillH,
-                zoneLabelColor, 1, fontHud(), "left", "center", postGUI)
+        -- [Fix #162] while the F1 menu is open the SAME pills are issued by
+        -- main-menu's late render pass (drawZonePillsOverMenu) so they land
+        -- above the menu - skipping them here keeps ONE draw (a second
+        -- 190-alpha pill under the veil would darken the row).
+        if not f1MenuOpen() then
+                drawZonePills(postGUI)
+        end
 end
 statusHudDraw = statusHudDrawImpl
 
@@ -1008,8 +1055,8 @@ setTimer(function()
                                         and getResourceState(getResourceFromName("notifications")) == "running" then
                                         pcall(function()
                                                 exports.notifications:output({
-                                                        en = "#ff3030You are now in an unsafe area, you must be careful",
-                                                        ar = "#ff3030انت الان في منطقة غير أمنة، يجب عليك الانتباه",
+                                                        en = "You are now in an unsafe area, you must be careful",
+                                                        ar = "انت الان في منطقة غير أمنة، يجب عليك الانتباه",
                                                 }, 6000, "danger")
                                         end)
                                         notified = true

@@ -197,7 +197,23 @@ addEventHandler("admin:showStaff", root, function()
                                 if ok and value then admin = tonumber(value) or admin end
                         end
                 end
-                if admin > 0 or support > 0 then
+                -- [Fix #U5] the online-staff list is RIGHTS-driven, not
+                -- rank/level-driven: holding a rank (or a legacy admin level)
+                -- is not enough - the player must actually hold the
+                -- admin.isStaff right. Revoking it now drops him from this F1
+                -- list the same way it drops him from the duty/badge paths.
+                -- Players the staff system does not know yet (no live rank)
+                -- keep the old rank/level behaviour.
+                local allowed = true
+                if ridx then
+                        local ok, res = pcall(function()
+                                return exports["admin-system"]:playerHasRight(player, "admin.isStaff")
+                        end)
+                        if ok and res == false then
+                                allowed = false
+                        end
+                end
+                if (admin > 0 or support > 0) and allowed then
                         -- [Fix #14] unified rank title + color ship with the row
                         local rname = tostring(getElementData(player, "rank:name") or "")
                         local rcolor = getElementData(player, "rank:color")

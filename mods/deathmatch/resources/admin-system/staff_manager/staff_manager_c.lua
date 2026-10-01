@@ -6,9 +6,11 @@
           window 905x575 (rounded, dark) with a 150px sidebar menu and a
           content panel per section:
             staffs             grid: Rank / Username / Reports # / Feedback
-            roles_members      grid: Role / Username (أعضاء الصلاحيات)
+            roles_members      grid: Team / Username (أعضاء الصلاحيات) - one
+                               row per team member, EVERY viewer
                                + [TEAMS] team list / team members / create /
                                  rename / delete / add-remove member / rights
+                                 (admin.manager.editmembers ONLY)
             changelogs         search + grid: Date/Time/Action/Username/From/To/By
             ranks              ranks grid + permissions grid + color + save
             daily_staff_report grid: Username/Login/Logout/Attendance/Jails/Bans/Reports
@@ -125,7 +127,11 @@ local teamRightsTarget = nil
      content for, permissions from reloadAdminPanelMenu/showPanel logic) ]]
 local SECTIONS = {
         { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "staff_manager/icons/menu_shield.png", permission = false },
-        { id = "roles_members",      en = "Permissions Members", ar = "أعضاء الصلاحيات", icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
+        -- [TEAMS] أعضاء الصلاحيات SECTION: open to everyone who can open the
+        -- panel (the teams payload the left grid paints is pushed to exactly
+        -- that audience already). admin.manager.editmembers gates only the
+        -- team-management half INSIDE the section - see setTeamManageVisible.
+        { id = "roles_members",      en = "Permissions Members", ar = "أعضاء الصلاحيات", icon = "staff_manager/icons/menu_person.png", permission = false },
         { id = "changelogs",         en = "Logs",          ar = "السجلات",  icon = "staff_manager/icons/menu_chat.png",   permission = false },
         { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
         { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
@@ -327,12 +333,15 @@ function UIKitReady()
 
         --[[ ----------------------- role members section -----------------------
              [TEAMS] the section renamed to أعضاء الصلاحيات (members of the
-             permissions): the rank-members grid stays, and the Teams (تيمات)
-             management sits beside it - list / create / rename / delete a
-             team, add-remove a member and open the team rights editor. ]]
+             permissions): the LEFT grid lists every member of every team
+             (team name + account name, one row per membership) and is shown
+             to EVERY viewer of the section; the Teams (تيمات) management
+             beside it - list / create / rename / delete a team, add-remove a
+             member and open the team rights editor - needs
+             admin.manager.editmembers (setTeamManageVisible). ]]
         UI.gridlist.roles_members = eui:uiCreateGridList(10, 50, 355, 250,
                 tocolor(10, 10, 10, 0), UI.container.roles_members)
-        eui:uiGridListAddColumn(UI.gridlist.roles_members, "Role", 0.4)
+        eui:uiGridListAddColumn(UI.gridlist.roles_members, "Team", 0.4)
         eui:uiGridListAddColumn(UI.gridlist.roles_members, "Username", 0.6)
         eui:uiSetAlign(UI.gridlist.roles_members, "left", "center")
         eui:uiSetProperty(UI.gridlist.roles_members, "color_coded", true)
@@ -753,6 +762,35 @@ end
 
 --[[ ===================== events + handlers (1:1) ===================== ]]
 
+-- [TEAMS] أعضاء الصلاحيات splits into two halves: the LEFT roster grid is
+-- readable by every member who opens the section, the team-management half
+-- (team grids, inputs, hint labels and the whole action row) needs
+-- admin.manager.editmembers - the same flag the server re-checks inside
+-- every rpadmin:team* event (canEditMembers, Fix #15 backend-first rule).
+local function setTeamManageVisible(show)
+        show = show and true or false
+        eui:uiSetVisible(UI.gridlist.teams, show)
+        eui:uiSetVisible(UI.gridlist.team_members, show)
+        eui:uiSetVisible(UI.gridlist.team_templates, show)
+        eui:uiSetVisible(UI.label.team_name_cap, show)
+        eui:uiSetVisible(UI.edit.team_name, show)
+        eui:uiSetVisible(UI.label.team_account_cap, show)
+        eui:uiSetVisible(UI.edit.team_member_account, show)
+        eui:uiSetVisible(UI.label.team_template_cap, show)
+        eui:uiSetVisible(UI.label.team_info, show)
+        eui:uiSetVisible(UI.label.team_info2, show)
+        eui:uiSetVisible(UI.button.team_create, show)
+        eui:uiSetVisible(UI.button.team_rename, show)
+        eui:uiSetVisible(UI.button.team_delete, show)
+        eui:uiSetVisible(UI.button.team_add, show)
+        eui:uiSetVisible(UI.button.team_remove, show)
+        eui:uiSetVisible(UI.button.team_rights, show)
+        if not show then
+                -- the floating rights editor belongs to the management half
+                eui:uiSetVisible(UI.window.team_rights, false)
+        end
+end
+
 addEvent("rpadmin:showPanel", true)
 addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks, hasResources, data, rights)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then
@@ -768,17 +806,10 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         -- [Fix #160] A5: Resources/Mods SECTION right + per-action button rights
         canManageResources = hasResources and true or false
         panelRights = (type(rights) == "table") and rights or {}
-        -- [TEAMS] every team mutation button hides without the SECTION right
-        -- (admin.manager.editmembers - the server re-checks each event)
-        eui:uiSetVisible(UI.button.team_create, canEditMembers)
-        eui:uiSetVisible(UI.button.team_rename, canEditMembers)
-        eui:uiSetVisible(UI.button.team_delete, canEditMembers)
-        eui:uiSetVisible(UI.button.team_add, canEditMembers)
-        eui:uiSetVisible(UI.button.team_remove, canEditMembers)
-        eui:uiSetVisible(UI.button.team_rights, canEditMembers)
-        if not canEditMembers then
-                eui:uiSetVisible(UI.window.team_rights, false)
-        end
+        -- [TEAMS] the management half of أعضاء الصلاحيات (grids, inputs,
+        -- labels, action row, rights editor) needs admin.manager.editmembers;
+        -- without it only the left roster grid stays on screen
+        setTeamManageVisible(canEditMembers)
         eui:uiSetVisible(UI.button.res_start, canManageResources)
         eui:uiSetVisible(UI.button.res_stop, canManageResources)
         eui:uiSetVisible(UI.button.res_restart, canManageResources)
@@ -791,10 +822,11 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         if eui:uiGetVisible(UI.window.admin_panel) and type(data) == "table" then
                 refreshPanel(data.levels, data.admins, data.changelogs, {},
                         data.role_members, data.staff_report)
-                -- [TEAMS] team list + bundle templates for أعضاء الصلاحيات
-                if type(data.teams) == "table" then
-                        refreshTeams(data.teams)
-                end
+                -- [TEAMS] team list + bundle templates for أعضاء الصلاحيات;
+                -- the same payload rebuilds the LEFT roster grid, so it is
+                -- refreshed on every open (empty payload = empty grid)
+                refreshTeams(type(data.teams) == "table" and data.teams
+                        or { teams = {}, templates = {} })
                 -- [Fix #160] A5: pull the compact resource list for the section
                 if canManageResources then
                         triggerServerEvent("rpadmin:requestResources", localPlayer)
@@ -803,6 +835,31 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
                 eui:uiSetVisible(UI.window.res_editor, false)
                 eui:uiSetVisible(UI.window.team_rights, false)
         end
+end)
+
+-- [Fix #161] pure rights refresh: the server pushes this after any rank/team/
+-- member mutation so an OPEN panel re-syncs its flags WITHOUT toggling the
+-- window (rpadmin:showPanel is a toggle - reusing it would close the panel).
+addEvent("rpadmin:refreshRights", true)
+addEventHandler("rpadmin:refreshRights", root, function(hasEditMembers, hasEditRanks, hasResources, rights)
+        if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then return end
+        if not eui:uiGetVisible(UI.window.admin_panel) then return end
+        canEditMembers = hasEditMembers and true or false
+        canEditRanks = hasEditRanks and true or false
+        canManageResources = hasResources and true or false
+        panelRights = (type(rights) == "table") and rights or {}
+        eui:uiSetVisible(UI.button.delete_admin, canEditMembers)
+        eui:uiSetVisible(UI.button.add_admin, canEditMembers)
+        setTeamManageVisible(canEditMembers)
+        eui:uiSetVisible(UI.button.res_start, canManageResources)
+        eui:uiSetVisible(UI.button.res_stop, canManageResources)
+        eui:uiSetVisible(UI.button.res_restart, canManageResources)
+        eui:uiSetVisible(UI.button.res_edit, canManageResources)
+        eui:uiSetVisible(UI.button.res_refresh, canManageResources)
+        if not canManageResources then
+                eui:uiSetVisible(UI.window.res_editor, false)
+        end
+        reloadAdminPanelMenu(canEditMembers, canEditRanks, canManageResources)
 end)
 
 -- [Fix #160] A5: compact resource list (name + state) from
@@ -962,13 +1019,18 @@ local function dispatchPanelAction(el)
                 outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
                 return
         end
-        -- [TEAMS] every team mutation button (and the rights editor) is gated
-        -- by the same SECTION right - the server re-checks it per event
+        -- [TEAMS] every control of the management half (grids, inputs, the
+        -- mutation buttons and the rights editor) is gated by the same right -
+        -- the server re-checks it per event; the LEFT roster grid is NOT
+        -- gated (it is view-only and visible to every section viewer)
         if not canEditMembers and (el == UI.button.team_create
                 or el == UI.button.team_rename or el == UI.button.team_delete
                 or el == UI.button.team_add or el == UI.button.team_remove
                 or el == UI.button.team_rights or el == UI.button.team_rights_save
                 or el == UI.button.team_rights_cancel
+                or el == UI.gridlist.teams or el == UI.gridlist.team_members
+                or el == UI.gridlist.team_templates
+                or el == UI.edit.team_name or el == UI.edit.team_member_account
                 or el == UI.gridlist.team_rights
                 or el == UI.checkbox.team_rights_select_all) then
                 outputChatBox("You don't have permission to edit staff teams.", 255, 80, 80)
@@ -1715,10 +1777,34 @@ function selectTeam(id)
         updateTeamInfoLabels()
 end
 
+-- [TEAMS] the LEFT grid of أعضاء الصلاحيات: one row per team membership -
+-- team name in column 1, account name in column 2 - for EVERY member of
+-- EVERY team. This replaces the rank-members fill the section used to paint
+-- (refreshPanel / data.role_members): no admin rank is listed here anymore.
+local function fillRoleMembersFromTeams()
+        if not (UI.gridlist.roles_members and isElement(UI.gridlist.roles_members)) then return end
+        eui:uiGridListClear(UI.gridlist.roles_members)
+        for _, team in ipairs(teamData.teams) do
+                for _, member in ipairs(team.members or {}) do
+                        local account = tostring(member.Account or "?")
+                        local row = eui:uiGridListAddRow(UI.gridlist.roles_members)
+                        eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 1,
+                                tostring(team.name))
+                        eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 2, account)
+                        -- clean account name as cell data (same Fix #51 rule the
+                        -- staffs / team-members grids use)
+                        eui:uiGridListSetItemData(UI.gridlist.roles_members, row, 2, account)
+                end
+        end
+end
+
 function refreshTeams(payload)
         if type(payload) ~= "table" then return end
         teamData.teams = (type(payload.teams) == "table") and payload.teams or {}
         teamData.templates = (type(payload.templates) == "table") and payload.templates or {}
+
+        -- the roster grid every viewer of the section sees (see above)
+        fillRoleMembersFromTeams()
 
         if UI.gridlist.team_templates and isElement(UI.gridlist.team_templates) then
                 eui:uiGridListClear(UI.gridlist.team_templates)
@@ -1802,6 +1888,10 @@ addEventHandler("rpadmin:sendTeams", root, function(payload)
         refreshTeams(payload)
 end)
 
+-- [TEAMS] roleMembers (the rank-members payload) is still accepted for
+-- server compatibility but no longer painted: the left grid of
+-- أعضاء الصلاحيات is the team roster (fillRoleMembersFromTeams, driven by
+-- data.teams / rpadmin:sendTeams).
 function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffReport)
         panelData.changelogs = changelogs or {}
 
@@ -1906,28 +1996,9 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                         tocolor(color[1] or 255, color[2] or 255, color[3] or 255, color[4] or 255))
         end
 
-        --[[ role members ]]
-        eui:uiGridListClear(UI.gridlist.roles_members)
-        for _, member in ipairs(roleMembers or {}) do
-                local row = eui:uiGridListAddRow(UI.gridlist.roles_members)
-                eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 1,
-                        tostring(LevelNames[tostring(member.RoleID)] or "N/A") .. " (#" .. tostring(member.RoleID) .. ")")
-                eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 2,
-                        tostring(member.Account))
-                -- [Fix #101] stored shade exactly as saved: LevelColor is
-                -- normalized at build (MTA nested "[ [ r, g, b, a ] ]" JSON
-                -- unwrapped, no luminance floor) and re-checked here, so the
-                -- row can never receive a TABLE instead of r/g/b - previously a
-                -- nested table reached tocolor(unpack(...)) as ONE argument and
-                -- the "Owner (#21)" rows kept the gridlist default instead of
-                -- the rank color the owner picked
-                local stored = LevelColor[tostring(member.RoleID)]
-                if stored then
-                        local color = normalizeRankColorC(stored)
-                        eui:uiGridListSetItemColor(UI.gridlist.roles_members, row, 1,
-                                tocolor(color[1], color[2], color[3], color[4]))
-                end
-        end
+        --[[ role members: nothing to paint here anymore - the left grid of
+             أعضاء الصلاحيات is the team roster (fillRoleMembersFromTeams,
+             refreshed from data.teams) ]]
         end, 25, 1)
 
         --[[ changelogs - staged 75ms ]]

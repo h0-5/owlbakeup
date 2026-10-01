@@ -1,64 +1,65 @@
 --------------------------------------------------------------------------------
--- Vortex speedometer — client (full redesign, U7 UI batch)
+-- Vortex speedometer — client ([Fix #161] rectangular panel redesign)
 --
--- Single visible gauge for cars / boats / monster trucks / quads / bikes.
+-- Single visible panel for cars / boats / monster trucks / quads / bikes.
 -- The legacy backup gauge (realism-system/c_speedo.lua drawSpeedo/drawFuel) is
 -- suppressed for those vehicle types, so nothing double-draws any more; it
 -- keeps drawing street/district/speed-limit info and still handles aircraft.
 --
--- Layout, inside the 112px disc centred on G_CX / G_CY:
---   * rim     seatbelt band (green = buckled, red pulsing = unbuckled)
---   * outer   rpm ring    (theme purple -> red past the 85% redline)
---   * middle  speed ring  (white -> orange @140 -> red @190 km/h)
---   * inner   fuel ring   (green / orange <=25% / red <=15%)
---   * top     "FUEL nn%" label + gear pill (red "HANDBRAKE" while parked)
---   * centre  big speed digits + KM/H or MPH (or ENGINE OFF while off)
---   * bottom  seatbelt band banner, right above c_hud's vehicle icon row
---   * sides   turn-signal arrows ("," left / "." right, 500ms blink)
+-- Layout — one dark translucent panel, bottom-right, 12px inner padding, every
+-- row aligned to the same inner edges (old glowing disc removed):
+--   row 1  "FUEL nn%" (state colour)      gear pill (red HANDBRAKE while parked)
+--   row 2  left arrow | big speed digits | right arrow   (500ms blink)
+--   row 3  unit label: KM/H / MPH, or red ENGINE OFF while off
+--   row 4  "RPM" micro bar (theme purple -> red past the 85% redline)
+--   row 5  seatbelt banner (green = buckled, red pulsing = unbuckled);
+--          omitted on bikes / BMX (no belt) and the panel shrinks to match
+--   under  c_hud's engine/handbrake/seatbelt/lights/lock row (SPEEDO_* anchors)
 --
 -- EXPORTS — hud/c_hud.lua reads these in the SAME resource VM to anchor its
--- engine/handbrake/seatbelt/lights/lock row under the dial. DO NOT REMOVE:
+-- engine/handbrake/seatbelt/lights/lock row under the panel. DO NOT REMOVE:
 --   SPEEDO_CX / SPEEDO_CY / SPEEDO_R / SPEEDO_DISC_R
 --------------------------------------------------------------------------------
 
 local sx, sy = guiGetScreenSize()
 local localPlayer = getLocalPlayer()
 
--- gauge geometry (bottom-right corner, free area - no radar in this build)
--- [Fix #34 - user] dial raised a little so the engine/handbrake/seatbelt/
--- lights/lock row (drawn by c_hud.lua) fits UNDER the gauge
--- [Fix #47 - user] dial radius 84 -> 108
--- The redesign keeps the same screen area so the c_hud under-dial row and the
--- SPEEDO_* globals stay compatible.
-local G_R = 108                     -- gauge radius
-local G_CX, G_CY = sx - 180, sy - 246
+-- panel geometry (bottom-right corner, free area - no radar in this build)
+-- [Fix #34 - user] the engine/handbrake/seatbelt/lights/lock row (drawn by
+-- c_hud.lua) sits UNDER the panel
+-- [Fix #161] disc -> rectangular panel; bottom edge stays at sy-134 so the
+-- icon row, the district chip and the street chip keep their old positions
+local PANEL_W = 272
+local PANEL_H = 194             -- with seatbelt banner
+local PANEL_H_NOBELT = 156      -- bikes / BMX: no banner row
+local PANEL_X = sx - PANEL_W - 16
+local PANEL_BOTTOM = sy - 134
+local PAD = 12
+
+-- row metrics (all relative to the panel top, constant for both heights)
+local ROW_HEADER_H = 26         -- fuel + gear pill
+local DIGIT_ROW_H = 56          -- speed digits (+ arrows)
+local UNIT_ROW_H = 24           -- unit / ENGINE OFF
+local BAR_H = 6                 -- rpm micro bar
+local BAND_H = 26               -- seatbelt banner
+local ROW_GAP = 10              -- header -> digits, unit -> bar
+local SIDE_RESERVE = 40         -- arrow lane reserved left / right of digits
 
 -- [Fix #34] shared with c_hud.lua (same client VM): the vehicle items row
--- anchors to the gauge. Written at file scope so load order never matters.
-SPEEDO_CX = G_CX
-SPEEDO_CY = G_CY
-SPEEDO_R = G_R
-SPEEDO_DISC_R = G_R + 4
-
--- ring geometry (inside the 112px disc)
-local R_BELT, T_BELT = 110, 4       -- rim band: seatbelt state
-local R_RPM, T_RPM = 103, 9         -- outer ring: rpm
-local R_SPD, T_SPD = 90, 6          -- middle ring: speed
-local R_FUEL, T_FUEL = 78, 5        -- inner ring: fuel
-local SPEED_MAX = 240               -- km/h = full speed ring
-
--- seatbelt band banner (bottom of the dial; sits in the 12px gap that c_hud
--- leaves above its vehicle icon row: disc bottom = CY+112, row top = CY+124)
-local BAND_W, BAND_H = 148, 24
-local BAND_X = G_CX - BAND_W / 2
-local BAND_Y = G_CY + 96
+-- anchors to the panel. Written at file scope so load order never matters.
+-- cy + disc = panel bottom, so c_hud's "cy + disc + 12" lands 12px under the
+-- panel (identical to the old disc position).
+SPEEDO_CX = PANEL_X + PANEL_W / 2
+SPEEDO_CY = PANEL_BOTTOM - 40
+SPEEDO_R = 40
+SPEEDO_DISC_R = 40
 
 local arrowTex, beltTex
 local rpmSmooth = 0
 local blinkLeft, blinkRight = false, false
 local largeFont, smallFont
 
-local themePrimary = { 149, 84, 255 }
+local themePrimary = { 149, 84, 252 }
 
 local function UIKitReady()
         local ok, v = pcall(function()
@@ -132,18 +133,6 @@ local function fuelPercent(veh)
         return math.max(0, math.min(100, fuel / mx * 100))
 end
 
-local function ringTrack(radius, thickness, r, g, b, a)
-        local size = (radius + thickness + 2) * 2
-        drawSmoothRingG(G_CX, G_CY, size, radius, thickness, r, g, b, a, 1, true)
-end
-
-local function ringValue(radius, thickness, r, g, b, a, progress)
-        if not progress or progress <= 0.004 then return end
-        if progress > 1 then progress = 1 end
-        local size = (radius + thickness + 2) * 2
-        drawSmoothRingG(G_CX, G_CY, size, radius, thickness, r, g, b, a, progress, true)
-end
-
 local function shadowText(str, left, top, right, bottom, color, scale, font, alignX)
         alignX = alignX or "center"
         dxDrawText(str, left + 1.5, top + 1.5, right + 1.5, bottom + 1.5,
@@ -174,7 +163,6 @@ local function speedoDraw()
         -- unit mode (old client data): "2" = mph, anything else = km/h
         local mphMode = (getElementData(localPlayer, "speedo") == "2")
         local unitLabel = mphMode and "MPH" or "KM/H"
-        local speedMax = mphMode and 150 or SPEED_MAX
         local dispSpeed = mphMode and (kmh * 0.621371) or kmh
 
         -- rpm model (old client: idle ~650, redline 9000, 0 with engine off)
@@ -194,7 +182,7 @@ local function speedoDraw()
         -- (realism-system s_vehicle_crash.lua seatbelt(), /seatbelt /belt and the
         -- realism:seatbelt:toggle event; also mirrored by the hud seatbelt item).
         -- Bikes / BMX have no belt at all (the server refuses those), so they
-        -- get no band.
+        -- get no banner row.
         local vtype = getVehicleType(veh)
         local beltCapable = (vtype ~= "Bike" and vtype ~= "BMX")
         local beltOn = false
@@ -207,61 +195,34 @@ local function speedoDraw()
         end
         local pulse = math.floor(now / 350) % 2 == 0
 
-        -- base disc + thin rim
-        drawSmoothDiscG(G_CX, G_CY, SPEEDO_DISC_R, 12, 10, 24, 235, true)
-        ringTrack(SPEEDO_DISC_R - 1, 1.5, 255, 255, 255, 30)
+        -- panel frame (dark translucent body, hairline theme accent border)
+        local ph = beltCapable and PANEL_H or PANEL_H_NOBELT
+        local px, py = PANEL_X, PANEL_BOTTOM - ph
+        local ix0, ix1 = px + PAD, px + PANEL_W - PAD
+        local pr, pg, pb = themePrimary[1], themePrimary[2], themePrimary[3]
 
-        -- rpm ring (theme primary, turns red through the redline)
-        ringTrack(R_RPM, T_RPM, 255, 255, 255, 16)
-        local rpR, rpG, rpB = themePrimary[1], themePrimary[2], themePrimary[3]
-        if rpmProgress > 0.85 then
-                local t = (rpmProgress - 0.85) / 0.15
-                rpR = rpR + (255 - rpR) * t
-                rpG = rpG + (60 - rpG) * t
-                rpB = rpB + (60 - rpB) * t
-        end
-        ringValue(R_RPM, T_RPM, rpR, rpG, rpB, 240, rpmProgress)
+        dxDrawRoundedRectangle(px, py, PANEL_W, ph, tocolor(pr, pg, pb, 95), 12, true)
+        dxDrawRoundedRectangle(px + 1, py + 1, PANEL_W - 2, ph - 2,
+                tocolor(12, 11, 20, 228), 11, true)
 
-        -- speed ring (white -> orange -> red)
-        ringTrack(R_SPD, T_SPD, 255, 255, 255, 16)
-        local spdR, spdG, spdB = 255, 255, 255
-        if kmh >= 190 then
-                spdR, spdG, spdB = 255, 70, 70
-        elseif kmh >= 140 then
-                spdR, spdG, spdB = 255, 170, 40
-        end
-        ringValue(R_SPD, T_SPD, spdR, spdG, spdB, 235, dispSpeed / speedMax)
-
-        -- fuel arc: green / orange / red
+        -- row 1: fuel label (left; blinks red under 10% like the old warning)
         local fr, fg, fb = 80, 220, 90
         if fuel <= 15 then
                 fr, fg, fb = 255, 60, 60
         elseif fuel <= 25 then
                 fr, fg, fb = 255, 170, 40
         end
-        ringTrack(R_FUEL, T_FUEL, 255, 255, 255, 14)
-        ringValue(R_FUEL, T_FUEL, fr, fg, fb, 235, fuel / 100)
-
-        -- seatbelt band around the rim
-        if beltCapable then
-                if beltOn then
-                        ringTrack(R_BELT, T_BELT, 60, 225, 110, 225)
-                else
-                        ringTrack(R_BELT, T_BELT, 255, 62, 62, pulse and 240 or 130)
-                end
-        end
-
-        -- fuel label (top); blinks red under 10% like the old fuel warning icon
         local fuelAlpha = 245
         if fuel <= 10 then
-                fuelAlpha = pulse and 255 or 120
+                fuelAlpha = pulse and 255 or 130
                 fr, fg, fb = 255, 60, 60
         end
+        local headerY = py + PAD
         shadowText(string.format("FUEL %d%%", math.floor(fuel + 0.5)),
-                G_CX - 62, G_CY - 72, G_CX + 62, G_CY - 56,
-                tocolor(fr, fg, fb, fuelAlpha), 0.62, fontSmall(), "center")
+                ix0, headerY, ix0 + 130, headerY + ROW_HEADER_H,
+                tocolor(fr, fg, fb, fuelAlpha), 0.85, fontSmall(), "left")
 
-        -- gear pill (red HANDBRAKE while the handbrake is up)
+        -- row 1: gear pill (right; red HANDBRAKE while the handbrake is up)
         local gear = (getVehicleCurrentGear and getVehicleCurrentGear(veh)) or 0
         local gearText
         if handbrake then
@@ -273,65 +234,88 @@ local function speedoDraw()
         else
                 gearText = "GEAR " .. tostring(gear)
         end
-        local pillW = handbrake and 96 or 84
-        local pillH = 22
-        local pillX, pillY = G_CX - pillW / 2, G_CY - 52
+        local pillW = (dxGetTextWidth(gearText, 0.78, fontSmall()) or 60) + 22
+        local pillX = ix1 - pillW
+        local pillY = headerY + (ROW_HEADER_H - 24) / 2
         local pcR, pcG, pcB
         if handbrake then
                 pcR, pcG, pcB = 200, 46, 46
         else
-                pcR, pcG, pcB = themePrimary[1], themePrimary[2], themePrimary[3]
+                pcR, pcG, pcB = pr, pg, pb
         end
-        dxDrawRoundedRectangle(pillX - 1, pillY - 1, pillW + 2, pillH + 2,
+        dxDrawRoundedRectangle(pillX - 1, pillY - 1, pillW + 2, 26,
                 tocolor(pcR, pcG, pcB, 170), 9, true)
-        dxDrawRoundedRectangle(pillX, pillY, pillW, pillH,
+        dxDrawRoundedRectangle(pillX, pillY, pillW, 24,
                 tocolor(pcR, pcG, pcB, handbrake and 70 or 55), 8, true)
-        shadowText(gearText, pillX, pillY, pillX + pillW, pillY + pillH,
+        shadowText(gearText, pillX, pillY, pillX + pillW, pillY + 24,
                 tocolor(255, 255, 255, 245), 0.78, fontSmall(), "center")
 
-        -- speed digits
+        -- row 2: speed digits between the two arrow lanes
+        local speedY = headerY + ROW_HEADER_H + ROW_GAP
         local spdStr = tostring(math.floor(dispSpeed))
         local dScale = (#spdStr >= 4) and 1.55 or 2.0
-        local digitColor = engineOn and tocolor(255, 255, 255, 255) or tocolor(255, 255, 255, 130)
-        shadowText(spdStr, G_CX - G_R, G_CY - 24, G_CX + G_R, G_CY + 20,
-                digitColor, dScale, fontLarge(), "center")
+        local digitColor = engineOn and tocolor(255, 255, 255, 255)
+                or tocolor(255, 255, 255, 130)
+        shadowText(spdStr, ix0 + SIDE_RESERVE, speedY, ix1 - SIDE_RESERVE,
+                speedY + DIGIT_ROW_H, digitColor, dScale, fontLarge(), "center")
 
-        -- unit (or engine state)
+        -- row 2: turn-signal arrows (idle theme accent, green while blinking)
+        if arrowTex then
+                local asize = 34
+                local ay = speedY + (DIGIT_ROW_H - asize) / 2
+                local idle = tocolor(pr, pg, pb, 130)
+                local colR = blinkRight and tocolor(0, 235, 90, 245) or idle
+                local colL = blinkLeft and tocolor(0, 235, 90, 245) or idle
+                dxDrawImage(ix1 - asize, ay, asize, asize, arrowTex, 0, 0, 0, colR, true)
+                dxDrawImage(ix0, ay, asize, asize, arrowTex, 180, 0, 0, colL, true)
+        end
+
+        -- row 3: unit (or engine state)
+        local unitY = speedY + DIGIT_ROW_H
         if engineOn then
-                shadowText(unitLabel, G_CX - G_R, G_CY + 26, G_CX + G_R, G_CY + 42,
-                        tocolor(themePrimary[1], themePrimary[2], themePrimary[3], 245),
-                        1.0, fontSmall(), "center")
+                shadowText(unitLabel, ix0, unitY, ix1, unitY + UNIT_ROW_H,
+                        tocolor(pr, pg, pb, 245), 1.0, fontSmall(), "center")
         else
-                shadowText("ENGINE OFF", G_CX - G_R, G_CY + 26, G_CX + G_R, G_CY + 42,
+                shadowText("ENGINE OFF", ix0, unitY, ix1, unitY + UNIT_ROW_H,
                         tocolor(255, 82, 82, 245), 1.0, fontSmall(), "center")
         end
 
-        -- seatbelt band banner (red pulsing = unbuckled, green = buckled)
-        if beltCapable then
-                local bg = beltOn and tocolor(24, 132, 66, 245)
-                        or tocolor(186, 28, 28, pulse and 250 or 180)
-                dxDrawRoundedRectangle(BAND_X, BAND_Y, BAND_W, BAND_H, bg, 10, true)
-                local tx0 = BAND_X + 6
-                if beltTex then
-                        dxDrawImage(BAND_X + 9, BAND_Y + 4, 16, 16, beltTex,
-                                0, 0, 0, tocolor(255, 255, 255, 240), true)
-                        tx0 = BAND_X + 30
-                end
-                local label = beltOn and "SEATBELT ON" or "FASTEN SEATBELT"
-                shadowText(label, tx0, BAND_Y, BAND_X + BAND_W - 6, BAND_Y + BAND_H,
-                        tocolor(255, 255, 255, 250), 0.85, fontSmall(), "center")
+        -- row 4: rpm micro bar (theme accent, red through the redline)
+        local barY = unitY + UNIT_ROW_H + ROW_GAP
+        local labelW = 32
+        shadowText("RPM", ix0, barY - 5, ix0 + labelW, barY + BAR_H + 5,
+                tocolor(255, 255, 255, 140), 0.7, fontSmall(), "left")
+        local trackX = ix0 + labelW + 8
+        local trackW = ix1 - trackX
+        dxDrawRoundedRectangle(trackX, barY, trackW, BAR_H,
+                tocolor(255, 255, 255, 26), BAR_H / 2, true)
+        local rpR, rpG, rpB = pr, pg, pb
+        if rpmProgress > 0.85 then
+                local t = (rpmProgress - 0.85) / 0.15
+                rpR = rpR + (255 - rpR) * t
+                rpG = rpG + (60 - rpG) * t
+                rpB = rpB + (60 - rpB) * t
+        end
+        if rpmProgress > 0.01 then
+                dxDrawRoundedRectangle(trackX, barY, math.max(BAR_H, trackW * rpmProgress),
+                        BAR_H, tocolor(rpR, rpG, rpB, 235), BAR_H / 2, true)
         end
 
-        -- indicator arrows (old: arrow.png right rot 0 / left rot 180,
-        -- green while blinking, theme primary while idle)
-        if arrowTex then
-                local asize = 40
-                local ay = G_CY - asize / 2
-                local idle = tocolor(themePrimary[1], themePrimary[2], themePrimary[3], 130)
-                local colR = blinkRight and tocolor(0, 235, 90, 245) or idle
-                local colL = blinkLeft and tocolor(0, 235, 90, 245) or idle
-                dxDrawImage(G_CX + G_R + 22, ay, asize, asize, arrowTex, 0, 0, 0, colR, true)
-                dxDrawImage(G_CX - G_R - 22 - asize, ay, asize, asize, arrowTex, 180, 0, 0, colL, true)
+        -- row 5: seatbelt banner (red pulsing = unbuckled, green = buckled)
+        if beltCapable then
+                local bandY = py + ph - PAD - BAND_H
+                local bg = beltOn and tocolor(24, 132, 66, 245)
+                        or tocolor(186, 28, 28, pulse and 250 or 180)
+                dxDrawRoundedRectangle(ix0, bandY, ix1 - ix0, BAND_H, bg, 8, true)
+                local tx0 = ix0 + 6
+                if beltTex then
+                        dxDrawImage(ix0 + 9, bandY + (BAND_H - 16) / 2, 16, 16, beltTex,
+                                0, 0, 0, tocolor(255, 255, 255, 240), true)
+                        tx0 = ix0 + 30
+                end
+                local label = beltOn and "SEATBELT ON" or "FASTEN SEATBELT"
+                shadowText(label, tx0, bandY, ix1 - 6, bandY + BAND_H,
+                        tocolor(255, 255, 255, 250), 0.85, fontSmall(), "center")
         end
 end
 

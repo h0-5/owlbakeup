@@ -242,23 +242,29 @@ local function safeExport(resName, fnName, ...)
         return nil
 end
 
+-- [Fix #100 #1] live (NOT resRunning) "is this resource running" check:
+-- hud/radar may start AFTER this file is loaded, and resCache would freeze a
+-- stale "not running" for the whole session. Shared by every cross-resource
+-- call below (Fix #162 included).
+local function resLive(name)
+        local res = getResourceFromName(name)
+        if not res then return false end
+        local ok, st = pcall(getResourceState, res)
+        return ok and st == "running"
+end
+
 -- [Fix #100 #1] while F1 is open the status/zone HUD and the minimap must
 -- paint ABOVE the menu window instead of behind it. hud and radar re-register
 -- their render handlers in a lower band when this is true; both exports are
 -- idempotent, so the pcall/retry paths in showSideBarInner are harmless.
+-- [Fix #162] NOTE the radar's band can NOT lift it over the veil (postGUI
+-- ordering beats priority bands) - the backdrop now leaves a hole over the
+-- radar rect instead, see refreshRadarHole below.
 local function setHudLayerAboveMenu(over)
-        -- checked live (NOT resRunning): hud/radar may start after this file
-        -- is loaded, and resCache would freeze a stale "not running".
-        local function live(resName)
-                local res = getResourceFromName(resName)
-                if not res then return false end
-                local ok, st = pcall(getResourceState, res)
-                return ok and st == "running"
-        end
-        if live("hud") then
+        if resLive("hud") then
                 pcall(function() exports.hud:setHudOverMenu(over) end)
         end
-        if live("radar") then
+        if resLive("radar") then
                 pcall(function() exports.radar:setRadarOverMenu(over) end)
         end
 end
@@ -652,18 +658,103 @@ local chromeDirty = true
 -- vanished the moment the menu settled.
 local chromePainted = false
 
+--[[ ================= [Fix #162] RADAR HOLE IN THE BACKDROP =================
+     WHY a hole and not a priority band: the veil/strip/gradient are all
+     postGUI draws (drawChromeLive passes pg=true, the settled chrome RT is
+     blitted with postGUI=true) while radar/c_radar.lua drawMinimap issues its
+     blit + frame WITHOUT postGUI. MTA composites every pre-GUI draw before
+     every postGUI draw, so no handler priority can ever put the map above the
+     F1 backdrop - the previous band shift (setRadarOverMenu, Fix #100 #1) could
+     not fix it and the menu dimmed the radar every frame.
+
+     The backdrop now paints AROUND the radar's screen rect. The rect mirrors
+     radar/c_radar.lua:54-69 exactly (x = 15, y = sy - 175*SCALE - 25,
+     w = 290*SCALE, h = 175*SCALE, SCALE = sy/1080) and the radar's white
+     frame hairlines live INSIDE that rect, so map + frame land in the hole.
+     Gated on exports.radar:isRadarVisible - no radar drawn -> no hole. ]]
+local holeOn = false
+local holeX, holeY, holeW, holeH = 0, 0, 0, 0
+local chromeHoleKey = "-"
+
+local function refreshRadarHole()
+        holeOn = false
+        local res = getResourceFromName("radar")
+        if res then
+                -- call() itself fails while the resource is down -> pcall
+                local ok, vis = pcall(call, res, "isRadarVisible")
+                if ok and vis then
+                        local scale = sy / 1080
+                        holeOn = true
+                        holeX, holeY = 15, sy - 175 * scale - 25
+                        holeW, holeH = 290 * scale, 175 * scale
+                end
+        end
+        -- the hole is baked into the settled chrome RT: flag a repaint when
+        -- the radar appears/disappears (or the screen size changes) under the
+        -- open menu, otherwise the old hole would be kept forever
+        local key = holeOn and (holeX .. "/" .. holeY .. "/" .. holeW .. "/" .. holeH) or "-"
+        if key ~= chromeHoleKey then
+                chromeHoleKey = key
+                chromeDirty = true
+        end
+end
+
+-- clip helpers: same call shape as dxDrawRectangle / dxDrawImage, but the
+-- radar rect is left open (up to 4 pieces). With no hole overlap they fall
+-- back to the single original draw, so the closed/normal look is identical.
+local function holeClip(x, y, w, h)
+        if not holeOn then return nil end
+        local ix, iy = math.max(holeX, x), math.max(holeY, y)
+        local ix2, iy2 = math.min(holeX + holeW, x + w), math.min(holeY + holeH, y + h)
+        if ix >= ix2 or iy >= iy2 then return nil end
+        return ix, iy, ix2, iy2
+end
+
+local function drawRectHole(x, y, w, h, color, postGUI)
+        local ix, iy, ix2, iy2 = holeClip(x, y, w, h)
+        if not ix then
+                dxDrawRectangle(x, y, w, h, color, postGUI)
+                return
+        end
+        if iy > y then dxDrawRectangle(x, y, w, iy - y, color, postGUI) end
+        if iy2 < y + h then dxDrawRectangle(x, iy2, w, y + h - iy2, color, postGUI) end
+        if ix > x then dxDrawRectangle(x, iy, ix - x, iy2 - iy, color, postGUI) end
+        if ix2 < x + w then dxDrawRectangle(ix2, iy, x + w - ix2, iy2 - iy, color, postGUI) end
+end
+
+-- the gradient is a stretched texture, so the pieces carry the matching UV
+-- fractions (dxDrawImageSection) - the fade looks continuous around the hole
+local function drawImageHole(x, y, w, h, tex, color, postGUI)
+        local function piece(px, py, pw, ph)
+                if pw <= 0 or ph <= 0 then return end
+                dxDrawImageSection(px, py, pw, ph,
+                        (px - x) / w, (py - y) / h, pw / w, ph / h,
+                        tex, 0, 0, 0, color, postGUI)
+        end
+        local ix, iy, ix2, iy2 = holeClip(x, y, w, h)
+        if not ix then
+                dxDrawImage(x, y, w, h, tex, 0, 0, 0, color, postGUI)
+                return
+        end
+        if iy > y then piece(x, y, w, iy - y) end
+        if iy2 < y + h then piece(x, iy2, w, y + h - iy2) end
+        if ix > x then piece(x, iy, ix - x, iy2 - iy) end
+        if ix2 < x + w then piece(ix2, iy, x + w - ix2, iy2 - iy) end
+end
+
 local function drawChromeLive(postGUI)
         local pg = postGUI ~= false
-        -- dark veil over the game
-        dxDrawRectangle(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), pg)
-        -- branding strip sliding in from the left
-        dxDrawRectangle(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), pg)
+        -- dark veil over the game [Fix #162] punched open over the radar rect
+        drawRectHole(0, 0, sx, sy, tocolor(0, 0, 0, math.max(0, state.alpha - 80)), pg)
+        -- branding strip sliding in from the left (same hole: the strip is
+        -- opaque and covers the left two thirds of the radar at 1080p)
+        drawRectHole(0, 0, state.sideX, sy, tocolor(0, 3, 8, state.alpha), pg)
         if bgGradient then
-                dxDrawImage(state.sideX, 0, sx, sy, bgGradient, 0, 0, 0, tocolor(0, 3, 8, state.alpha), pg)
+                drawImageHole(state.sideX, 0, sx, sy, bgGradient, tocolor(0, 3, 8, state.alpha), pg)
         end
         -- divider line (old: sideX + 2, 1px, alpha 10)
         if state.sideX > 0 then
-                dxDrawRectangle(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), pg)
+                drawRectHole(state.sideX + 2 * SCALE_X, 0, SCALE_X, sy, tocolor(255, 255, 255, 10), pg)
                 -- logo at the top of the strip, alpha 200 like the old draw.
                 -- [Fix #76] the old ">60" gate + unclamped centering kept the
                 -- branding out of the early frames; clamp so any strip width
@@ -720,6 +811,7 @@ end
 addEventHandler("onClientRestore", root, function() chromeDirty = true end)
 
 function main_menu_draw()
+        refreshRadarHole() -- [Fix #162] keep the backdrop hole in sync (+ RT)
         state.alpha, state.sideX = animation(state.anim)
         local settled = getTickCount() - state.anim[1] >= state.anim[6]
         if settled then
@@ -733,6 +825,30 @@ function main_menu_draw()
                 end
         end
         drawChromeLive(true)
+end
+
+--[[ [Fix #162] THE ZONE/LOCATION PILLS PASS - registered only while the menu
+     is open, attached in the "low-999" band so it runs AFTER every other
+     onClientRender handler of the frame:
+       chrome veil/strip "high-2" -> UIKit window "normal" -> hud status panel
+       "low" -> radar "low-1" -> drawHUD "low-5" -> ... -> THIS pass
+     All of them are postGUI draws, so call order decides stacking and this
+     pass wins every time - the pills can never be covered by the menu again
+     (the old band shift alone could not guarantee that, Fix #100 #1).
+     The drawing itself stays owned by hud (single source of truth): it calls
+     the exported drawZonePillsOverMenu, which re-issues the exact pills
+     statusHudDrawImpl paints while the menu is closed. ]]
+local pillsDrawRegistered = false
+local lastPillsWarn = 0
+
+local function main_menu_pills_draw()
+        if not state.state then return end
+        if not resLive("hud") then return end -- hud down: no pills, no warn
+        local ok, err = pcall(call, getResourceFromName("hud"), "drawZonePillsOverMenu")
+        if not ok and getTickCount() - lastPillsWarn > 30000 then
+                lastPillsWarn = getTickCount()
+                outputDebugString("[F1] zone pills pass failed: " .. tostring(err), 1)
+        end
 end
 
 --[[ F1 / ESC-binds cancel while quitting the character ]]
@@ -833,7 +949,8 @@ local function showSideBarInner(show, openSection)
         -- covers EVERY transition: F1 open, F1 re-press close, F2, ESC view,
         -- quit/change-character (spawn path) and the exported showSideBar /
         -- showEscapeView callers. hud/c_hud.lua gates the SAFE/DANGER zone
-        -- pill on it and agent U1 reads the same key.
+        -- pill on it (Fix #162: it decides WHICH pass draws them) and agent U1
+        -- reads the same key.
         setElementData(localPlayer, "ui:f1open", show == true, false)
         showCursor(show)
         if show then
@@ -846,6 +963,12 @@ local function showSideBarInner(show, openSection)
                 eui:uiSetVisible(UI.window.MainMenu, true)
                 -- [Fix #100 #1] raise status/zone HUD + minimap above the menu
                 setHudLayerAboveMenu(true)
+                -- [Fix #162] late pill pass: the zone/location pills are drawn
+                -- AFTER the whole menu (veil + strip + window) every frame
+                if not pillsDrawRegistered then
+                        addEventHandler("onClientRender", root, main_menu_pills_draw, false, "low-999")
+                        pillsDrawRegistered = true
+                end
                 -- optional section to land on (F2 -> reports)
                 local target = 1
                 if openSection then
@@ -861,6 +984,12 @@ local function showSideBarInner(show, openSection)
                 eui:uiSetVisible(UI.window.MainMenu, false)
                 -- [Fix #100 #1] drop them back to their normal bands
                 setHudLayerAboveMenu(false)
+                -- [Fix #162] drop the late pill pass with the menu (the hud's
+                -- own status pass takes the pills over again immediately)
+                if pillsDrawRegistered then
+                        removeEventHandler("onClientRender", root, main_menu_pills_draw)
+                        pillsDrawRegistered = false
+                end
                 -- [Fix #47] free the fullscreen chrome RT while the menu is closed
                 if isElement(chromeRT) then destroyElement(chromeRT) end
                 chromeRT = false

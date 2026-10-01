@@ -1,3 +1,7 @@
+-- [Fix #161] dedicated vehicle keys:
+--   X = window up/down TOGGLE (was: Z only rolled up / X only rolled down)
+--   Z = seatbelt on/off toggle (realism-system seatbelt server logic)
+
 local function isWindowsKeyBlocked()
 	if isChatBoxInputActive and isChatBoxInputActive() then
 		return true
@@ -17,7 +21,11 @@ local function isWindowsKeyBlocked()
 	return false
 end
 
-local function toggleWindows(wantUp)
+-- vehicle:windowstat: 0 = windows UP, 1 = windows DOWN (s_windows.lua rolls
+-- up from 1 and rolls down from 0). The server only rolls down when
+-- isVehicleWindowUp() says so, which needs a roof (g_functions.lua) - roofless
+-- models can never lower their windows, so the key must not ask for it.
+local function toggleWindows()
 	if isWindowsKeyBlocked() then
 		return
 	end
@@ -36,22 +44,29 @@ local function toggleWindows(wantUp)
 	end
 
 	local windowState = tonumber(getElementData(vehicle, "vehicle:windowstat")) or 0
-
-	if wantUp then
-		if windowState ~= 1 then
-			return
-		end
-	elseif not (windowState == 0 and hasVehicleRoof(vehicle)) then
+	if windowState == 0 and not hasVehicleRoof(vehicle) then
 		return
 	end
 
 	triggerServerEvent("vehicle:togWindow", localPlayer)
 end
 
-bindKey("z", "down", function()
-	toggleWindows(true)
-end)
+-- [Fix #161] Z: seatbelt toggle -> realism-system s_vehicle_crash.lua
+-- seatbelt() through the realism:seatbelt:toggle event (same path the hud
+-- seatbelt strip item uses). The state comes back synced as element data
+-- "seatbelt", which the speedometer banner and the hud icon row read.
+local function toggleSeatbelt()
+	if isWindowsKeyBlocked() then
+		return
+	end
 
-bindKey("x", "down", function()
-	toggleWindows(false)
-end)
+	local vehicle = getPedOccupiedVehicle(localPlayer)
+	if not vehicle or not isElement(vehicle) then
+		return
+	end
+
+	triggerServerEvent("realism:seatbelt:toggle", localPlayer, localPlayer)
+end
+
+bindKey("x", "down", toggleWindows)
+bindKey("z", "down", toggleSeatbelt)

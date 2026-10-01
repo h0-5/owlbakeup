@@ -376,6 +376,18 @@ _G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, res
         return rawAddCommandHandler(commandName, gated, caseSensitive, restricted, ...)
 end
 
+-- a gate may list SEVERAL rights (shared commands like /takemoney): ANY of
+-- them grants access
+local function gateAllows(player, right)
+        if type(right) == "table" then
+                for _, r in ipairs(right) do
+                        if playerHasRight(player, r) then return true end
+                end
+                return false
+        end
+        return playerHasRight(player, right)
+end
+
 -- the exported gate. Returns true when the command is ALLOWED.
 function hasCommandRight(player, commandName)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
@@ -386,15 +398,31 @@ function hasCommandRight(player, commandName)
         -- a logged-in Vortex rank is decided SOLELY by its stored rights
         if getElementData(player, "rank:index") then
                 if type(playerHasRight) ~= "function" then return false end
-                -- [Fix #160] a gate may list SEVERAL rights (shared commands
-                -- like /takemoney): ANY of them grants access.
-                if type(right) == "table" then
-                        for _, r in ipairs(right) do
-                                if playerHasRight(player, r) then return true end
-                        end
-                        return false
+                return gateAllows(player, right)
+        end
+        -- [Fix #U4] no live rank on the player: this branch used to blanket
+        -- ALLOW, which made every revocation a no-op for staff whose
+        -- staff_role_members row is missing while the accounts columns still
+        -- say they are staff (admin_level > 0) - the handler's own legacy
+        -- check then let every command through.
+        -- Ask the rights API when the player looks like staff at all; keep the
+        -- old allow ONLY when there is genuinely nothing to check against (no
+        -- rank record and no live rights set), so a renamed/absent rank can
+        -- never lock a legacy admin out of a mapped command. Players with no
+        -- staff level at all keep the old path - and cost - untouched.
+        if type(playerHasRight) == "function" then
+                local live = getElementData(player, "rank:rights")
+                local hasLive = type(live) == "string" and live ~= ""
+                local looksStaff = (tonumber(getElementData(player, "admin_level")) or 0) > 0
+                        or (tonumber(getElementData(player, "supporter_level")) or 0) > 0
+                        or (tonumber(getElementData(player, "scripter_level")) or 0) > 0
+                if hasLive then
+                        return gateAllows(player, right)
                 end
-                return playerHasRight(player, right)
+                if looksStaff and type(getPlayerRankRecord) == "function"
+                        and getPlayerRankRecord(player) then
+                        return gateAllows(player, right)
+                end
         end
         -- no Vortex rank: the legacy ladder decides (unchanged behaviour)
         return true

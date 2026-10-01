@@ -14,7 +14,8 @@
 --     his plain white name like any player; only the badges stay hidden).
 --     "TYPING" replaces the old ((TYPING...)) text and chat-system's green
 --     logo, and nothing at all is drawn while a menu/window is open
---     (ui:f1open / scoreboard / cursor)
+--     (ui:f1open / scoreboard / staff panel / right-click menu / cursor) -
+--     but NOT while the cursor is the bare M cursor (Fix #161)
 --   * 20-unit range + line of sight, tagmode setting respected
 --   * Fix #154: drawn in onClientPreRender so F1 / F3 / /staffs / TAB always
 --     cover the tags, and non-friends read the account "mod:id" instead of
@@ -543,21 +544,95 @@ end
 --   2. exports.scoreboard:isVisible()  - the TAB board (scoreboard/c_tab.lua)
 --   3. exports["main-menu"]:isOpen()   - the F1/F2 sidebar (main-menu/c_main.lua,
 --      same menu the key above reports, kept for older/newer U6 builds)
---   4. isCursorShowing() (but NOT while the chatbox is focused) - the generic
---      local fallback for the windows nobody publishes state for: the staff
---      panel (/staffs -> admin-system/staff_manager), item-system book
---      windows and every UIKit dialog all call showCursor(true) while open
---      and showCursor(false) when they close, and normal gameplay (chat
+--   4. staffPanelOpen - the staff panel (/staffs, /managepanel), mirrored
+--      from its single open/close funnel rpadmin:showPanel below
+--   5. exports.interaction:isInteractionOptionsShowing() - the right-click
+--      interaction menu, and ONLY while it actually has rows to draw (the
+--      menu self-destructs in menuRender whenever the cursor drops, so it
+--      can never exist outside the cursor case anyway)
+--   6. isCursorShowing() (but NOT while the chatbox is focused, and NOT
+--      while it is the bare M cursor - Fix #161) - the generic local
+--      fallback for the windows nobody publishes state for: the item-system
+--      book windows and every UIKit dialog all call showCursor(true) while
+--      open and showCursor(false) when they close, and normal gameplay (chat
 --      input, driving, aiming) never holds the cursor.
 -- NOT DETECTABLE from here (reported, not implemented): a UIKit window that
 -- opens without showCursor - UIKit exports no "any window visible" query and
 -- its UI table is private to that resource.
 -- (plain functions, not inline closures: this runs every frame)
+
+-- [Fix #161] "اظهار لموشر ماوس بـ m" hid every name + badge: M only shows
+-- the BARE cursor (interaction/c_interaction.lua:52 showCursor toggle and
+-- social-system/c_old_friends.lua:47 /togglecursor - NEITHER opens a window),
+-- but gate 6 above read any isCursorShowing() as "a menu is open", so the
+-- tags vanished with the cursor. The cursor that appears within 500ms of an
+-- M press is now tracked as the BARE cursor and skips gate 6; every cursor a
+-- window shows on its own has no M press behind it, so F1, TAB, the staff
+-- panel, the main-menu sidebar and every dialog still hide exactly as before.
+local mKeyTick = 0          -- tick of the last M /togglecursor press
+local bareCursor = false    -- true while the cursor M showed is still up
+local cursorWasShowing = false
+-- staff panel mirror: staff_manager_c.lua:799-800 toggles the window AND
+-- showCursor together from the one rpadmin:showPanel funnel (and every close
+-- path - the event itself or the Close button - drops the cursor), so the
+-- flag is cleared the moment the cursor goes down and cannot stick.
+local staffPanelOpen = false
+
+local function noteBareCursorKey()
+        mKeyTick = getTickCount()
+end
+bindKey("m", "down", noteBareCursorKey)
+addCommandHandler("togglecursor", noteBareCursorKey)
+
+setTimer(function()
+        local showing = isCursorShowing()
+        if not showing then
+                -- cursor down = no window gate left standing (the staff
+                -- panel always holds the cursor while it is open)
+                staffPanelOpen = false
+                bareCursor = false
+                cursorWasShowing = false
+                return
+        end
+        if not cursorWasShowing then
+                cursorWasShowing = true
+                -- a SHOW only counts as the bare M cursor when an M press
+                -- caused it; a window showing its own cursor -> menu
+                bareCursor = mKeyTick > 0
+                        and getTickCount() - mKeyTick <= 500
+        end
+end, 100, 0)
+
+-- rpadmin:showPanel is DECLARED by admin-system, which starts AFTER hud in
+-- mtaserver.conf, so addEventHandler returns false until that declaration
+-- exists (same CEvents::Exists rule the friend handlers above retry against).
+local staffPanelAttached = false
+local function attachStaffPanelHandler()
+        if staffPanelAttached then return true end
+        staffPanelAttached = addEventHandler("rpadmin:showPanel", root, function()
+                staffPanelOpen = not staffPanelOpen
+        end) == true
+        return staffPanelAttached
+end
+if not attachStaffPanelHandler() then
+        local staffAttachTries = 0
+        local staffAttachTimer
+        staffAttachTimer = setTimer(function()
+                staffAttachTries = staffAttachTries + 1
+                if attachStaffPanelHandler() or staffAttachTries >= 120 then
+                        if isTimer(staffAttachTimer) then killTimer(staffAttachTimer) end
+                end
+        end, 1000, 0)
+end
+
 local function scoreboardVisible()
         return exports.scoreboard:isVisible()
 end
 local function mainMenuOpen()
         return exports["main-menu"]:isOpen()
+end
+local function interactionMenuRows()
+        return exports.interaction:isInteractionOptionsShowing()
 end
 
 local function menuCoversWorld()
@@ -570,7 +645,17 @@ local function menuCoversWorld()
         local ok2, open = pcall(mainMenuOpen)
         if ok2 and open then return true end
 
-        if isCursorShowing() and not isChatBoxInputActive() then return true end
+        -- [Fix #161] gates 4 + 5: the staff panel and the right-click menu
+        -- cause no cursor transition of their own while the bare M cursor is
+        -- already up, so they carry their own state here
+        if staffPanelOpen then return true end
+
+        local ok3, rows = pcall(interactionMenuRows)
+        if ok3 and type(rows) == "table" and #rows > 0 then return true end
+
+        -- [Fix #161] gate 6: the cursor covers the world UNLESS it is the
+        -- bare M cursor with no window behind it
+        if isCursorShowing() and not bareCursor and not isChatBoxInputActive() then return true end
 
         return false
 end

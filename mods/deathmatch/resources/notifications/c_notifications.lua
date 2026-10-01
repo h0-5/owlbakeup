@@ -227,6 +227,7 @@ addEventHandler("onClientRender", root, renderDirective)
 -- output() pill notifications (bottom-center slide-in)
 -------------------------------------------------------------------------------
 local PILL_H = 40
+local PILL_FONT = "default-bold"
 -- [Fix #92] file-scope: reflowPills() below used these names too and was
 -- reading them as GLOBALS -> nil -> "arithmetic on global 'stackBottom'"
 local stackBottom = screenH - 60 * scale
@@ -254,7 +255,7 @@ local function renderPills()
 		if pill.type then
 			dxDrawImage(px + 4 * scale, py + 5 * scale, 25 * scale, 25 * scale, "icons/" .. pill.type .. ".png", 0, 0, 0, tocolor(255, 255, 255, 220), true)
 		end
-		dxDrawText(pill.text, px + 35 * scale, py, px + pill.width - 10 * scale, py + PILL_H * scale, tocolor(255, 255, 255, 255), 1, directive.font, "center", "center", true, true, false, true, false)
+		dxDrawText(pill.text, px + 35 * scale, py, px + pill.width - 10 * scale, py + PILL_H * scale, tocolor(255, 255, 255, 255), 1, PILL_FONT, "center", "center", true, true, false, true, false)
 	end
 end
 
@@ -303,7 +304,7 @@ function output(text, duration, ntype, align, options)
 		text = text,
 		duration = duration,
 		type = ntype,
-		width = math.max(140 * scale, (dxGetTextWidth(text, 1, directive.font, true) or 100) + 55 * scale),
+		width = math.max(140 * scale, (dxGetTextWidth(text, 1, PILL_FONT, true) or 100) + 55 * scale),
 		y = align == "top" and -PILL_H * scale or screenH - 60 * scale,
 		y_i = align == "top" and -PILL_H * scale or screenH - 60 * scale,
 		tick = getTickCount(),

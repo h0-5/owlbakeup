@@ -368,6 +368,37 @@ local function panelRights(player)
         }
 end
 
+-- [Fix #U6] payload refresh: the flags the panel mirrors (editmembers /
+-- editranks / resources / the three resource buttons) are otherwise only
+-- sent by rpadmin:showPanel, and that handler TOGGLES the panel, so a
+-- mutation cannot re-send it. This pushes the CURRENT set to one player
+-- (or to everybody) without opening, closing or toggling anything:
+--      client event: rpadmin:refreshRights(hasEditMembers, hasEditRanks,
+--                    hasResources, rights)
+-- The server re-checks every mutation backend-first, so this is only about
+-- an OPEN panel not keeping buttons it can no longer use.
+function refreshStaffPanelRights(player)
+        if not isElement(player) or getElementType(player) ~= "player" then return false end
+        if type(canPlayerAccessStaffManager) == "function"
+                and not canPlayerAccessStaffManager(player) then
+                return false
+        end
+        triggerClientEvent(player, "rpadmin:refreshRights", player,
+                hasEditMembers(player), hasEditRanks(player),
+                hasManageResources(player), panelRights(player))
+        return true
+end
+
+function refreshStaffPanelRightsAll()
+        local sent = 0
+        for _, p in ipairs(getElementsByType("player")) do
+                if refreshStaffPanelRights(p) then
+                        sent = sent + 1
+                end
+        end
+        return sent
+end
+
 -- ============================================================================
 -- data assembly
 -- ============================================================================
@@ -802,6 +833,37 @@ addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelNam
         end
 end)
 
+-- [Fix #U1] EXPLICIT staff removal: make it stick, and make it safe.
+-- Deleting the staff_role_members row alone never demoted an account that had
+-- been staff through the OLD ladder: accounts.admin/supporter/scripter still
+-- said "staff", so the bridge re-derived the very same rank on the next
+-- refresh and a resource start re-inserted the row anyway (migrateLegacyStaff
+-- only skips accounts that have a row). The panel's "Staff removed" was a lie
+-- for exactly those accounts - which is why a revocation "did nothing".
+-- So a removal also zeroes the legacy columns (admin/supporter/scripter).
+--
+-- Self-removal is REFUSED: it would close the actor's own panel with no way
+-- back in-game (no rank -> canPlayerAccessStaffManager is false). Demoting
+-- yourself is what /giverole is for.
+local function staffRemovalAllowed(actor, userID, username)
+        if not isElement(actor) or not tonumber(userID) then return false end
+        if tonumber(getElementData(actor, "account:id")) == tonumber(userID) then
+                outputChatBox("Self-removal blocked: your accounts columns still mark you as staff, "
+                        .. "so the rank would come straight back (and your panel would close). "
+                        .. "Use /giverole " .. tostring(username) .. " <rank> to demote instead.",
+                        actor, 255, 180, 60)
+                return false
+        end
+        return true
+end
+
+local function clearLegacyStaffLevel(userID)
+        if not tonumber(userID) then return false end
+        mysql:query_free("UPDATE accounts SET admin=0, supporter=0, scripter=0 WHERE id="
+                .. tonumber(userID))
+        return true
+end
+
 -- remove a staff member (by username)
 addEvent("rpadmin:removeAdmin", true)
 addEventHandler("rpadmin:removeAdmin", root, function(account)
@@ -818,6 +880,7 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
                 outputChatBox("Account not found: " .. tostring(account), client, 255, 0, 0)
                 return
         end
+        if not staffRemovalAllowed(client, user.id, user.username) then return end
         local oldName = "-"
         local old = mysql:query_fetch_assoc([[
                 SELECT m.RoleID FROM staff_role_members m
@@ -831,6 +894,9 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
                 end
         end
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(user.id))
+        -- [Fix #U1] drop the legacy level too, BEFORE the live refresh: it is
+        -- what would otherwise re-derive the very same rank (see above)
+        clearLegacyStaffLevel(user.id)
         addChangelog("Demotion", user.username, oldName, "Player")
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
         -- [Fix #15] public chat log of the removal
@@ -1563,8 +1629,12 @@ local function fix157AssignRole(actor, row, levelID, levelName)
 end
 
 local function fix157ClearRole(actor, row)
+        -- [Fix #U1] self-removal is refused, removal of anyone else also drops
+        -- their legacy level so the rank cannot come back
+        if not staffRemovalAllowed(actor, row.id, row.username) then return end
         local oldRoleID, oldName = fix157CurrentRoleName(row.id)
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(row.id))
+        clearLegacyStaffLevel(row.id)
         addChangelog("Demotion", row.username, oldName or "-", "Player", actor)
         outputChatBox("Staff removed: " .. tostring(row.username)
                 .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), actor, 0, 255, 0)

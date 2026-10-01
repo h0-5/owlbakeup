@@ -8,10 +8,10 @@
 --                 sub  = "Please wait for them to contact you.",  -- optional
 --                 type = "accepted" | "rejected" | "info",
 --                 reportId = 12 }
--- and this file draws it as a small timed box, stacked in the TOP-RIGHT and
--- aligned with the other HUD overlays:
+-- and this file draws it as a small timed box, stacked in the TOP-RIGHT:
 --     x = screenW - boxW - 5                 (same right margin as the hud)
---     y = 5 + hud:whereToDisplayY + 40 (+ hud:overlayTopRight while it is up)
+--     y = 195                                (below the status/clock/date/money
+--                                             block, the stack grows downward)
 -- The whole stack is pulled back on screen if it would not fit, so the box is
 -- ALWAYS fully inside the viewport (never slanted / never cut off).
 -- Look: dark background + 4px colour bar (green accepted / red rejected),
@@ -26,10 +26,9 @@ local MAX_W = 420
 local LIFETIME = 6000
 local FADE_MS = 600
 local MAX_TOASTS = 4
+local TOP_Y = 195
 
 local toasts = {}
-local cachedHudY = 0
-local cachedOverlayH = 0
 
 local palette = {
 	accepted = { 0, 220, 90 },
@@ -53,20 +52,6 @@ local function drawRoundRect(x, y, w, h, color, r)
 	dxDrawCircle(x, y + h, r, 90, 180, color, color, 7)
 	dxDrawCircle(x + w, y + h, r, 0, 90, color, color, 7)
 end
-
--- [Fix #47 style] no element-data reads in the render loop: cached on change
-local function refreshOffsets()
-	cachedHudY = tonumber(getElementData(localPlayer, "hud:whereToDisplayY")) or 0
-	cachedOverlayH = tonumber(getElementData(localPlayer, "hud:overlayTopRight")) or 0
-end
-
-addEventHandler("onClientElementDataChange", localPlayer, function(key)
-	if key == "hud:whereToDisplayY" or key == "hud:overlayTopRight" then
-		refreshOffsets()
-	end
-end, false)
-
-addEventHandler("onClientResourceStart", resourceRoot, refreshOffsets)
 
 addEvent("report-system:notify", true)
 addEventHandler("report-system:notify", localPlayer, function(payload)
@@ -111,9 +96,9 @@ addEventHandler("onClientRender", root, function()
 		totalH = totalH + toastHeight(toasts[i]) + gap
 	end
 
-	-- top of the stack: below the status HUD (+ the hud top-right overlay box
-	-- while it is showing); pulled back on screen if the stack would not fit
-	local y = 5 + cachedHudY + 40 + cachedOverlayH
+	-- top of the stack: fixed spot below the money block; pulled back on
+	-- screen if the stack would not fit
+	local y = TOP_Y
 	if y + totalH > sy - 10 then
 		y = math.max(10, sy - 10 - totalH)
 	end

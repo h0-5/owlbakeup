@@ -6,8 +6,14 @@
 --      kept fresh after every /staffs mutation).  rank:index 1..21 mirrors
 --      the staff_roles ladder, so these thresholds are the replacement for
 --      the old admin_level 1-4 numbers.
---   2. Legacy elementData fallback (accounts.admin/supporter/scripter
---      columns) for accounts that have no Vortex rank assigned yet.
+--   2. [Fix #163] the IDENTITY rights on top of the index, for rank holders
+--      only: admin.isAdmin decides every admin tier, admin.isStaff decides
+--      the supporter tiers.  A rank without the right fails the gate (its
+--      holders lose those permissions - that is what an untick in the panel
+--      means); a rank with the right behaves exactly as in step 1 alone.
+--   3. Legacy elementData fallback (accounts.admin/supporter/scripter
+--      columns) for accounts that have no Vortex rank assigned yet - this
+--      path is untouched by Fix #163.
 
 local function isPlayerElement(player)
 	return player and isElement(player) and getElementType(player) == "player"
@@ -19,13 +25,40 @@ local function getRankIndex(player)
 	return tonumber(getElementData(player, "rank:index"))
 end
 
+-- [Fix #163] admin.isAdmin / admin.isStaff are the RIGHTS that decide whether
+-- a Vortex RANK reads as an admin / as support. The ladder index still sets
+-- the TIER (Moderator+, Lead Administrator+, ...), the right sets the
+-- IDENTITY: a rank that does not hold the right can never pass an admin /
+-- support gate below - its holders lose exactly the legacy-tier permissions
+-- the panel untick removed, while a rank that holds the right behaves
+-- byte-identically to before (index check unchanged).
+-- Shared script: the server answers through the rights API (rank + TEAM
+-- union), the client - where playerHasRight is not exported - through the
+-- synced rank:rights element data.
+local function rankHoldsRight(player, right)
+	local ok, res = pcall(function()
+		return exports["admin-system"]:playerHasRight(player, right)
+	end)
+	if ok and res ~= nil then
+		return res and true or false
+	end
+	local raw = getElementData(player, "rank:rights")
+	if type(raw) ~= "string" or raw == "" then return false end
+	local okJSON, parsed = pcall(fromJSON, raw)
+	if not okJSON or type(parsed) ~= "table" then return false end
+	if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+		parsed = parsed[1]
+	end
+	return type(parsed) == "table" and parsed[right] == true or false
+end
+
 function isPlayerLeadAdmin(player)
 	if not isPlayerElement(player) then
 		return false
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 11 -- Lead Administrator+
+		return idx >= 11 and rankHoldsRight(player, "admin.isAdmin") -- Lead Administrator+
 	end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 4)
@@ -37,7 +70,7 @@ function isPlayerSeniorAdmin(player)
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 9 -- Senior Administrator+
+		return idx >= 9 and rankHoldsRight(player, "admin.isAdmin") -- Senior Administrator+
 	end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 3)
@@ -49,7 +82,7 @@ function isPlayerAdmin(player)
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 5 -- Moderator+
+		return idx >= 5 and rankHoldsRight(player, "admin.isAdmin") -- Moderator+
 	end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 2)
@@ -61,7 +94,7 @@ function isPlayerTrialAdmin(player)
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 4 -- Trial Moderator+
+		return idx >= 4 and rankHoldsRight(player, "admin.isAdmin") -- Trial Moderator+
 	end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 1)
@@ -73,7 +106,7 @@ function isPlayerSupporter(player)
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 2 -- Trial Support+
+		return idx >= 2 and rankHoldsRight(player, "admin.isStaff") -- Trial Support+
 	end
 	local supporter_level = getElementData(player, "supporter_level") or 0
 	return (supporter_level >= 1)
@@ -85,7 +118,7 @@ function isPlayerSupportManager(player)
 	end
 	local idx = getRankIndex(player)
 	if idx then
-		return idx >= 3 -- Support+
+		return idx >= 3 and rankHoldsRight(player, "admin.isStaff") -- Support+
 	end
 	local supporter_level = getElementData(player, "supporter_level") or 0
 	return (supporter_level >= 2)

@@ -24,6 +24,14 @@ local function getPlayerScripterRank( player )
 end
 
 local function getPlayerSupportRank( player )
+	-- [Fix #163] a Vortex rank holder is titled by HIS RANK title
+	-- the old Supporter / Support Manager ladder is only the fallback for
+	-- players without a rank (and for a rank whose name never reached the
+	-- client).
+	local rname = getElementData(player, "rank:name")
+	if type(rname) == "string" and rname ~= "" then
+		return tostring(rname)
+	end
 	if exports.integration:isPlayerSupportManager( player ) then
 		return "Support Manager"
 	elseif exports.integration:isPlayerSupporter( player ) then
@@ -33,6 +41,29 @@ local function getPlayerSupportRank( player )
 	end
 end
 
+-- [Fix #163] RIGHTS gate for the two staff lists below.
+-- admin.isAdmin / admin.isStaff are what makes a Vortex RANK show up as an
+-- admin / as support; a rank without the right never reaches either list.
+-- Server side the live rights API answers (rank + TEAM union), client side
+-- the synced rank:rights element data decides (playerHasRight is exported
+-- for the server only). nil/false-safe: an unreachable API simply denies.
+local function rankRight( player, right )
+	local ok, res = pcall(function()
+		return exports["admin-system"]:playerHasRight( player, right )
+	end)
+	if ok and res ~= nil then
+		return res and true or false
+	end
+	local raw = getElementData(player, "rank:rights")
+	if type(raw) ~= "string" or raw == "" then return false end
+	local okJSON, parsed = pcall(fromJSON, raw)
+	if not okJSON or type(parsed) ~= "table" then return false end
+	if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+		parsed = parsed[1]
+	end
+	return type(parsed) == "table" and parsed[right] == true or false
+end
+
 function showStaff( thePlayer, commandName )
 	local logged = getElementData(thePlayer, "loggedin")
 	local info = {}
@@ -40,7 +71,11 @@ function showStaff( thePlayer, commandName )
 
 	-- ADMINS --
 	if(logged==1) then
-		local players = exports.global:getAdmins()
+		-- [Fix #163] every online player is considered: exports.global:getAdmins()
+		-- pre-filtered rank holders through isPlayerTrialAdmin (ladder index), so
+		-- a rank holding admin.isAdmin below the Trial Moderator index never
+		-- reached this list.
+		local players = exports.pool:getPoolElementsByType("player")
 		local counter = 0
 
 		admins = {}
@@ -57,10 +92,20 @@ function showStaff( thePlayer, commandName )
 			local logged = getElementData(arrayPlayer, "loggedin")
 
 			if logged == 1 then
-				if tonumber(getElementData( arrayPlayer, "admin_level" )) < 10 then
-					if exports.integration:isPlayerTrialAdmin(arrayPlayer) and ( hiddenAdmin == 0 or ( exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerScripter(thePlayer) ) ) and not exports.integration:isPlayerIA( arrayPlayer ) then
-						admins[ #admins + 1 ] = { arrayPlayer, getElementData( arrayPlayer, "admin_level" ), getElementData( arrayPlayer, "duty_admin" ), exports.global:getPlayerName( arrayPlayer ) }
-					end
+				-- [Fix #163] RIGHTS decide the Administration Team membership of a
+				-- RANK holder: admin.isAdmin, at any ladder index. The old
+				-- admin_level < 10 + isPlayerTrialAdmin pair stays for players without
+				-- a Vortex rank (legacy ladder, byte-identical behaviour).
+				local ridx = tonumber(getElementData(arrayPlayer, "rank:index"))
+				local listed
+				if ridx then
+					listed = rankRight(arrayPlayer, "admin.isAdmin")
+				else
+					local lvl = tonumber(getElementData( arrayPlayer, "admin_level" )) or 0
+					listed = lvl < 10 and exports.integration:isPlayerTrialAdmin(arrayPlayer)
+				end
+				if listed and ( hiddenAdmin == 0 or ( exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerScripter(thePlayer) ) ) and not exports.integration:isPlayerIA( arrayPlayer ) then
+					admins[ #admins + 1 ] = { arrayPlayer, tonumber(getElementData( arrayPlayer, "admin_level" )) or 0, getElementData( arrayPlayer, "duty_admin" ), exports.global:getPlayerName( arrayPlayer ) }
 				end
 			end
 		end
@@ -106,7 +151,11 @@ function showStaff( thePlayer, commandName )
 
 	--GMS--
 	if(logged==1) then
-		local players = exports.global:getGameMasters()
+		-- [Fix #163] every online player is considered: exports.global:
+		-- getGameMasters() pre-filtered rank holders through isPlayerSupporter,
+		-- which is ladder-index driven (a rank below index 2 that DOES hold
+		-- admin.isStaff never showed up here).
+		local players = exports.pool:getPoolElementsByType("player")
 		local counter = 0
 
 		admins = {}
@@ -119,7 +168,19 @@ function showStaff( thePlayer, commandName )
 		for k, arrayPlayer in ipairs(players) do
 			local logged = getElementData(arrayPlayer, "loggedin")
 			if logged == 1 then
-				if exports.integration:isPlayerSupporter(arrayPlayer) then
+				-- [Fix #163] RIGHTS decide the Support Team membership of a RANK
+				-- holder: admin.isStaff puts him here, admin.isAdmin keeps him OUT (an
+				-- admin is never double-listed as support). Players without a rank keep
+				-- the legacy isPlayerSupporter ladder untouched.
+				local ridx = tonumber(getElementData(arrayPlayer, "rank:index"))
+				local listed
+				if ridx then
+					listed = rankRight(arrayPlayer, "admin.isStaff")
+						and not rankRight(arrayPlayer, "admin.isAdmin")
+				else
+					listed = exports.integration:isPlayerSupporter(arrayPlayer)
+				end
+				if listed then
 					admins[ #admins + 1 ] = { arrayPlayer, getElementData( arrayPlayer, "account:gmlevel" ), getElementData( arrayPlayer, "duty_supporter" ), exports.global:getPlayerName( arrayPlayer ) }
 				end
 			end

@@ -377,23 +377,48 @@ function applyPlayerRank(player, record)
         setIfChanged(player, "rank:color", clampRankColor(record.color))
         setIfChanged(player, "rank:rights", safeToJSON(record.rights))
 
-        -- [Fix #U1] a DERIVED rank (legacy column -> ladder, no
-        -- staff_role_members row) must NOT rewrite the legacy numbers: they are
-        -- exactly what the accounts columns hold and what old resources still
-        -- read (resource-keeper admin_level >= 5, interior-manager < 6,
-        -- c_overlay <= 7, the /checkid rank text ...). Only a real panel
-        -- assignment runs RANK_COMPAT, byte-identical to the old behaviour.
-        -- For the old 1..4 columns RANK_COMPAT maps back to the same number
-        -- anyway, so this only changes the "new index written into the old
-        -- column" case (admin=21 -> stays 21) - i.e. nothing regresses.
-        if not record.derived then
-                local compat = RANK_COMPAT[record.index]
-                if compat then
-                        setIfChanged(player, "admin_level", compat.admin)
-                        setIfChanged(player, "supporter_level", compat.supporter)
-                        setIfChanged(player, "scripter_level", compat.scripter)
-                end
-        end
+		-- [Fix #163] RIGHTS govern the LEGACY identity numbers as well:
+		-- admin_level / supporter_level are what the nametags, the scoreboard
+		-- fallback, the duty strip, chat colours and every other legacy reader
+		-- look at, so a RANK that does not hold admin.isAdmin must not be read
+		-- as an admin there (and one without admin.isStaff not as support).
+		-- playerHasRight is used instead of record.rights so a TEAM grant of
+		-- the right keeps the identity too (same API the F1 list, the /staff
+		-- overlay and the integration gates use). scripter_level stays as it
+		-- is - no right exists for it.
+		local looksAdmin, looksStaff
+		if type(playerHasRight) == "function" then
+			looksAdmin = playerHasRight(player, "admin.isAdmin") and true or false
+			looksStaff = playerHasRight(player, "admin.isStaff") and true or false
+		else
+			looksAdmin = record.rights["admin.isAdmin"] == true
+			looksStaff = record.rights["admin.isStaff"] == true
+		end
+
+		-- [Fix #U1] a DERIVED rank (legacy column -> ladder, no
+		-- staff_role_members row) must NOT rewrite the legacy numbers: they are
+		-- exactly what the accounts columns hold and what old resources still
+		-- read (resource-keeper admin_level >= 5, interior-manager < 6,
+		-- c_overlay <= 7, the /checkid rank text ... ). Only a real panel
+		-- assignment runs RANK_COMPAT, byte-identical to the old behaviour.
+		-- For the old 1..4 columns RANK_COMPAT maps back to the same number
+		-- anyway, so this only changes the "new index written into the old
+		-- column" case (admin=21 -> stays 21) - i.e. nothing regresses.
+		if not record.derived then
+			local compat = RANK_COMPAT[record.index]
+			if compat then
+				setIfChanged(player, "admin_level", looksAdmin and compat.admin or 0)
+				setIfChanged(player, "supporter_level", looksStaff and compat.supporter or 0)
+				setIfChanged(player, "scripter_level", compat.scripter)
+			end
+		else
+			-- [Fix #163] a DERIVED rank keeps its accounts-column numbers, but
+			-- the column is zeroed when the derived rank does not hold the
+			-- matching right - otherwise a derived rank without admin.isAdmin
+			-- would still LOOK like an admin to every legacy reader.
+			if not looksAdmin then setIfChanged(player, "admin_level", 0) end
+			if not looksStaff then setIfChanged(player, "supporter_level", 0) end
+		end
         -- [Fix #160 / U1] every rank apply also re-pushes the badge rights
         -- (login / ready, rank edited in the panel, refreshRankMembers, the
         -- 3s refreshAllPlayerRanks after a resource start)

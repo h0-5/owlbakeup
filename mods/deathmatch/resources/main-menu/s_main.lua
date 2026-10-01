@@ -182,12 +182,42 @@ addEventHandler("admin:showStaff", root, function()
                 -- [Vortex] rank:index (staff bridge) is THE source when it
                 -- exists, so Owner/Founder/Tester etc. always land in the
                 -- right team; legacy columns stay the fallback otherwise.
-                local admin, support
-                local ridx = tonumber(getElementData(player, "rank:index"))
-                if ridx then
-                        admin = (ridx >= 4) and ridx or 0                 -- Trial Moderator+
-                        support = (ridx >= 1 and ridx <= 3) and ridx or 0 -- Trial Support..Support
-                else
+				-- both start at 0: an isStaff-only rank fills in `support`
+				-- alone, and `admin > 0` below must never see a nil
+				local admin, support = 0, 0
+				local ridx = tonumber(getElementData(player, "rank:index"))
+				if ridx then
+					-- [Fix #163] RIGHTS decide BOTH the inclusion and the section
+					-- of a RANK holder - rights govern APPEARANCE:
+					--   admin.isAdmin            -> Admins Team
+					--   admin.isStaff only       -> Supports Team
+					--   neither right            -> not listed at all (a revoked
+					--       right now hides him from this list completely)
+					-- The old ladder split (ridx >= 4 / ridx 1..3) was index-driven
+					-- and the [Fix #U5] admin.isStaff-only filter HID a rank that
+					-- holds admin.isAdmin but not admin.isStaff (it belongs in the
+					-- Admins section, not in neither). pcall'd like U5: if the
+					-- rights API cannot be reached the old index split keeps the
+					-- list working.
+					local okA, isAdmin = pcall(function()
+						return exports["admin-system"]:playerHasRight(player, "admin.isAdmin")
+					end)
+					local okS, isStaff = pcall(function()
+						return exports["admin-system"]:playerHasRight(player, "admin.isStaff")
+					end)
+					if okA and okS then
+						if isAdmin then
+							admin = (ridx > 0) and ridx or 1
+						elseif isStaff then
+							support = (ridx > 0) and ridx or 1
+						else
+							admin, support = 0, 0
+						end
+					else
+						admin = (ridx >= 4) and ridx or 0                 -- rights API down: old split
+						support = (ridx >= 1 and ridx <= 3) and ridx or 0
+					end
+				else
                         admin = tonumber(getElementData(player, "admin_level")) or 0
                         support = tonumber(getElementData(player, "supporter_level")) or 0
                         if admin == 0 and getResourceRunning("global") then
@@ -197,23 +227,14 @@ addEventHandler("admin:showStaff", root, function()
                                 if ok and value then admin = tonumber(value) or admin end
                         end
                 end
-                -- [Fix #U5] the online-staff list is RIGHTS-driven, not
-                -- rank/level-driven: holding a rank (or a legacy admin level)
-                -- is not enough - the player must actually hold the
-                -- admin.isStaff right. Revoking it now drops him from this F1
-                -- list the same way it drops him from the duty/badge paths.
-                -- Players the staff system does not know yet (no live rank)
-                -- keep the old rank/level behaviour.
-                local allowed = true
-                if ridx then
-                        local ok, res = pcall(function()
-                                return exports["admin-system"]:playerHasRight(player, "admin.isStaff")
-                        end)
-                        if ok and res == false then
-                                allowed = false
-                        end
-                end
-                if (admin > 0 or support > 0) and allowed then
+                -- [Fix #163] the [Fix #U5] admin.isStaff-only filter that used to
+                -- live here is GONE for rank holders: inclusion and section are
+                -- decided by the two rights above (admin.isAdmin / admin.isStaff),
+                -- so a rank that only holds admin.isAdmin is no longer hidden and
+                -- a rank that holds neither drops out of the list entirely.
+                -- Players the staff system does not know yet (no live rank) keep
+                -- the old level behaviour.
+                if (admin > 0 or support > 0) then
                         -- [Fix #14] unified rank title + color ship with the row
                         local rname = tostring(getElementData(player, "rank:name") or "")
                         local rcolor = getElementData(player, "rank:color")

@@ -16,6 +16,8 @@
         <file src="search.png"/>
         <file src="BlurShader.fx"/>
 
+        <file src="fonts/Akrobat-Regular.otf"/>
+        <file src="fonts/Akrobat-SemiBold.otf"/>
         <file src="fonts/PFDinDisplayPro-Bold.ttf"/>
         <file src="fonts/PFDinDisplayPro-Regular.ttf"/>
 

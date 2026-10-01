@@ -19,12 +19,14 @@ local typeColors = {
 	info    = tocolor(52, 152, 219),
 	police  = tocolor(59, 120, 195),
 	danger  = tocolor(255, 59, 59),
+	warning = tocolor(241, 196, 15),
 }
 
 local pills = {}          -- output() active pills
 local pillTimers = {}     -- id -> kill timer
 local pillSeq = 0
 local pillRenderAttached = false
+local pillRects = {}
 
 local keyDesc = { list = {}, renderAttached = false }
 
@@ -103,20 +105,27 @@ end
 -------------------------------------------------------------------------------
 -- Title/Text notification box (sendNotification)
 -------------------------------------------------------------------------------
+local notiRects = {}
+
 function notifications.render()
+	notiRects = {}
 	for index, noti in ipairs(notifications.list) do
 		local width = math.max(350, dxGetTextWidth(split(tostring(noti.Text), "\n")[1], 1, directive.font) + 20, dxGetTextWidth(split(tostring(noti.Title), "\n")[1], 1, directive.font) + 20)
 		local height = 25 * #split(tostring(noti.Title), "\n") + 20 * #split(tostring(noti.Text), "\n") + 20
 		local x = math.floor(screenW - width - 10)
 		local y = math.floor(120)
+		if isCursorShowing() and isMouseInPosition(x, y, width, height) then
+			dxDrawRoundedRectangle(x - 1, y - 1, width + 2, height + 2, tocolor(255, 255, 255, 110), 7, true)
+		end
 		dxDrawRoundedRectangle(x, y, width, height, tocolor(5, 5, 5, 230), 6, true)
 		dxDrawText(tostring(noti.Title), x + 15, y + 10, x + width, y + 25, tocolor(255, 255, 255, 255), 1, directive.font, "left", "top", true, true, true, true, false)
 		dxDrawText(tostring(noti.Text), x + 15, y + 28, x + width, y + height, tocolor(255, 255, 255, 255), 1, directive.font, "left", "top", true, true, true, true, false)
+		notiRects[#notiRects + 1] = { x = x, y = y, w = width, h = height, title = tostring(noti.Title), details = noti.Details or noti.Text or "" }
 	end
 end
 addEventHandler("onClientRender", root, notifications.render)
 
-function sendNotification(title, text, time, horizontalAlign, verticalAlign, id, width, font)
+function sendNotification(title, text, time, horizontalAlign, verticalAlign, id, width, font, details)
 	if type(text) == "table" then text = text[language] end
 	if type(title) == "table" then title = title[language] end
 	if not id then
@@ -137,6 +146,7 @@ function sendNotification(title, text, time, horizontalAlign, verticalAlign, id,
 		VerticalAlign = verticalAlign or "bottom",
 		Width = width,
 		NormalFont = font,
+		Details = details,
 	})
 	playSound("sounds/notification.wav")
 	if time ~= -1 then
@@ -233,6 +243,7 @@ local PILL_FONT = "default-bold"
 local stackBottom = screenH - 60 * scale
 local stackTop = 60 * scale
 local function renderPills()
+	pillRects = {}
 	for _, pill in ipairs(pills) do
 		local progress = (getTickCount() - pill.tick) / 500
 		if progress > 1 then progress = 1 end
@@ -250,12 +261,17 @@ local function renderPills()
 		else
 			pill.px, pill.py = px, py
 		end
+		if isCursorShowing() and isMouseInPosition(px, py, pill.width, PILL_H * scale) then
+			dxDrawRoundedRectangle(px - 1, py - 1, pill.width + 2, PILL_H * scale + 2, pill.color_2, 9, true)
+		end
 		dxDrawRoundedRectangle(px, py, pill.width, PILL_H * scale, pill.color, 8, true)
+		dxDrawRectangle(px, py + 8, 3 * scale, math.max(2, PILL_H * scale - 16), pill.color_2, true)
 		dxDrawCircle(px + 14 * scale, py + PILL_H * scale / 2, 10 * scale, 0, 360, pill.color_2, pill.color_2, 12, _, true)
 		if pill.type then
 			dxDrawImage(px + 4 * scale, py + 5 * scale, 25 * scale, 25 * scale, "icons/" .. pill.type .. ".png", 0, 0, 0, tocolor(255, 255, 255, 220), true)
 		end
 		dxDrawText(pill.text, px + 35 * scale, py, px + pill.width - 10 * scale, py + PILL_H * scale, tocolor(255, 255, 255, 255), 1, PILL_FONT, "center", "center", true, true, false, true, false)
+		pillRects[#pillRects + 1] = { x = px, y = py, w = pill.width, h = PILL_H * scale, details = pill.text }
 	end
 end
 
@@ -283,6 +299,7 @@ local function removePill(id)
 	if #pills == 0 then
 		removeEventHandler("onClientRender", root, renderPills)
 		pillRenderAttached = false
+		pillRects = {}
 	end
 	reflowPills("bottom")
 	reflowPills("top")
@@ -373,3 +390,97 @@ addEvent("notifications:showKeyDescription", true)
 addEventHandler("notifications:showKeyDescription", root, showKeyDescription)
 addEvent("notifications:hideKeyDescription", true)
 addEventHandler("notifications:hideKeyDescription", root, hideKeyDescription)
+
+local details = { open = false, title = "", body = "", tick = 0, btn = nil, cursorTaken = false }
+local detailsIcon, detailsIconChecked = nil, false
+
+local function openDetails(title, body)
+	details.title = tostring(title or "")
+	details.body = tostring(body or "")
+	details.tick = getTickCount()
+	details.open = true
+	details.cursorTaken = not isCursorShowing()
+	if details.cursorTaken then
+		showCursor(true)
+	end
+end
+
+local function closeDetails()
+	if not details.open then
+		return
+	end
+	details.open = false
+	if details.cursorTaken then
+		showCursor(false)
+	end
+	details.cursorTaken = false
+end
+
+local function renderDetails()
+	if not details.open then
+		return
+	end
+	if not detailsIconChecked then
+		detailsIconChecked = true
+		if fileExists("icons/notification.png") then
+			detailsIcon = "icons/notification.png"
+		end
+	end
+	local w = 400 * scale
+	local h = 250 * scale
+	local x = math.floor((screenW - w) / 2)
+	local y = math.floor((screenH - h) / 2)
+	local a, oy = animation(details.tick, 180, 0, -14, 0, 245, 0, 0, "OutQuad")
+	a = math.floor(a)
+	y = y + math.floor(oy)
+	local txtA = math.min(255, a + 10)
+	dxDrawRoundedRectangle(x, y, w, h, tocolor(6, 9, 14, a), 8, true)
+	local titleX = x + 15 * scale
+	if detailsIcon then
+		dxDrawImage(x + 12 * scale, y + 11 * scale, 18 * scale, 18 * scale, detailsIcon, 0, 0, 0, tocolor(255, 255, 255, txtA), true)
+		titleX = x + 36 * scale
+	end
+	local winTitle = (language == "ar") and "إشعارات" or "Notification"
+	dxDrawText(winTitle, titleX, y + 4 * scale, x + w - 15 * scale, y + 40 * scale, tocolor(255, 255, 255, txtA), 1, directive.font, "left", "center", true, true, true, true, false)
+	dxDrawRectangle(x + 12 * scale, y + 44 * scale, w - 24 * scale, 1, tocolor(255, 255, 255, math.floor(a * 0.25)), true)
+	local body = details.body
+	if details.title ~= "" then
+		body = details.title .. "\n\n\n" .. details.body
+	end
+	dxDrawText(body, x + 15 * scale, y + 54 * scale, x + w - 15 * scale, y + h - 52 * scale, tocolor(255, 255, 255, txtA), 1, directive.font, "left", "top", true, true, true, true, false)
+	local bx, by = x + 10 * scale, y + h - 45 * scale
+	local bw, bh = w - 20 * scale, 35 * scale
+	local hovered = isMouseInPosition(bx, by, bw, bh)
+	dxDrawRoundedRectangle(bx, by, bw, bh, hovered and tocolor(38, 38, 54, txtA) or tocolor(24, 24, 34, txtA), 6, true)
+	local closeLabel = (language == "ar") and "إغلاق" or "Close"
+	dxDrawText(closeLabel, bx, by, bx + bw, by + bh, tocolor(255, 255, 255, txtA), 1, directive.font, "center", "center", true, true, true, true, false)
+	details.btn = { x = bx, y = by, w = bw, h = bh }
+end
+addEventHandler("onClientRender", root, renderDetails)
+
+addEventHandler("onClientClick", root, function(button, state)
+	if button ~= "left" or state ~= "up" then
+		return
+	end
+	if details.open then
+		local btn = details.btn
+		if btn and isMouseInPosition(btn.x, btn.y, btn.w, btn.h) then
+			closeDetails()
+		end
+		return
+	end
+	for i = #pillRects, 1, -1 do
+		local rect = pillRects[i]
+		if isMouseInPosition(rect.x, rect.y, rect.w, rect.h) then
+			openDetails("", rect.details)
+			return
+		end
+	end
+	for i = #notiRects, 1, -1 do
+		local rect = notiRects[i]
+		if isMouseInPosition(rect.x, rect.y, rect.w, rect.h) then
+			openDetails(rect.title, rect.details)
+			return
+		end
+	end
+end)

@@ -32,8 +32,8 @@ theme = {
     FONTS = {
         ["ui-default"]    = { file = "fonts/Font2.ttf", size = 11.5 },
         ["default-large"] = { file = "fonts/Font2.ttf", size = 15 },
-        ["PFDin"]         = { file = "fonts/PFDinDisplayPro-Regular.ttf", size = 14 },
-        ["PFDin-Bold"]    = { file = "fonts/PFDinDisplayPro-Bold.ttf", size = 14 },
-        ["PFDin-Big"]     = { file = "fonts/PFDinDisplayPro-Bold.ttf", size = 20 }
+        ["PFDin"]         = { file = "fonts/Akrobat-Regular.otf", size = 14 },
+        ["PFDin-Bold"]    = { file = "fonts/Akrobat-SemiBold.otf", size = 14 },
+        ["PFDin-Big"]     = { file = "fonts/Akrobat-SemiBold.otf", size = 20 }
     }
 }

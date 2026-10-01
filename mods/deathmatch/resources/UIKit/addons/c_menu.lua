@@ -264,7 +264,7 @@ UI.getDrawFunction["ui-menu"] = function(arg0)
         local emojiX = UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y
         local emojiY = UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i)
         local emojiScale = emojiSq / (11.5 * SCALE_Y) * 0.52
-        dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].emoji), emojiX, emojiY, emojiX + emojiSq, emojiY + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 235), emojiScale, dxFontEmoji, "center", "center", true, false, UI.postGUI)
+        dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].emoji), emojiX, emojiY, emojiX + emojiSq, emojiY + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 235), emojiScale, dxFontEmoji or "default", "center", "center", true, false, UI.postGUI)
       end
       dxDrawText(tostring(UI.DB[arg0].data.rows[forvar16].text[language]), UI.DB[arg0].dimensions.x + 5 + 15 * SCALE_Y + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y / 2 + 10, UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i), UI.DB[arg0].dimensions.x + 5 + (UI.DB[arg0].dimensions.width - 10), UI.DB[arg0].dimensions.y + 5 + (UI.DB[arg0].data.rows[forvar16].height * SCALE_Y + 4) * (forvar16 - UI.DB[arg0].data.row_i) + UI.DB[arg0].data.rows[forvar16].height * SCALE_Y, tocolor(255, 255, 255, 255), 1 * UI.DB[arg0].properties.row_font_scale.value, UI.DB[arg0].font.size, UI.DB[arg0].font.name, UI.DB[arg0].align.X, UI.DB[arg0].align.Y, true, false, UI.postGUI, true, false)
     end

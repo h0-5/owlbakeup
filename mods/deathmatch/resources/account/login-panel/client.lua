@@ -110,7 +110,29 @@ local function stopLoginMusic()
         end
 end
 
+local function loginMusicEnabled()
+        local res = getResourceFromName("settings")
+        if not res or getResourceState(res) ~= "running" then
+                return true
+        end
+        local ok, value = pcall(function() return exports.settings:getSetting("Login:music") end)
+        if ok and value == true then
+                return true
+        end
+        if type(loadSavedData) == "function" then
+                local stored = loadSavedData("Login:music", "1")
+                if stored == "0" or stored == "false" then
+                        return false
+                end
+        end
+        return true
+end
+
 local function startLoginMusic()
+        if not loginMusicEnabled() then
+                stopLoginMusic()
+                return
+        end
         if not isElement(music) then
                 music = playSound("menu.mp3", true)
                 if isElement(music) then setSoundVolume(music, 0.45) end
@@ -129,17 +151,32 @@ local function drawBackground()
         dxDrawRectangle(0, 0, sx, sy, tocolor(0, 3, 8, 120), true)
 end
 
+local loadingRenderAdded = false
+
+local function drawLoading()
+        local rot = (getTickCount() % 500) / 500 * 360
+        dxDrawImage(sx - 80, sy - 80, 50, 50, "login-panel/images/Loading.png", rot, 0, 0, tocolor(255, 255, 255, 255), true)
+end
+
 local function showLoading(on)
         -- [Fix #45] there is no `public` resource on this server, so the plain
         -- `exports.public ...` check raised "Call to non-running server
         -- resource" every time. Guard on the real resource state instead.
         local res = getResourceFromName("public")
-        if not res or getResourceState(res) ~= "running" then
-                return
+        if res and getResourceState(res) == "running" then
+                pcall(function()
+                        exports.public:loading("login", on)
+                end)
         end
-        pcall(function()
-                exports.public:loading("login", on)
-        end)
+        if on then
+                if not loadingRenderAdded then
+                        addEventHandler("onClientRender", root, drawLoading)
+                        loadingRenderAdded = true
+                end
+        elseif loadingRenderAdded then
+                removeEventHandler("onClientRender", root, drawLoading)
+                loadingRenderAdded = false
+        end
 end
 
 function setLoginPanelVisible(state)

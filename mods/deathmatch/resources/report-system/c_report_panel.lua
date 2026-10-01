@@ -68,6 +68,16 @@ addEventHandler("reports:togglePanel", root, function(state)
         panelVisible = state and true or false
 end)
 
+addEvent("hud:onClientHudItemClick", false)
+addEventHandler("hud:onClientHudItemClick", localPlayer, function(id, value)
+        if id == "admintag" and not value then
+                if panelVisible then
+                        panelVisible = false
+                        triggerServerEvent("reports:onHideUnansweredReportsPanel", localPlayer)
+                end
+        end
+end)
+
 addEventHandler("onClientElementDataChange", localPlayer, function(key)
         if key == "loggedin" then
                 cacheLoggedin()

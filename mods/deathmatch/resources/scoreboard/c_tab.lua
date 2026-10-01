@@ -94,9 +94,9 @@ local BADGE_NAMES = { "support_badge", "developer_badge", "admin_badge" }
 
 local function loadAssets()
         local base = math.min(BOARD.h / 600, 1.15)
-        fontTitle = dxCreateFont("fonts/PFDinDisplayPro-Bold.ttf", math.floor(20 * base)) or "default-bold"
-        fontCol = dxCreateFont("fonts/PFDinDisplayPro-Bold.ttf", math.floor(12 * base)) or "default-bold"
-        fontRow = dxCreateFont("fonts/PFDinDisplayPro-Regular.ttf", math.floor(13 * base)) or "default"
+        fontTitle = dxCreateFont("fonts/Akrobat-SemiBold.otf", math.floor(20 * base)) or "default-bold"
+        fontCol = dxCreateFont("fonts/Akrobat-SemiBold.otf", math.floor(12 * base)) or "default-bold"
+        fontRow = dxCreateFont("fonts/Akrobat-Regular.otf", math.floor(13 * base)) or "default"
         fontAR = "default"
         fontARB = "default-bold"
         for _, name in ipairs(BADGE_NAMES) do

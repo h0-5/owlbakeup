@@ -91,7 +91,7 @@ local function bindSkinArrows(on)
         if on then
                 bindKey("arrow_l", "down", onSkinArrow, -1)
                 bindKey("arrow_r", "down", onSkinArrow, 1)
-                showDirective("اضغط اليسار أو اليمين لتغيير المظهر")
+                showDirective("اضغط اليسار أو اليمين لتغيير مظهر الشخصية")
         else
                 unbindKey("arrow_l", "down", onSkinArrow)
                 unbindKey("arrow_r", "down", onSkinArrow)

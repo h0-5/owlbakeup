@@ -412,6 +412,7 @@ local DEFAULT_ITEMS = {
         -- row still has its own engine/lock/lights buttons like the old client)
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
         { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
+        { "admintag",     "on", "admin_badge",  "Toggle Admin Tag", "" },
         -- ("ads" dropped: icons/ads.png does not exist, the item rendered nothing)
 }
 
@@ -546,6 +547,15 @@ addEventHandler("hud:onHudItemClick", root, function(item)
         -- [Fix #32 - user] head_turning + lockvehicle strip rows removed
         elseif item == "reportpanel" then
                 -- handled client-side (opens the reports panel)
+        elseif item == "admintag" then
+                local admintagItems = getElementData(player, "hud:items") or {}
+                for _, row in ipairs(admintagItems) do
+                        if type(row) == "table" and row[1] == "admintag" then
+                                row[2] = (row[2] == "on") and "off" or "on"
+                                setProtected(player, "hud:items", admintagItems)
+                                break
+                        end
+                end
         elseif item == "adminduty" then
                 -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
                 -- announcements, element data) instead of a client-side fake

@@ -5,6 +5,14 @@
 	<script src="c_notifications.lua" type="client" cache="false" />
 
 	<file src="sounds/notification.wav" />
+	<file src="icons/danger.png" />
+	<file src="icons/error.png" />
+	<file src="icons/info.png" />
+	<file src="icons/megaphone.png" />
+	<file src="icons/notification.png" />
+	<file src="icons/police.png" />
+	<file src="icons/remove.png" />
+	<file src="icons/success.png" />
 
 	<export function="output" type="client" />
 	<export function="sendNotification" type="client" />

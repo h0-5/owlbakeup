@@ -58,6 +58,8 @@ local arrowTex, beltTex
 local rpmSmooth = 0
 local blinkLeft, blinkRight = false, false
 local largeFont, smallFont
+local distStr = "000000"
+local distTick = 0
 
 local themePrimary = { 149, 84, 252 }
 
@@ -218,8 +220,8 @@ local function speedoDraw()
                 fr, fg, fb = 255, 60, 60
         end
         local headerY = py + PAD
-        shadowText(string.format("FUEL %d%%", math.floor(fuel + 0.5)),
-                ix0, headerY, ix0 + 130, headerY + ROW_HEADER_H,
+        local fuelStr = string.format("FUEL %d%%", math.floor(fuel + 0.5))
+        shadowText(fuelStr, ix0, headerY, ix0 + 130, headerY + ROW_HEADER_H,
                 tocolor(fr, fg, fb, fuelAlpha), 0.85, fontSmall(), "left")
 
         -- row 1: gear pill (right; red HANDBRAKE while the handbrake is up)
@@ -250,9 +252,27 @@ local function speedoDraw()
         shadowText(gearText, pillX, pillY, pillX + pillW, pillY + 24,
                 tocolor(255, 255, 255, 245), 0.78, fontSmall(), "center")
 
+        if now - distTick >= 1000 then
+                distTick = now
+                local raw = getElementData(veh, "vehicle:total.distance")
+                if raw == nil then
+                        raw = getElementData(veh, "odometer")
+                end
+                local digits = string.format("%d", tonumber(raw) or 0):sub(1, 6)
+                distStr = (digits ~= "") and digits or "000000"
+        end
+        local distW = dxGetTextWidth(distStr, 0.7, fontSmall()) or 0
+        local distX0 = ix0 + (dxGetTextWidth(fuelStr, 0.85, fontSmall()) or 0) + 14
+        local distX1 = pillX - 8
+        if distX1 - distX0 >= distW + 8 then
+                local distCx = (distX0 + distX1) / 2
+                shadowText(distStr, distCx - 70, headerY, distCx + 70, headerY + ROW_HEADER_H,
+                        tocolor(255, 255, 255, 150), 0.7, fontSmall(), "center")
+        end
+
         -- row 2: speed digits between the two arrow lanes
         local speedY = headerY + ROW_HEADER_H + ROW_GAP
-        local spdStr = tostring(math.floor(dispSpeed))
+        local spdStr = string.format("%03d", math.floor(dispSpeed))
         local dScale = (#spdStr >= 4) and 1.55 or 2.0
         local digitColor = engineOn and tocolor(255, 255, 255, 255)
                 or tocolor(255, 255, 255, 130)

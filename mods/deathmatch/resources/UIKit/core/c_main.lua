@@ -101,8 +101,8 @@ function memoDeleteChar(el, key)
 end
 dxFont = dxCreateFont("fonts/Font2.ttf", 11.5 * SCALE_Y)
 dxFontLarge = dxCreateFont("fonts/Font2.ttf", 15 * SCALE_Y)
-dxFontHUD = dxCreateFont("fonts/PFDinDisplayPro-Regular.ttf", 15 * SCALE_Y, false) or "default"
-dxFontHUDLarge = dxCreateFont("fonts/PFDinDisplayPro-Bold.ttf", 35 * SCALE_Y) or "default"
+dxFontHUD = dxCreateFont("fonts/Akrobat-Regular.otf", 15 * SCALE_Y, false) or "default"
+dxFontHUDLarge = dxCreateFont("fonts/Akrobat-SemiBold.otf", 35 * SCALE_Y) or "default"
 function restartUIKit()
   removeEventHandler("onClientElementDestroy", resourceRoot, UI.onElementDestroy)
   for forvar3, forvar4 in ipairs(UI.Elements) do

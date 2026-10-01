@@ -475,6 +475,7 @@ end)
 -- draw (old client drawPlayersName)
 --------------------------------------------------------------------------------
 local WaitTyping = 0
+local lastHeartClear = 0
 
 -- [Fix #47] instant self-heal: if the entry cache is empty while other
 -- players ARE streamed in, rebuild it right now instead of waiting for the
@@ -690,6 +691,7 @@ function drawNametags()
         local lX, lY, lZ = getElementPosition(localPlayer)
         local recon = getElementData(localPlayer, "reconx")  -- hoisted out of the loop
         local now = getTickCount()
+        local adminTagsOn = not getHudSetting or getHudSetting("admintag")
 
         -- [Fix #47] self-heal: empty cache while other players are streamed in
         if cacheLooksBroken() then updatePlayersHud() end
@@ -788,7 +790,8 @@ function drawNametags()
                                                         -- only icons whose texture actually loaded
                                                         local drawable = {}
                                                         for _, icon in ipairs(entry.icons) do
-                                                                if badgeTex[icon] then
+                                                                if badgeTex[icon]
+                                                                        and (adminTagsOn or not RANK_BADGE_ICONS[icon]) then
                                                                         drawable[#drawable + 1] = icon
                                                                 end
                                                         end
@@ -805,6 +808,12 @@ function drawNametags()
                                                                 local iconX = sX - rowW / 2
                                                                 local iconY = baseY + 4
                                                                 for _, icon in ipairs(drawable) do
+                                                                        if icon == "heart" and player == localPlayer
+                                                                                                and getElementHealth(player) > 40
+                                                                                                and now - lastHeartClear >= 10000 then
+                                                                                triggerServerEvent("hud:remove_heart", localPlayer)
+                                                                                lastHeartClear = now
+                                                                        end
                                                                         dxDrawImage(iconX, iconY, iconSize, iconSize,
                                                                                 badgeTex[icon], 0, 0, 0,
                                                                                 tocolor(255, 255, 255, 240), true)

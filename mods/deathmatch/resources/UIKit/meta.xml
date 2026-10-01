@@ -34,6 +34,8 @@
 	<script src="addons/c_rectangle.lua" type="client" cache="false" />
 
 	<!-- fonts -->
+	<file src="fonts/Akrobat-Regular.otf" />
+	<file src="fonts/Akrobat-SemiBold.otf" />
 	<file src="fonts/Font2.ttf" />
 	<file src="fonts/PFDinDisplayPro-Bold.ttf" />
 	<file src="fonts/PFDinDisplayPro-Regular.ttf" />

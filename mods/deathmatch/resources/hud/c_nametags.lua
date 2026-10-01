@@ -4,11 +4,17 @@
 --   * Fix #19: NO rank title text above the head — rank is shown only by the
 --     admin badge icon (user spec)
 --   * name colored by rank, "Unknown Person" for masked players
---   * U1: name sits on a FILLED rank-color chip + 36px badges ABOVE the head
---     (admin/developer/support come from the element data fix160.badgerights,
---     AFK / heart / hud:badges extras unchanged), "TYPING" replaces the old
---     ((TYPING...)) text and chat-system's green logo, and nothing at all is
---     drawn while a menu/window is open (ui:f1open / scoreboard / cursor)
+--   * U1 reviewed by the user: the name is back to the ORIGINAL plain outlined
+--     text over the head (NO filled chip / rectangle behind it) and the badge
+--     row is back BELOW the name (original 26px icons at baseY+4),
+--     admin/developer/support still come from the element data
+--     fix160.badgerights (AFK / heart / hud:badges extras unchanged).
+--     Name color rule: rank color ONLY for a visible ON-DUTY staff member,
+--     white otherwise - and the name NEVER disappears (a hidden admin draws
+--     his plain white name like any player; only the badges stay hidden).
+--     "TYPING" replaces the old ((TYPING...)) text and chat-system's green
+--     logo, and nothing at all is drawn while a menu/window is open
+--     (ui:f1open / scoreboard / cursor)
 --   * 20-unit range + line of sight, tagmode setting respected
 --   * Fix #154: drawn in onClientPreRender so F1 / F3 / /staffs / TAB always
 --     cover the tags, and non-friends read the account "mod:id" instead of
@@ -163,12 +169,6 @@ local function isPlayerOnDuty(p)
                 or isOne(getElementData(p, "duty_supporter"))
 end
 
--- a staff member currently OFF duty reads as a plain player (regular
--- players are never "off duty" - they simply hold no rank)
-local function isPlayerOffDutyStaff(p)
-        return isPlayerStaff(p) and not isPlayerOnDuty(p)
-end
-
 local function buildPlayerEntry(player)
         -- [Fix #154] if the friend list never arrived (hud restarted after
         -- login), ask main-menu for it before deciding name-vs-id
@@ -195,17 +195,19 @@ local function buildPlayerEntry(player)
         local name = masked and "Unknown Person"
                 or getPlayerName(player):gsub("_", " ")
 
-        -- staff rank color pushes the name color (Fix #19: no title text)
-        local rgb = getElementData(player, "rank:color")
-        if type(rgb) ~= "table" or #rgb < 3 then rgb = { 255, 255, 255 } end
-        -- [Fix #75 - user] hidden admins show as PLAIN players above the head:
-        -- "لو سويت hide admin ما يرجع لون فوق الشخصية كلاير - يبقى لون الرتبة".
-        -- Un-hiding restores the rank color (rgb is re-read every build).
-        -- [Fix #98 - user] "لما اسوي hide admin او اطفي الدوتي الاسم يظل بلون
-        -- الرتبة": hidden AND off-duty staff both drop to the plain default
-        -- player color (white). Only VISIBLE ON-DUTY staff keep rank:color;
-        -- plain players were already white (rgb fallback above).
-        if hidden or isPlayerOffDutyStaff(player) then rgb = { 255, 255, 255 } end
+        -- [point 2 - user, EXACT name color rules]: WHITE for a normal
+        -- player; WHITE when an admin is OFF duty; WHITE while hide-admin is
+        -- enabled for him; the RANK COLOR only when the admin is ON duty and
+        -- not hidden (Fix #75 / Fix #98 kept - hidden AND off-duty staff read
+        -- as plain players above the head; un-hiding / going on duty restores
+        -- rank:color, re-read on every build).
+        local nameRgb = { 255, 255, 255 }
+        if not hidden and isPlayerStaff(player) and isPlayerOnDuty(player) then
+                local rgb = getElementData(player, "rank:color")
+                if type(rgb) == "table" and #rgb >= 3 then
+                        nameRgb = { rgb[1], rgb[2], rgb[3] }
+                end
+        end
 
         -- [Fix #154] friends keep the real name, everyone else is read as
         -- their account-bound "mod:id" (the very id /checkid, /changeid and
@@ -310,10 +312,11 @@ local function buildPlayerEntry(player)
 
         return {
                 name = name,
-                color = tocolor(rgb[1], rgb[2], rgb[3], 255),
-                -- [U1 task 1] raw channels for the filled rank-color chip
-                rgb = { tonumber(rgb[1]) or 255, tonumber(rgb[2]) or 255,
-                        tonumber(rgb[3]) or 255 },
+                -- [point 2] nameColor = the RANK color only for a visible
+                -- on-duty staff member, else plain white {255,255,255};
+                -- `color` is the same value packed for the outlineText call
+                nameColor = nameRgb,
+                color = tocolor(nameRgb[1], nameRgb[2], nameRgb[3], 255),
                 icons = icons,
                 hidden = hidden and true or false,
                 friend = friend,
@@ -532,7 +535,7 @@ local function gateReport(reason)
 end
 
 -- [U1 task 4] while ANY menu/window is open the world under it must be
--- clean - names + chips + badges + the TYPING word all stop drawing.
+-- clean - names + badges + the TYPING word all stop drawing.
 -- Signals that exist today (read-only, nothing owned by other agents is
 -- touched):
 --   1. ui:f1open on localPlayer  - the F1 menu contract pushed by agent U6
@@ -612,18 +615,14 @@ function drawNametags()
                 -- cooldown). The `player ~= localPlayer` skip meant a session
                 -- with a single client (the only case ever connected here) drew
                 -- ZERO names — exactly the user's "nametags don't show" report.
-                -- [Fix #89 - user] "الاسم المخفي يطلع بكلمة / يظهر رغم
-                -- الإخفاء": the staff half of this gate also matched the
-                -- LOCAL player, so after /hideadmin a hidden admin kept
-                -- seeing their OWN name above their own head - and that is
-                -- the only nametag a single client session can ever show
-                -- (the suffix that used to ride along is gone, Fix #98).
-                -- Self view is now skipped when the local player is hidden;
-                -- staff still see OTHER hidden admins (plain, no marker)
-                -- and regular players still see nothing (both unchanged).
-                if isElement(player) and entry
-                        and (not entry.hidden
-                                or (localIsStaff() and player ~= localPlayer)) then
+                -- [point 3 - user] THE NAME NEVER DISAPPEARS: the old
+                -- `entry.hidden` half of this gate is gone - a hidden admin now
+                -- draws his plain WHITE name like a normal player (for others
+                -- AND for himself); only the BADGES stay off for hidden /
+                -- off-duty staff, that gate lives in buildPlayerEntry. The
+                -- ENGINE nametag is still force-disabled above (Fix #89), so
+                -- MTA's own renderer can never leak the real name either.
+                if isElement(player) and entry then
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then
@@ -654,11 +653,13 @@ function drawNametags()
                                                         local baseY = sY
 
                                                         -- Fix #19: rank title text removed -
-                                                        -- the filled rank-color chip below is the only
-                                                        -- rank marker; the typing indicator is drawn
-                                                        -- ABOVE that row (U1 task 3: the word TYPING
-                                                        -- replaced the old ((TYPING...)) text and the
-                                                        -- green chat.png logo of chat-system)
+                                                        -- [point 1 - user] the name is the ORIGINAL plain
+                                                        -- outlined text again (the filled rank-color chip
+                                                        -- is gone), the badge row is back BELOW the name
+                                                        -- (point 4) and the typing indicator stays ABOVE
+                                                        -- the name (U1 task 3: the word TYPING replaced
+                                                        -- the old ((TYPING...)) text and the green
+                                                        -- chat.png logo of chat-system)
 
                                                         -- the name (Alt = ID in parentheses, old client describtion:show)
                                                         local nameText = entry.name
@@ -673,16 +674,16 @@ function drawNametags()
                                                         -- [Fix #98 - user] "ما ينكتب بكلمة Hidden جنب الاسم": the
                                                         -- " (Hidden)" suffix is removed for EVERYONE - a hidden admin
                                                         -- now draws as a completely plain player (plain white name,
-                                                        -- no marker). The visibility gate above is untouched:
-                                                        -- staff still SEE other hidden admins, self view stays skipped.
+                                                        -- no marker, and the name itself is always drawn - point 3).
                                                         -- [Fix #33] before this, hidden admins were only drawn for
                                                         -- staff viewers and always carried the suffix.
                                                         -- [Fix #75 - user] "كبر اسم الشخصية اكثر وكبر الشارة اكثر"
                                                         -- name: scale 1 -> 1.3 (wider centered box for long names)
-                                                        -- [U1 task 1] distance scaling: the row keeps its
-                                                        -- full size up close and shrinks gently as the
-                                                        -- target walks away, so it stays readable out to
-                                                        -- the NAMETAG_DISTANCE cut-off.
+                                                        -- [U1 task 1 - kept] distance scaling: the text and the
+                                                        -- badge icons keep their full size up close and shrink
+                                                        -- gently as the target walks away, so they stay readable
+                                                        -- out to the NAMETAG_DISTANCE cut-off; the layout itself
+                                                        -- is the original plain one.
                                                         local rowScale = 1
                                                         if distance > 8 then
                                                                 rowScale = math.max(0.75,
@@ -690,15 +691,14 @@ function drawNametags()
                                                         end
 
                                                         local font = fontDefault()
-                                                        local textScale = 1.3 * rowScale
-                                                        local chipH = 36 * rowScale
-                                                        local iconSize = 36 * rowScale
-                                                        local gap = 4 * rowScale
 
-                                                        -- chip width = measured text + padding (no fixed 300px box)
-                                                        local textW = dxGetTextWidth(nameText, textScale, font, false) or 0
-                                                        if textW < 36 then textW = 36 end
-                                                        local chipW = textW + 16 * rowScale
+                                                        -- [point 1] the name: plain outlined text at the ORIGINAL
+                                                        -- spot - a 300x28 box centred on the head with its top
+                                                        -- edge at baseY-34, NO rectangle behind it. entry.color
+                                                        -- carries the point-2 rule (rank color only for a visible
+                                                        -- ON-DUTY staff member, white for everyone else).
+                                                        outlineText(nameText, sX - 150, baseY - 34, 300, 28,
+                                                                entry.color, 1.3 * rowScale, font, "center", "top")
 
                                                         -- only icons whose texture actually loaded
                                                         local drawable = {}
@@ -708,44 +708,28 @@ function drawNametags()
                                                                 end
                                                         end
 
-                                                        local rowW = chipW
+                                                        -- [point 4] the badge row is back BELOW the name / above
+                                                        -- the head: original 26px icons in a horizontally centred
+                                                        -- row at baseY+4 (admin/developer/support come from
+                                                        -- fix160.badgerights; AFK / heart / hud:badges unchanged)
                                                         if #drawable > 0 then
-                                                                rowW = rowW + gap * 2 + #drawable * iconSize
+                                                                local iconSize = 26 * rowScale
+                                                                local gap = 4 * rowScale
+                                                                local rowW = #drawable * iconSize
                                                                         + (#drawable - 1) * gap
-                                                        end
-                                                        local rowX = sX - rowW / 2
-                                                        -- the whole row sits ABOVE the head anchor
-                                                        local rowTop = baseY - 8 - chipH
-
-                                                        -- [U1 task 1] FILLED rank-color chip behind the name:
-                                                        -- black rim + solid entry.color, 36px tall (bigger than
-                                                        -- the old 26px icons) and always solid, never outline.
-                                                        local rgb = entry.rgb
-                                                        dxDrawRectangle(rowX - 1, rowTop - 1, chipW + 2, chipH + 2,
-                                                                tocolor(0, 0, 0, 170))
-                                                        dxDrawRectangle(rowX, rowTop, chipW, chipH,
-                                                                tocolor(rgb[1], rgb[2], rgb[3], 235))
-                                                        -- white text on a dark chip, near-black on a bright one
-                                                        local lum = 0.299 * rgb[1] + 0.587 * rgb[2] + 0.114 * rgb[3]
-                                                        local nameColor = lum > 170 and tocolor(20, 20, 20, 255)
-                                                                or tocolor(255, 255, 255, 255)
-                                                        outlineText(nameText, rowX, rowTop, chipW, chipH, nameColor,
-                                                                textScale, font, "center", "center")
-
-                                                        -- [U1 task 1/2] badges NEXT to the chip, 36px side by
-                                                        -- side (admin/developer/support come from
-                                                        -- fix160.badgerights; AFK/heart/others unchanged)
-                                                        local iconX = rowX + chipW + gap * 2
-                                                        for _, icon in ipairs(drawable) do
-                                                                dxDrawImage(iconX, rowTop + (chipH - iconSize) / 2,
-                                                                        iconSize, iconSize, badgeTex[icon], 0, 0, 0,
-                                                                        tocolor(255, 255, 255, 240), true)
-                                                                iconX = iconX + iconSize + gap
+                                                                local iconX = sX - rowW / 2
+                                                                local iconY = baseY + 4
+                                                                for _, icon in ipairs(drawable) do
+                                                                        dxDrawImage(iconX, iconY, iconSize, iconSize,
+                                                                                badgeTex[icon], 0, 0, 0,
+                                                                                tocolor(255, 255, 255, 240), true)
+                                                                        iconX = iconX + iconSize + gap
+                                                                end
                                                         end
 
-                                                        -- [U1 task 3] typing indicator: the word TYPING right
-                                                        -- above the name row (chat-system's green logo no
-                                                        -- longer draws; its chat1/chat0 state sync still runs)
+                                                        -- [U1 task 3 - kept] typing indicator: the word TYPING
+                                                        -- right above the restored name box (chat-system's green
+                                                        -- logo no longer draws; its chat1/chat0 state sync still runs)
                                                         if typing[player] then
                                                                 local tnow = getTickCount()
                                                                 if tnow - WaitTyping > 4000 then
@@ -754,7 +738,7 @@ function drawNametags()
                                                                 local dots = string.rep(".",
                                                                         math.floor((tnow - WaitTyping) / 1000) % 4)
                                                                 outlineText("TYPING" .. dots, sX - 120,
-                                                                        rowTop - 18 * rowScale, 240, 16 * rowScale,
+                                                                        baseY - 34 - 18, 240, 16,
                                                                         tocolor(255, 255, 255, 255), 0.9 * rowScale,
                                                                         fontHud(), "center", "bottom")
                                                         end

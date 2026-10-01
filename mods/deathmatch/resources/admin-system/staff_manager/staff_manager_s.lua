@@ -8,6 +8,8 @@
           staff_roles            ID / LevelName / Rights(JSON) / Color(JSON)
           staff_role_members     RoleID / AccountID
           staff_rank_changelogs  Date / cType / Username / FromR / ToR / By_
+          [TEAMS] staff_teams         id / name / rights(CSV) / createdby / created
+          [TEAMS] staff_team_members  id / teamid / account_id / addedby / date
 
         Seeded ranks (user spec, in order) with the exact colors:
 
@@ -525,6 +527,17 @@ end
 -- panel open
 -- ============================================================================
 
+-- [TEAMS] the Teams block of the panel payload. staff_manager_teams_s.lua
+-- loads AFTER this file (see meta.xml), so the hook is resolved at call time
+-- and guarded: a missing/disabled teams script must never stop the panel.
+local function teamsPayload()
+        if type(fetchStaffTeamsPayload) == "function" then
+                local ok, payload = pcall(fetchStaffTeamsPayload)
+                if ok and type(payload) == "table" then return payload end
+        end
+        return nil
+end
+
 local function sendPanel(player)
         if not canPlayerAccessStaffManager(player) then
                 outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
@@ -552,7 +565,8 @@ local function sendPanel(player)
                 triggerClientEvent(player, "rpadmin:showPanel", player,
                         editMembers, editRanks, hasManageResources(player),
                         { levels = levels, admins = {}, changelogs = {},
-                          role_members = {}, staff_report = {} },
+                          role_members = {}, staff_report = {},
+                          teams = teamsPayload() },
                         panelRights(player))
                 return false
         end
@@ -602,7 +616,8 @@ local function sendPanel(player)
         triggerClientEvent(player, "rpadmin:showPanel", player,
                 editMembers, editRanks, manageResources,
                 { levels = levels, admins = admins, changelogs = changelogs,
-                  role_members = roleMembers, staff_report = fetchStaffReport() },
+                  role_members = roleMembers, staff_report = fetchStaffReport(),
+                  teams = teamsPayload() },
                 panelRights(player))
         return true
 end

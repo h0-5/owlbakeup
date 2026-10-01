@@ -6,11 +6,14 @@
           window 905x575 (rounded, dark) with a 150px sidebar menu and a
           content panel per section:
             staffs             grid: Rank / Username / Reports # / Feedback
-            roles_members      grid: Role / Username
+            roles_members      grid: Role / Username (أعضاء الصلاحيات)
+                               + [TEAMS] team list / team members / create /
+                                 rename / delete / add-remove member / rights
             changelogs         search + grid: Date/Time/Action/Username/From/To/By
             ranks              ranks grid + permissions grid + color + save
             daily_staff_report grid: Username/Login/Logout/Attendance/Jails/Bans/Reports
-          plus: add-staff window, delete-staff dialog, delete-rank dialog.
+          plus: add-staff window, delete-staff dialog, delete-rank dialog,
+          team rights editor window.
 
         Server bridge (rpadmin:* events) is restored in staff_manager_s.lua.
 
@@ -110,13 +113,19 @@ local getLevelByName = {}       -- [name] = roleID
 
 local panelData = { changelogs = {} }
 
+-- [TEAMS] state of the أعضاء الصلاحيات section (team list, selected team and
+-- the team whose rights the floating editor is changing)
+local teamData = { teams = {}, templates = {} }
+local selectedTeamID = nil
+local teamRightsTarget = nil
+
 
 --[[ sidebar sections — reconstructed menu table (the decompiler collapsed
      the original config into `var0`; ids are the ones the code builds
      content for, permissions from reloadAdminPanelMenu/showPanel logic) ]]
 local SECTIONS = {
         { id = "staffs",             en = "Staffs",        ar = "الهيئة",           icon = "staff_manager/icons/menu_shield.png", permission = false },
-        { id = "roles_members",      en = "Role Members",  ar = "أعضاء الرتب",      icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
+        { id = "roles_members",      en = "Permissions Members", ar = "أعضاء الصلاحيات", icon = "staff_manager/icons/menu_person.png", permission = "editmembers" },
         { id = "changelogs",         en = "Logs",          ar = "السجلات",  icon = "staff_manager/icons/menu_chat.png",   permission = false },
         { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
         { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
@@ -316,8 +325,12 @@ function UIKitReady()
         eui:uiDialogSetLeftButtonText(UI.dialog.delete_staff, "Yes")
         eui:uiDialogSetRightButtonText(UI.dialog.delete_staff, "No")
 
-        --[[ ----------------------- role members section ----------------------- ]]
-        UI.gridlist.roles_members = eui:uiCreateGridList(10, 60, CONTENT_W - 20, PANEL_H - 10 - 120,
+        --[[ ----------------------- role members section -----------------------
+             [TEAMS] the section renamed to أعضاء الصلاحيات (members of the
+             permissions): the rank-members grid stays, and the Teams (تيمات)
+             management sits beside it - list / create / rename / delete a
+             team, add-remove a member and open the team rights editor. ]]
+        UI.gridlist.roles_members = eui:uiCreateGridList(10, 50, 355, 250,
                 tocolor(10, 10, 10, 0), UI.container.roles_members)
         eui:uiGridListAddColumn(UI.gridlist.roles_members, "Role", 0.4)
         eui:uiGridListAddColumn(UI.gridlist.roles_members, "Username", 0.6)
@@ -325,6 +338,128 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.roles_members, "color_coded", true)
         eui:uiSetProperty(UI.gridlist.roles_members, "column_font_scale", 0.8)
         eui:uiSetProperty(UI.gridlist.roles_members, "row_height", 30)
+
+        --[ TEAMS: team list + the members of the selected team ]
+        UI.gridlist.teams = eui:uiCreateGridList(375, 50, 355, 115,
+                tocolor(6, 9, 14, 235), UI.container.roles_members)
+        eui:uiGridListAddColumn(UI.gridlist.teams, "Team", 0.52)
+        eui:uiGridListAddColumn(UI.gridlist.teams, "Rights", 0.24)
+        eui:uiGridListAddColumn(UI.gridlist.teams, "Members", 0.24)
+        eui:uiSetAlign(UI.gridlist.teams, "left", "center")
+        eui:uiSetProperty(UI.gridlist.teams, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.teams, "column_font_scale", 0.8)
+        eui:uiSetProperty(UI.gridlist.teams, "row_height", 30)
+
+        UI.gridlist.team_members = eui:uiCreateGridList(375, 175, 355, 125,
+                tocolor(6, 9, 14, 235), UI.container.roles_members)
+        eui:uiGridListAddColumn(UI.gridlist.team_members, "Member", 0.6)
+        eui:uiGridListAddColumn(UI.gridlist.team_members, "Status", 0.4)
+        eui:uiSetAlign(UI.gridlist.team_members, "left", "center")
+        eui:uiSetProperty(UI.gridlist.team_members, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.team_members, "column_font_scale", 0.8)
+        eui:uiSetProperty(UI.gridlist.team_members, "row_height", 30)
+
+        --[[ TEAMS: inputs - one name box (create + rename, like the rank_name
+             box of the ranks section), one account box (add + remove member)
+             and the template list the Create button reads ]]
+        UI.label.team_name_cap = eui:uiCreateLabel(10, 312, 88, 24,
+                { en = "Team Name", ar = "اسم التيم" }, tocolor(200, 200, 200, 255),
+                "left", "center", UI.container.roles_members)
+        UI.edit.team_name = eui:uiCreateEdit(100, 310, 265, 25, "",
+                { en = "Team name", ar = "اسم التيم" }, tocolor(255, 0, 0, 255),
+                UI.container.roles_members)
+        UI.label.team_account_cap = eui:uiCreateLabel(375, 312, 68, 24,
+                { en = "Account", ar = "الحساب" }, tocolor(200, 200, 200, 255),
+                "left", "center", UI.container.roles_members)
+        UI.edit.team_member_account = eui:uiCreateEdit(445, 310, 285, 25, "",
+                { en = "Account / player nick", ar = "الحساب / اسم اللاعب" },
+                tocolor(255, 0, 0, 255), UI.container.roles_members)
+
+        UI.label.team_template_cap = eui:uiCreateLabel(10, 347, 88, 24,
+                { en = "Template", ar = "القالب" }, tocolor(200, 200, 200, 255),
+                "left", "center", UI.container.roles_members)
+        UI.gridlist.team_templates = eui:uiCreateGridList(100, 345, 265, 100,
+                tocolor(6, 9, 14, 235), UI.container.roles_members)
+        eui:uiGridListAddColumn(UI.gridlist.team_templates, "Bundle Template", 1)
+        eui:uiSetAlign(UI.gridlist.team_templates, "left", "center")
+        eui:uiSetProperty(UI.gridlist.team_templates, "row_height", 25)
+        eui:uiSetProperty(UI.gridlist.team_templates, "column_font_scale", 0.8)
+
+        UI.label.team_info = eui:uiCreateLabel(375, 347, 355, 24,
+                { en = "Select a team to manage it.", ar = "اختر تيماً لإدارته." },
+                tocolor(200, 200, 200, 255), "left", "center",
+                UI.container.roles_members)
+        UI.label.team_info2 = eui:uiCreateLabel(375, 375, 355, 24, "",
+                tocolor(150, 150, 150, 255), "left", "center",
+                UI.container.roles_members)
+
+        --[ TEAMS: action row (same bottom-button row as every section) ]
+        UI.button.team_create = eui:uiCreateButton(10, PANEL_H - 10 - 45, 115, 35,
+                { en = "Create", ar = "إنشاء" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_create, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.team_create, "HoverGlow", true)
+        UI.button.team_rename = eui:uiCreateButton(130, PANEL_H - 10 - 45, 115, 35,
+                { en = "Rename", ar = "تسمية" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_rename, "TextColor", tocolor(255, 255, 255, 255))
+        UI.button.team_delete = eui:uiCreateButton(250, PANEL_H - 10 - 45, 115, 35,
+                { en = "Delete", ar = "حذف" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_delete, "TextColor", tocolor(255, 0, 0))
+        UI.button.team_add = eui:uiCreateButton(370, PANEL_H - 10 - 45, 115, 35,
+                { en = "Add Member", ar = "إضافة عضو" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_add, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.team_add, "HoverGlow", true)
+        UI.button.team_remove = eui:uiCreateButton(490, PANEL_H - 10 - 45, 115, 35,
+                { en = "Remove", ar = "إزالة عضو" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_remove, "TextColor", tocolor(255, 0, 0))
+        UI.button.team_rights = eui:uiCreateButton(610, PANEL_H - 10 - 45, 115, 35,
+                { en = "Rights", ar = "الصلاحيات" }, tocolor(6, 9, 14, 255),
+                UI.container.roles_members)
+        eui:uiSetProperty(UI.button.team_rights, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.team_rights, "HoverGlow", true)
+
+        --[[ ---------------- team rights editor (floating window) ------------
+             Same pattern as the add-staff window: a grid of every AllRights
+             entry toggled green/red, plus Select All - the save sends the
+             CHECKED set, exactly like the ranks section does. ]]
+        UI.window.team_rights = eui:uiCreateRectangle(false, false, 460, 460,
+                tocolor(6, 9, 14, 235), true, true, true, true)
+        eui:uiSetVisible(UI.window.team_rights, false)
+        UI.label.team_rights_title = eui:uiCreateLabel(10, 12, 440, 25,
+                { en = "Team Rights", ar = "صلاحيات التيم" }, tocolor(255, 255, 255, 255),
+                "left", "center", UI.window.team_rights)
+        eui:uiSetFont(UI.label.team_rights_title, "default-large")
+        UI.label.team_rights_name = eui:uiCreateLabel(10, 40, 440, 20, "Team",
+                tocolor(255, 0, 0, 255), "left", "center", UI.window.team_rights)
+        UI.gridlist.team_rights = eui:uiCreateGridList(10, 65, 440, 320,
+                tocolor(6, 9, 14, 235), UI.window.team_rights)
+        eui:uiGridListAddColumn(UI.gridlist.team_rights, "Permission", 1)
+        eui:uiSetAlign(UI.gridlist.team_rights, "left", "center")
+        eui:uiSetProperty(UI.gridlist.team_rights, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.team_rights, "row_height", 25)
+        eui:uiSetProperty(UI.gridlist.team_rights, "column_font_scale", 0.8)
+        for _, right in ipairs(AllRights) do
+                local row = eui:uiGridListAddRow(UI.gridlist.team_rights)
+                eui:uiGridListSetItemText(UI.gridlist.team_rights, row, 1, tostring(right))
+                eui:uiGridListSetItemData(UI.gridlist.team_rights, row, 1, false)
+                eui:uiGridListSetItemColor(UI.gridlist.team_rights, row, 1, tocolor(255, 0, 0))
+        end
+        UI.checkbox.team_rights_select_all = eui:uiCreateCheckBox(10, 390, 200, 25,
+                "Select All", false, tocolor(255, 0, 0), UI.window.team_rights)
+        eui:uiSetFontSize(UI.checkbox.team_rights_select_all, 0.8)
+        UI.button.team_rights_save = eui:uiCreateButton(10, 420, 220, 35,
+                { en = "Save Rights", ar = "حفظ الصلاحيات" }, tocolor(3, 6, 11),
+                UI.window.team_rights)
+        eui:uiSetProperty(UI.button.team_rights_save, "TextColor", tocolor(255, 255, 255, 255))
+        eui:uiSetProperty(UI.button.team_rights_save, "HoverGlow", true)
+        UI.button.team_rights_cancel = eui:uiCreateButton(235, 420, 215, 35,
+                { en = "Cancel", ar = "إلغاء" }, tocolor(3, 6, 11),
+                UI.window.team_rights)
+        eui:uiSetProperty(UI.button.team_rights_cancel, "TextColor", tocolor(255, 255, 255, 255))
 
         --[[ ----------------------- changelogs section ----------------------- ]]
         UI.edit.changelogs_search = eui:uiCreateEdit(CONTENT_W - 310, 15, 300, 25, "",
@@ -521,7 +656,19 @@ function UIKitReady()
         regHit(UI.gridlist.staffs, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.staffs)
         regHit(UI.button.delete_admin, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.staffs)
         regHit(UI.button.add_admin, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.staffs)
-        regHit(UI.gridlist.roles_members, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.roles_members)
+        -- [TEAMS] أعضاء الصلاحيات: rank-members grid + the team management row
+        regHit(UI.gridlist.roles_members, "grid", 10, 50, 355, 250, UI.container.roles_members)
+        regHit(UI.gridlist.teams, "grid", 375, 50, 355, 115, UI.container.roles_members)
+        regHit(UI.gridlist.team_members, "grid", 375, 175, 355, 125, UI.container.roles_members)
+        regHit(UI.edit.team_name, "edit", 100, 310, 265, 25, UI.container.roles_members)
+        regHit(UI.edit.team_member_account, "edit", 445, 310, 285, 25, UI.container.roles_members)
+        regHit(UI.gridlist.team_templates, "grid", 100, 345, 265, 100, UI.container.roles_members)
+        regHit(UI.button.team_create, "button", 10, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
+        regHit(UI.button.team_rename, "button", 130, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
+        regHit(UI.button.team_delete, "button", 250, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
+        regHit(UI.button.team_add, "button", 370, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
+        regHit(UI.button.team_remove, "button", 490, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
+        regHit(UI.button.team_rights, "button", 610, PANEL_H - 10 - 45, 115, 35, UI.container.roles_members)
         regHit(UI.edit.changelogs_search, "edit", CONTENT_W - 310, 15, 300, 25, UI.container.changelogs)
         regHit(UI.gridlist.changelogs, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 60 - 10, UI.container.changelogs)
         regHit(UI.gridlist.ranks, "grid", 10, 60, ranksW, PANEL_H - 10 - 120, UI.container.ranks)
@@ -560,6 +707,15 @@ function UIKitReady()
         regHit(UI.button.res_stop2, "button", 115, 125, 100, 35, UI.window.res_editor, rwX, rwY)
         regHit(UI.button.res_restart2, "button", 220, 125, 100, 35, UI.window.res_editor, rwX, rwY)
         regHit(UI.button.res_close_editor, "button", 325, 125, 85, 35, UI.window.res_editor, rwX, rwY)
+        -- [TEAMS] team rights editor (floating, same pattern as add-staff)
+        local twX = ((refSx - 460) / 2) * SCALE_X + (460 * SCALE_X - 460 * SCALE_Y) / 2
+        local twY = ((refSy - 460) / 2) * SCALE_Y
+        PANEL_HIT[UI.window.team_rights] = { x = twX, y = twY, w = 460 * SCALE_Y,
+                h = 460 * SCALE_Y, kind = "window", section = false, order = 0 }
+        regHit(UI.gridlist.team_rights, "grid", 10, 65, 440, 320, UI.window.team_rights, twX, twY)
+        regHit(UI.checkbox.team_rights_select_all, "checkbox", 10, 390, 200, 25, UI.window.team_rights, twX, twY)
+        regHit(UI.button.team_rights_save, "button", 10, 420, 220, 35, UI.window.team_rights, twX, twY)
+        regHit(UI.button.team_rights_cancel, "button", 235, 420, 215, 35, UI.window.team_rights, twX, twY)
         -- confirm dialogs float above everything; their buttons handle
         -- themselves inside the dialog draw (independent click detection)
         local dlgX = ((refSx - 300) / 2) * SCALE_X + (300 * SCALE_X - 300 * SCALE_Y) / 2
@@ -612,6 +768,17 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         -- [Fix #160] A5: Resources/Mods SECTION right + per-action button rights
         canManageResources = hasResources and true or false
         panelRights = (type(rights) == "table") and rights or {}
+        -- [TEAMS] every team mutation button hides without the SECTION right
+        -- (admin.manager.editmembers - the server re-checks each event)
+        eui:uiSetVisible(UI.button.team_create, canEditMembers)
+        eui:uiSetVisible(UI.button.team_rename, canEditMembers)
+        eui:uiSetVisible(UI.button.team_delete, canEditMembers)
+        eui:uiSetVisible(UI.button.team_add, canEditMembers)
+        eui:uiSetVisible(UI.button.team_remove, canEditMembers)
+        eui:uiSetVisible(UI.button.team_rights, canEditMembers)
+        if not canEditMembers then
+                eui:uiSetVisible(UI.window.team_rights, false)
+        end
         eui:uiSetVisible(UI.button.res_start, canManageResources)
         eui:uiSetVisible(UI.button.res_stop, canManageResources)
         eui:uiSetVisible(UI.button.res_restart, canManageResources)
@@ -624,12 +791,17 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         if eui:uiGetVisible(UI.window.admin_panel) and type(data) == "table" then
                 refreshPanel(data.levels, data.admins, data.changelogs, {},
                         data.role_members, data.staff_report)
+                -- [TEAMS] team list + bundle templates for أعضاء الصلاحيات
+                if type(data.teams) == "table" then
+                        refreshTeams(data.teams)
+                end
                 -- [Fix #160] A5: pull the compact resource list for the section
                 if canManageResources then
                         triggerServerEvent("rpadmin:requestResources", localPlayer)
                 end
         elseif not eui:uiGetVisible(UI.window.admin_panel) then
                 eui:uiSetVisible(UI.window.res_editor, false)
+                eui:uiSetVisible(UI.window.team_rights, false)
         end
 end)
 
@@ -735,6 +907,15 @@ local function sendResourceAction(action, resourceName)
         triggerServerEvent("rpadmin:resourceAction", localPlayer, action, resourceName)
 end
 
+-- [TEAMS] id + name of the team row under the selection
+local function selectedTeamRow()
+        if not (UI.gridlist.teams and isElement(UI.gridlist.teams)) then return nil, nil end
+        local sel = eui:uiGridListGetSelectedItem(UI.gridlist.teams)
+        if sel == -1 then return nil, nil end
+        return eui:uiGridListGetItemData(UI.gridlist.teams, sel, 1),
+                eui:uiGridListGetItemText(UI.gridlist.teams, sel, 1)
+end
+
 local function dispatchPanelAction(el)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then return end
         if not el or not isElement(el) then return end
@@ -773,6 +954,18 @@ local function dispatchPanelAction(el)
         -- window needs admin.manager.editmembers exactly like the two above
         if not canEditMembers and el == UI.button.add_staff then
                 outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+                return
+        end
+        -- [TEAMS] every team mutation button (and the rights editor) is gated
+        -- by the same SECTION right - the server re-checks it per event
+        if not canEditMembers and (el == UI.button.team_create
+                or el == UI.button.team_rename or el == UI.button.team_delete
+                or el == UI.button.team_add or el == UI.button.team_remove
+                or el == UI.button.team_rights or el == UI.button.team_rights_save
+                or el == UI.button.team_rights_cancel
+                or el == UI.gridlist.team_rights
+                or el == UI.checkbox.team_rights_select_all) then
+                outputChatBox("You don't have permission to edit staff teams.", 255, 80, 80)
                 return
         end
 
@@ -989,11 +1182,122 @@ local function dispatchPanelAction(el)
         elseif el == UI.button.res_close_editor then
                 eui:uiSetVisible(UI.window.res_editor, false)
 
+        -- [TEAMS] أعضاء الصلاحيات section ------------------------------------
+        elseif el == UI.gridlist.teams then
+                -- selecting a team repaints its members + the info line
+                local teamID = selectedTeamRow()
+                if teamID then
+                        selectTeam(teamID)
+                end
+
+        elseif el == UI.button.team_create then
+                local name = eui:uiGetText(UI.edit.team_name) or ""
+                local tplID = nil
+                local tplSel = eui:uiGridListGetSelectedItem(UI.gridlist.team_templates)
+                if tplSel ~= -1 then
+                        tplID = eui:uiGridListGetItemData(UI.gridlist.team_templates, tplSel, 1)
+                end
+                if name == "" then
+                        outputChatBox("Type the team name first.", 255, 80, 80)
+                        return
+                end
+                if not tplID then
+                        outputChatBox("Select a bundle template from the list first.", 255, 80, 80)
+                        return
+                end
+                triggerServerEvent("rpadmin:teamCreate", localPlayer, name, tplID)
+                eui:uiSetText(UI.edit.team_name, "")
+
+        elseif el == UI.button.team_rename then
+                local teamID = selectedTeamRow()
+                if not teamID then
+                        outputChatBox("Select a team from the list first.", 255, 80, 80)
+                        return
+                end
+                local newName = eui:uiGetText(UI.edit.team_name) or ""
+                if newName == "" then
+                        outputChatBox("Type the new team name first.", 255, 80, 80)
+                        return
+                end
+                triggerServerEvent("rpadmin:teamRename", localPlayer, teamID, newName)
+                eui:uiSetText(UI.edit.team_name, "")
+
+        elseif el == UI.button.team_delete then
+                local teamID = selectedTeamRow()
+                if not teamID then
+                        outputChatBox("Select a team from the list first.", 255, 80, 80)
+                        return
+                end
+                triggerServerEvent("rpadmin:teamDelete", localPlayer, teamID)
+
+        elseif el == UI.button.team_add then
+                local teamID = selectedTeamRow()
+                if not teamID then
+                        outputChatBox("Select a team from the list first.", 255, 80, 80)
+                        return
+                end
+                local query = eui:uiGetText(UI.edit.team_member_account) or ""
+                if query == "" then
+                        outputChatBox("Type an account name / player nick first.", 255, 80, 80)
+                        return
+                end
+                triggerServerEvent("rpadmin:teamAddMember", localPlayer, teamID, query)
+
+        elseif el == UI.button.team_remove then
+                local teamID = selectedTeamRow()
+                if not teamID then
+                        outputChatBox("Select a team from the list first.", 255, 80, 80)
+                        return
+                end
+                local msel = eui:uiGridListGetSelectedItem(UI.gridlist.team_members)
+                if msel == -1 then
+                        outputChatBox("Select a member from the team members list first.",
+                                255, 80, 80)
+                        return
+                end
+                local account = eui:uiGridListGetItemData(UI.gridlist.team_members, msel, 1)
+                if type(account) ~= "string" or account == "" then
+                        account = eui:uiGridListGetItemText(UI.gridlist.team_members, msel, 1)
+                end
+                triggerServerEvent("rpadmin:teamRemoveMember", localPlayer, teamID, account)
+
+        elseif el == UI.button.team_rights then
+                openTeamRightsWindow()
+
+        elseif el == UI.gridlist.team_rights then
+                toggleTeamRightsRow(eui:uiGridListGetSelectedItem(UI.gridlist.team_rights))
+
+        elseif el == UI.checkbox.team_rights_select_all then
+                local state = eui:uiCheckBoxGetSelected(el)
+                for row = 0, eui:uiGridListGetRowCount(UI.gridlist.team_rights) - 1 do
+                        setRightsRow(row, state)
+                end
+
+        elseif el == UI.button.team_rights_save then
+                if not teamRightsTarget then
+                        eui:uiSetVisible(UI.window.team_rights, false)
+                        return
+                end
+                local rights = {}
+                for row = 0, eui:uiGridListGetRowCount(UI.gridlist.team_rights) - 1 do
+                        if eui:uiGridListGetItemData(UI.gridlist.team_rights, row, 1) then
+                                rights[#rights + 1] =
+                                        eui:uiGridListGetItemText(UI.gridlist.team_rights, row, 1)
+                        end
+                end
+                triggerServerEvent("rpadmin:teamSetRights", localPlayer, teamRightsTarget, rights)
+                eui:uiSetVisible(UI.window.team_rights, false)
+
+        elseif el == UI.button.team_rights_cancel then
+                eui:uiSetVisible(UI.window.team_rights, false)
+
         elseif el == UI.button.close_panel then
                 eui:uiSetVisible(UI.window.admin_panel, false)
                 eui:uiSetVisible(UI.window.add_staff, false)
                 -- [Fix #160] A5: the floating editor dies with the panel
                 eui:uiSetVisible(UI.window.res_editor, false)
+                -- [TEAMS] so does the team rights editor
+                eui:uiSetVisible(UI.window.team_rights, false)
                 showCursor(false)
         end
 end
@@ -1146,10 +1450,12 @@ local function panelHitTest(ax, ay)
                         end
                 end
         end
-        -- 2) the floating windows (add-staff + [Fix #160] resource editor)
+        -- 2) the floating windows (add-staff, [Fix #160] resource editor and
+        --    the [TEAMS] team rights editor)
         local aw = UI.window.add_staff
         local fw = UI.window.res_editor
-        for _, fl in ipairs({ aw, fw }) do
+        local tw = UI.window.team_rights
+        for _, fl in ipairs({ aw, fw, tw }) do
                 if fl and isElement(fl) then
                         local okV, wv = pcall(eui.uiGetVisible, eui, fl)
                         if okV and wv then
@@ -1176,7 +1482,8 @@ local function panelHitTest(ax, ay)
         if not (okV and pv) then return nil end
         local bEl, bInfo, bOrder
         for el, info in pairs(PANEL_HIT) do
-                if info.kind ~= "window" and info.section ~= aw and info.section ~= fw then
+                if info.kind ~= "window" and info.section ~= aw and info.section ~= fw
+                        and info.section ~= tw then
                         local secOK = (info.section == nil or info.section == false)
                         if not secOK and isElement(info.section) then
                                 local ok2, sv = pcall(eui.uiGetVisible, eui, info.section)
@@ -1326,6 +1633,159 @@ local function unwrapRightsC(t)
         end
         return t
 end
+
+--[[ ================= [TEAMS] أعضاء الصلاحيات data ================= ]]
+-- Globals on purpose: the dispatcher (dispatchPanelAction) and the
+-- rpadmin:showPanel handler are built ABOVE this point in the file and call
+-- them at runtime, exactly like refreshPanel below.
+
+local function findTeamByID(id)
+        id = tonumber(id)
+        if not id then return nil end
+        for _, team in ipairs(teamData.teams) do
+                if tonumber(team.id) == id then return team end
+        end
+        return nil
+end
+
+local function fillTeamMembersGrid(team)
+        if not (UI.gridlist.team_members and isElement(UI.gridlist.team_members)) then return end
+        eui:uiGridListClear(UI.gridlist.team_members)
+        if not team then return end
+        for _, member in ipairs(team.members or {}) do
+                local row = eui:uiGridListAddRow(UI.gridlist.team_members)
+                local account = tostring(member.Account or "?")
+                eui:uiGridListSetItemText(UI.gridlist.team_members, row, 1, account)
+                -- clean account name as the cell data (same Fix #51 rule the
+                -- staffs grid uses): the Remove button never parses cell text
+                eui:uiGridListSetItemData(UI.gridlist.team_members, row, 1, account)
+                local online = member.Online and true or false
+                eui:uiGridListSetItemText(UI.gridlist.team_members, row, 2,
+                        online and "#00FF00● online" or "#808080○ offline")
+                eui:uiGridListSetItemColor(UI.gridlist.team_members, row, 2,
+                        online and tocolor(0, 255, 0) or tocolor(160, 160, 160))
+        end
+end
+
+local function updateTeamInfoLabels()
+        if not (UI.label.team_info and isElement(UI.label.team_info)) then return end
+        local team = findTeamByID(selectedTeamID)
+        if not team then
+                eui:uiSetText(UI.label.team_info,
+                        { en = "Select a team to manage it.", ar = "اختر تيماً لإدارته." })
+                if UI.label.team_info2 and isElement(UI.label.team_info2) then
+                        eui:uiSetText(UI.label.team_info2, "")
+                end
+                return
+        end
+        local rights = team.rights or {}
+        eui:uiSetText(UI.label.team_info, tostring(team.name) .. "  |  rights: "
+                .. tostring(team.rightsCount or #rights) .. "  |  members: "
+                .. tostring(team.memberCount or #(team.members or {})))
+        if UI.label.team_info2 and isElement(UI.label.team_info2) then
+                local preview = {}
+                for i, right in ipairs(rights) do
+                        if i > 3 then break end
+                        preview[#preview + 1] = tostring(right)
+                end
+                local text = table.concat(preview, ", ")
+                if #rights > 3 then text = text .. " ..." end
+                eui:uiSetText(UI.label.team_info2, text)
+        end
+end
+
+function selectTeam(id)
+        selectedTeamID = tonumber(id)
+        fillTeamMembersGrid(findTeamByID(selectedTeamID))
+        updateTeamInfoLabels()
+end
+
+function refreshTeams(payload)
+        if type(payload) ~= "table" then return end
+        teamData.teams = (type(payload.teams) == "table") and payload.teams or {}
+        teamData.templates = (type(payload.templates) == "table") and payload.templates or {}
+
+        if UI.gridlist.team_templates and isElement(UI.gridlist.team_templates) then
+                eui:uiGridListClear(UI.gridlist.team_templates)
+                for _, tpl in ipairs(teamData.templates) do
+                        local row = eui:uiGridListAddRow(UI.gridlist.team_templates)
+                        eui:uiGridListSetItemText(UI.gridlist.team_templates, row, 1,
+                                tostring(tpl.name))
+                        eui:uiGridListSetItemData(UI.gridlist.team_templates, row, 1,
+                                tostring(tpl.id))
+                end
+        end
+
+        if not (UI.gridlist.teams and isElement(UI.gridlist.teams)) then return end
+        local keep = selectedTeamID
+        eui:uiGridListClear(UI.gridlist.teams)
+        local restored = false
+        for _, team in ipairs(teamData.teams) do
+                local row = eui:uiGridListAddRow(UI.gridlist.teams)
+                eui:uiGridListSetItemText(UI.gridlist.teams, row, 1, tostring(team.name))
+                eui:uiGridListSetItemData(UI.gridlist.teams, row, 1, team.id)
+                eui:uiGridListSetItemText(UI.gridlist.teams, row, 2,
+                        tostring(team.rightsCount or #(team.rights or {})))
+                eui:uiGridListSetItemText(UI.gridlist.teams, row, 3,
+                        tostring(team.memberCount or #(team.members or {})))
+                if keep and tonumber(team.id) == tonumber(keep) then
+                        pcall(eui.uiGridListSetSelectedItem, eui, UI.gridlist.teams, row)
+                        restored = true
+                end
+        end
+        if restored then
+                selectTeam(keep)
+        else
+                selectTeam(nil)
+        end
+end
+
+-- one row of the floating team-rights editor (green = granted)
+function setRightsRow(row, on)
+        if not (UI.gridlist.team_rights and isElement(UI.gridlist.team_rights)) then return end
+        if not row or row < 0 then return end
+        eui:uiGridListSetItemData(UI.gridlist.team_rights, row, 1, on and true or false)
+        eui:uiGridListSetItemColor(UI.gridlist.team_rights, row, 1,
+                on and tocolor(0, 255, 0) or tocolor(255, 0, 0))
+end
+
+function toggleTeamRightsRow(sel)
+        if not sel or sel < 0 then return end
+        local state = not eui:uiGridListGetItemData(UI.gridlist.team_rights, sel, 1)
+        setRightsRow(sel, state)
+end
+
+function openTeamRightsWindow()
+        local teamID, teamName = selectedTeamRow()
+        local team = findTeamByID(teamID)
+        if not team then
+                outputChatBox("Select a team from the list first.", 255, 80, 80)
+                return
+        end
+        teamRightsTarget = tonumber(team.id)
+        if UI.label.team_rights_name and isElement(UI.label.team_rights_name) then
+                eui:uiSetText(UI.label.team_rights_name,
+                        tostring(team.name) .. " (#" .. tostring(team.id) .. ")")
+        end
+        local granted = {}
+        for _, right in ipairs(team.rights or {}) do
+                granted[tostring(right)] = true
+        end
+        for row = 0, eui:uiGridListGetRowCount(UI.gridlist.team_rights) - 1 do
+                local right = eui:uiGridListGetItemText(UI.gridlist.team_rights, row, 1)
+                setRightsRow(row, granted[right] == true)
+        end
+        eui:uiCheckBoxSetSelected(UI.checkbox.team_rights_select_all, false)
+        eui:uiSetVisible(UI.window.team_rights, true)
+        eui:uiBringToFront(UI.window.team_rights)
+end
+
+-- pushed by the server: panel open (rpadmin:showPanel data.teams) and after
+-- every team mutation (rpadmin:sendTeams, so all panel viewers stay fresh)
+addEvent("rpadmin:sendTeams", true)
+addEventHandler("rpadmin:sendTeams", root, function(payload)
+        refreshTeams(payload)
+end)
 
 function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffReport)
         panelData.changelogs = changelogs or {}

@@ -503,6 +503,9 @@
 
 
         <script src="staff_manager/staff_manager_bridge_s.lua" type="server"/>
+        <!-- [TEAMS] permission bundles (تيمات): storage + panel mutations; loads
+             AFTER the bridge (staffTeamsInvalidateRights / playerHasRight) -->
+        <script src="staff_manager/staff_manager_teams_s.lua" type="server"/>
         <script src="staff_manager/staff_manager_c.lua" type="client" cache="false"/>
 
 

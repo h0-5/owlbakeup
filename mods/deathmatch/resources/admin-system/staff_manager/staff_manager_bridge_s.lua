@@ -337,13 +337,18 @@ function clearPlayerRank(player)
                     setElementData(player, key, nil, true)
                 end
         end
-        -- [Fix #160 / U1] no rank in hand -> no badge rights. The explicit ""
-        -- (not nil) tells the clients "the rights were pushed and there are
-        -- none"; nil is reserved for "admin-system has not pushed yet", which
-        -- keeps the old duty badge behaviour on a live, not-yet-reloaded
-        -- server. Covers logout, a deleted rank and a player with no rank.
-        if getElementData(player, "fix160.badgerights") ~= "" then
-                setElementData(player, "fix160.badgerights", "", true)
+        -- [Fix #160 / U1] no rank in hand -> badge rights come from the TEAMS
+        -- union only (staff_manager_teams_s.lua), which is usually none: that
+        -- writes the exact "" this always wrote (not nil, so the clients know
+        -- "pushed, no rights" and the old duty badge behaviour on a live,
+        -- not-yet-reloaded server stays untouched). Covers logout, a deleted
+        -- rank and a player with no rank. Teamless players see no change.
+        local badge = ""
+        if type(teamBadgeRightsValue) == "function" then
+                badge = teamBadgeRightsValue(player) or ""
+        end
+        if getElementData(player, "fix160.badgerights") ~= badge then
+                setElementData(player, "fix160.badgerights", badge, true)
         end
 end
 
@@ -409,6 +414,81 @@ local function isKnownRight(right)
         return knownRightsSet[right] == true
 end
 
+-- ============================================================================
+-- [TEAMS] team-granted rights (permission bundles on top of ranks)
+-- ============================================================================
+-- A player's TEAM rights are the union of the rights of every row in
+-- staff_teams he has a staff_team_members row for (member key = account id,
+-- the same key staff_role_members uses). Cached per account and invalidated:
+--   * by staffTeamsInvalidateRights() after EVERY team mutation
+--     (staff_manager_teams_s.lua: create / rename / delete / set rights /
+--      add member / remove member),
+--   * on account:id changes (login/logout - the account the cache is keyed
+--     by is going away or just arrived),
+--   * implicitly on resource start (the table starts empty).
+local teamRightsByAccount = {}   -- [accountID] = { [right] = true }
+
+local function loadTeamRights(accountID)
+        local set = {}
+        local q = mysql:query("SELECT t.rights FROM staff_teams t"
+                .. " JOIN staff_team_members m ON m.teamid = t.id"
+                .. " WHERE m.account_id = " .. tonumber(accountID))
+        if q then
+                while true do
+                        local row = mysql:fetch_assoc(q)
+                        if not row then break end
+                        for token in tostring(row.rights or ""):gmatch("[^,]+") do
+                                local right = token:match("^%s*(.-)%s*$")
+                                if right ~= "" then set[right] = true end
+                        end
+                end
+                mysql:free_result(q)
+        end
+        return set
+end
+
+local function playerTeamRightsSet(player)
+        if not isElement(player) or getElementType(player) ~= "player" then return nil end
+        local accountID = tonumber(getElementData(player, "account:id"))
+        if not accountID then return nil end
+        local set = teamRightsByAccount[accountID]
+        if set == nil then
+                set = loadTeamRights(accountID)
+                teamRightsByAccount[accountID] = set
+        end
+        return set
+end
+
+local function playerTeamGrantsRight(player, right)
+        local set = playerTeamRightsSet(player)
+        return set ~= nil and set[right] == true
+end
+
+-- global hook: staff_manager_teams_s.lua calls this after every team
+-- mutation (no argument = drop every cached account; a number = only that
+-- account, when the change is known to be scoped to one member)
+function staffTeamsInvalidateRights(accountID)
+        if accountID == nil then
+                teamRightsByAccount = {}
+        else
+                teamRightsByAccount[tonumber(accountID)] = nil
+        end
+end
+
+-- team-only badge rights string (Fix #160 badges WITHOUT the rank path).
+-- Used for players with no Vortex rank so their badge behaviour stays
+-- exactly what Fix #160 defined (no legacy-ladder grant), while a team that
+-- DOES hold admin.badge still shows its badge.
+function teamBadgeRightsValue(player)
+        local held = {}
+        for _, right in ipairs(FIX160_BADGE_RIGHTS) do
+                if playerTeamGrantsRight(player, right) then
+                        held[#held + 1] = right
+                end
+        end
+        return table.concat(held, ",")
+end
+
 -- exact right check against the rank's stored Rights JSON
 function playerHasRight(player, right)
         if not right then return false end
@@ -427,7 +507,11 @@ function playerHasRight(player, right)
                                 parsed = parsed[1]
                         end
                         if type(parsed) == "table" then
-                                return parsed[right] == true
+                                if parsed[right] == true then return true end
+                                -- [TEAMS] the RANK missed it -> try the teams
+                                -- (a player has a right if his rank OR any of
+                                -- his teams grants it - union / OR)
+                                return playerTeamGrantsRight(player, right)
                         end
                 end
         end
@@ -436,14 +520,16 @@ function playerHasRight(player, right)
         if not record then
                 -- legacy fallback: only the old top ladder gets the flat grant
                 local level = tonumber(getElementData(player, "admin_level")) or 0
-                return level >= 4
+                if level >= 4 then return true end
+                return playerTeamGrantsRight(player, right)
         end
         if record.rights[right] == true then return true end
         if record.rights[right] == nil and not isKnownRight(right)
                 and (tonumber(record.index) or 0) >= 11 then
                 return true
         end
-        return false
+        -- [TEAMS] the stored rank set missed it -> the teams decide (union)
+        return playerTeamGrantsRight(player, right)
 end
 
 -- at-rank-or-above check (the gate the integration file uses)
@@ -580,7 +666,16 @@ end)
 -- system is still not active" symptom). Keyed by ACCOUNT id only: character
 -- ids never enter the rank lookup.
 local pendingRankTimers = {}
-addEventHandler("onElementDataChange", root, function(key)
+addEventHandler("onElementDataChange", root, function(key, oldValue)
+        -- [TEAMS] the team-rights cache is keyed by ACCOUNT id: drop the
+        -- account that is being left (logout) before anything else, so a
+        -- later login of the same account can never read a stale bundle
+        if key == "account:id" then
+                local oldAccount = tonumber(oldValue)
+                if oldAccount and type(staffTeamsInvalidateRights) == "function" then
+                        staffTeamsInvalidateRights(oldAccount)
+                end
+        end
         if key ~= "account:id" then return end
         if not isElement(source) or getElementType(source) ~= "player" then return end
         local acc = tonumber(getElementData(source, "account:id"))

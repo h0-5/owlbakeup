@@ -56,7 +56,26 @@ function uiCreateRangeSlider(arg0, arg1, arg2, arg3, arg4, arg5, arg6, arg7, arg
   return (element)
 end
 function uiRangeSliderSetValue(arg0, arg1)
-  assert(isUIElement(arg0, "rangeslider"), "Bad argument @ 'uiRangeSliderGetValue' [Expected ui-rangeslider at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  assert(isUIElement(arg0, "rangeslider"), "Bad argument @ 'uiRangeSliderSetValue' [Expected ui-rangeslider at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")
+  -- [Fix #63] the decompiled body of this EXPORTED setter was empty, so no
+  -- resource could ever pre-load a slider - the tuning panel's handling window
+  -- opens with the vehicle's live values and stayed at 0.  Mirror exactly what
+  -- the onClientUIScroll handler computes so a set value behaves like a drag.
+  arg1 = tonumber(arg1)
+  if not arg1 then
+    return false
+  end
+  local min = UI.DB[arg0].properties.min_value.value
+  local max = UI.DB[arg0].properties.max_value.value
+  local step = UI.DB[arg0].properties.step_size.value
+  arg1 = math.min(math.max(arg1, min), max)
+  if step and step > 0 then
+    arg1 = min + math.floor((arg1 - min) / step + 0.5) * step
+  end
+  UI.DB[arg0].data.value = arg1
+  UI.DB[arg0].data.scroll = getPositionByValue(arg1, min, max, step)
+  UI.DB[arg0].data.scrollX = UI.DB[arg0].dimensions.x + UI.DB[arg0].data.scroll * ((UI.DB[arg0].dimensions.width - UI.DB[arg0].properties.thumb_size.value) / 100)
+  return true
 end
 function uiRangeSliderGetValue(arg0)
   assert(isUIElement(arg0, "rangeslider"), "Bad argument @ 'uiRangeSliderGetValue' [Expected ui-rangeslider at argument 1, got " .. (isElement(arg0) and getElementType(arg0) or type(arg0)) .. "]")

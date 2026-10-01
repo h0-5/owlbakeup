@@ -385,10 +385,16 @@ function hasCommandRight(player, commandName)
         if not right then return true end
         -- a logged-in Vortex rank is decided SOLELY by its stored rights
         if getElementData(player, "rank:index") then
-                if type(playerHasRight) == "function" then
-                        return playerHasRight(player, right)
+                if type(playerHasRight) ~= "function" then return false end
+                -- [Fix #160] a gate may list SEVERAL rights (shared commands
+                -- like /takemoney): ANY of them grants access.
+                if type(right) == "table" then
+                        for _, r in ipairs(right) do
+                                if playerHasRight(player, r) then return true end
+                        end
+                        return false
                 end
-                return false
+                return playerHasRight(player, right)
         end
         -- no Vortex rank: the legacy ladder decides (unchanged behaviour)
         return true
@@ -396,7 +402,11 @@ end
 
 -- table lookup for the panel / debugging: which right gates this command
 function getCommandRight(commandName)
-        return COMMAND_RIGHTS[tostring(commandName):lower()] or false
+        local right = COMMAND_RIGHTS[tostring(commandName):lower()]
+        if type(right) == "table" then
+                return table.concat(right, " | ")
+        end
+        return right or false
 end
 
 local function countMap(t)
@@ -453,7 +463,7 @@ local function staffVerCommand(player, _, cmd)
                                 player, 255, 170, 60)
                         return
                 end
-                outputChatBox("/" .. cmd .. " -> right \"" .. right .. "\"", player, 120, 200, 255)
+                outputChatBox("/" .. cmd .. " -> right \"" .. getCommandRight(cmd) .. "\"", player, 120, 200, 255)
                 if not idx then
                         outputChatBox("verdict for you: legacy ladder decides (no rank set)",
                                 player, 255, 170, 60)
@@ -508,7 +518,11 @@ local GATES_V4_EXTENSION = {
         ["setsnowlevel"] = "admin.setrain",
         ["sw"] = "admin.setweather", ["swb"] = "admin.setweather", ["swh"] = "admin.setweather",
         ["swl"] = "admin.setweather", ["swr"] = "admin.setweather", ["swv"] = "admin.setweather",
-        ["sf"] = "admin.setweather", ["st"] = "admin.setweather", ["srl"] = "admin.setweather", ["shh"] = "admin.setweather",
+        ["sf"] = "admin.setweather", ["srl"] = "admin.setweather", ["shh"] = "admin.setweather",
+        -- [Fix #160] /st is registered TWICE: weather-system (set time, guarded
+        -- internally by isPlayerAdmin) and chat-system (staff chat). It used to
+        -- be gated to admin.setweather, which left admin.staffchat /st dead.
+        ["st"] = "admin.staffchat /st",
         ["setgametime"] = "admin.settime",
         ------------------------------------------------- vehicle-manager ----
         ["flip"] = "admin.flip", ["unflip"] = "admin.unflip",
@@ -616,7 +630,6 @@ local GATES_V4_EXTENSION = {
         ["checkint"] = "admin.checkint", ["checkinterior"] = "admin.checkint",
         ["restock"] = "shops.manager",
         ["setintfaction"] = "property.setowner", ["setinttomyfaction"] = "property.setowner",
-        ["createbusiness"] = "property.make",
         ------------------------------------------------------ LSFD / PD ----
         ["randomfire"] = "admin.makefire", ["cancelfire"] = "admin.removefire",
         ------------------------------------------------- events / freecam ----
@@ -693,6 +706,62 @@ local GATES_FIX157 = {
 for cmd, right in pairs(GATES_FIX157) do
         if COMMAND_RIGHTS[cmd] == nil then
                 COMMAND_RIGHTS[cmd] = right
+        end
+end
+
+-- ===========================================================================
+-- [Fix #160] EXTENSION POINT. Per-task gate tables live in their own files
+-- (staff_manager/gates_fix160_taskN.lua, registered below this script in
+-- meta.xml) so parallel work never edits this shared map.
+--   * first-wins on a single right: an entry already mapped here is never
+--     overridden by a task stub.
+--   * a task may pass a LIST of rights for a shared command; the list is
+--     merged (dedup) with an existing mapping, and hasCommandRight grants
+--     access when the player holds ANY right in the list.
+-- ===========================================================================
+function staffRegisterGates(tbl)
+        if type(tbl) ~= "table" then return end
+        local added = 0
+        for cmdKey, right in pairs(tbl) do
+                local cmd = tostring(cmdKey):lower()
+                local wanted = {}
+                if type(right) == "string" then
+                        if right ~= "" then wanted[1] = right end
+                elseif type(right) == "table" then
+                        for _, r in ipairs(right) do
+                                if type(r) == "string" and r ~= "" then wanted[#wanted + 1] = r end
+                        end
+                end
+                if #wanted > 0 then
+                        local existing = COMMAND_RIGHTS[cmd]
+                        if existing == nil then
+                                COMMAND_RIGHTS[cmd] = (#wanted == 1) and wanted[1] or wanted
+                                added = added + #wanted
+                        elseif type(right) == "table" then
+                                -- merge mode: shared command, union of rights
+                                local set = {}
+                                if type(existing) == "table" then
+                                        for _, r in ipairs(existing) do set[#set + 1] = r end
+                                else
+                                        set[1] = existing
+                                end
+                                local seen = {}
+                                for _, r in ipairs(set) do seen[r] = true end
+                                local grew = false
+                                for _, r in ipairs(wanted) do
+                                        if not seen[r] then set[#set + 1] = r; seen[r] = true; grew = true end
+                                end
+                                if grew then
+                                        COMMAND_RIGHTS[cmd] = set
+                                        added = added + 1
+                                end
+                        end
+                        -- string value for an already-mapped command: first-wins
+                end
+        end
+        if added > 0 then
+                outputDebugString("[Staff Gates] Fix #160: +" .. added .. " gate right(s) registered, total "
+                        .. countMap(COMMAND_RIGHTS))
         end
 end
 

@@ -29,6 +29,12 @@ function SmallestID( ) -- finds the smallest ID in the SQL instead of auto incre
 end
 
 function addGate(thePlayer, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24)
+	-- [Fix #160] check the REAL sender: events pass thePlayer as an argument
+	local checker = client or thePlayer
+	if not hasAnyGateToolRight(checker, "makegate", "editor.editObjects") then
+		denyToolRight(checker, "You don't have permission to create gates.")
+		return
+	end
 	local mQuery1 = nil
 	local smallestID = SmallestID()
 	
@@ -72,6 +78,12 @@ addEvent("addGate", true)
 addEventHandler("addGate", getRootElement(), addGate)
 
 function saveGate(thePlayer, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10,a11, a12, a13, a14, a15, a16, a17, a18, a19, a20, a21, a22, a23, a24, a25)
+	-- [Fix #160] check the REAL sender: events pass thePlayer as an argument
+	local checker = client or thePlayer
+	if not hasAnyGateToolRight(checker, "editObjectProperties", "editor.editObjects") then
+		denyToolRight(checker, "You don't have permission to edit gates.")
+		return
+	end
 		local mQuery1 = nil
 
 		if not a23 then
@@ -115,7 +127,10 @@ addEvent("saveGate", true)
 addEventHandler("saveGate", getRootElement(), saveGate)
 
 function delGate(thePlayer, commandName, gateID)
-	if exports.integration:isPlayerAdmin(thePlayer) or exports.integration:isPlayerScripter(thePlayer) then
+	-- [Fix #160] same rights /delgate is gated to (editor.removeObjects OR
+	-- places.remove); players without a Vortex rank keep the legacy admin ladder
+	local checker = client or thePlayer
+	if hasAnyGateToolRight(checker, "editor.removeObjects", "places.remove") then
 		if not tonumber(gateID) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Gate ID]", thePlayer, 255, 194, 14)
 		else

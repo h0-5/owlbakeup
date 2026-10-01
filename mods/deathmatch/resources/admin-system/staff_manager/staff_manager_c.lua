@@ -68,6 +68,12 @@ local rank_to_delete = nil      -- role id pending delete-confirmation
 -- action because only uiSetVisible(false) was applied).
 local canEditMembers = false
 local canEditRanks = false
+-- [Fix #160] A5: the Resources/Mods section + its start/stop/restart buttons
+-- are one SECTION permission (admin.manager.resources); panelRights mirrors
+-- the per-action rights (admin.startres/stopres/restartres) the server checks
+-- inside rpadmin:resourceAction, so the client never shows a dead button.
+local canManageResources = false
+local panelRights = {}
 
 -- [Fix #101] EXACT stored rank color for every row the panel paints: dark
 -- stays dark, so the member/role rows show the SAME shade as the scoreboard
@@ -114,6 +120,9 @@ local SECTIONS = {
         { id = "changelogs",         en = "Logs",          ar = "السجلات",  icon = "staff_manager/icons/menu_chat.png",   permission = false },
         { id = "ranks",              en = "Ranks",         ar = "الرتب",            icon = "staff_manager/icons/menu_trophy.png", permission = "editranks" },
         { id = "daily_staff_report", en = "Daily Report",  ar = "تقرير اليوم",      icon = "staff_manager/icons/menu_globe.png",  permission = false },
+        -- [Fix #160] A5: Resources/Mods section - visible only with the
+        -- admin.manager.resources SECTION right (server pushes the flag)
+        { id = "resources",          en = "Resources",     ar = "الموارد",          icon = "staff_manager/icons/menu_globe.png",  permission = "resources" },
 }
 
 --[[ layout constants — straight from the decompiled code ]]
@@ -426,6 +435,66 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "column_font_scale", 0.8)
         eui:uiSetProperty(UI.gridlist.daily_staff_report, "row_height", 30)
 
+        --[[ ----------------------- resources section -----------------------
+             [Fix #160] A5 - same grid + bottom-button row as every other
+             section; "Edit" opens a floating editor for the selected resource
+             (the add-staff window pattern), so a name can be typed by hand. ]]
+        UI.gridlist.resources = eui:uiCreateGridList(10, 60, CONTENT_W - 20, PANEL_H - 10 - 120,
+                tocolor(10, 10, 10, 0), UI.container.resources)
+        eui:uiGridListAddColumn(UI.gridlist.resources, "Resource", 0.62)
+        eui:uiGridListAddColumn(UI.gridlist.resources, "State", 0.38)
+        eui:uiSetAlign(UI.gridlist.resources, "left", "center")
+        eui:uiSetProperty(UI.gridlist.resources, "color_coded", true)
+        eui:uiSetProperty(UI.gridlist.resources, "column_font_scale", 0.8)
+        eui:uiSetProperty(UI.gridlist.resources, "row_height", 30)
+
+        UI.label.resources_status = eui:uiCreateLabel(10, 15, CONTENT_W - 30, 25,
+                { en = "Select a resource...", ar = "اختر مورداً..." },
+                tocolor(200, 200, 200, 255), "left", "center", UI.container.resources)
+
+        UI.button.res_start = eui:uiCreateButton(10, PANEL_H - 10 - 45, 150, 35,
+                { en = "Start", ar = "تشغيل" }, tocolor(6, 9, 14, 255), UI.container.resources)
+        eui:uiSetProperty(UI.button.res_start, "TextColor", tocolor(0, 255, 0))
+        UI.button.res_stop = eui:uiCreateButton(170, PANEL_H - 10 - 45, 150, 35,
+                { en = "Stop", ar = "إيقاف" }, tocolor(6, 9, 14, 255), UI.container.resources)
+        eui:uiSetProperty(UI.button.res_stop, "TextColor", tocolor(255, 80, 80))
+        UI.button.res_restart = eui:uiCreateButton(330, PANEL_H - 10 - 45, 150, 35,
+                { en = "Restart", ar = "إعادة تشغيل" }, tocolor(6, 9, 14, 255), UI.container.resources)
+        eui:uiSetProperty(UI.button.res_restart, "TextColor", tocolor(255, 194, 14))
+        UI.button.res_edit = eui:uiCreateButton(490, PANEL_H - 10 - 45, 150, 35,
+                { en = "Edit", ar = "تعديل" }, tocolor(6, 9, 14, 255), UI.container.resources)
+        eui:uiSetProperty(UI.button.res_edit, "TextColor", tocolor(255, 255, 255, 255))
+        UI.button.res_refresh = eui:uiCreateButton(650, PANEL_H - 10 - 45, 80, 35,
+                { en = "Refresh", ar = "تحديث" }, tocolor(6, 9, 14, 255), UI.container.resources)
+        eui:uiSetProperty(UI.button.res_refresh, "TextColor", tocolor(255, 255, 255, 255))
+
+        --[[ ---------------- resource editor (floating window) ---------------- ]]
+        UI.window.res_editor = eui:uiCreateRectangle(false, false, 420, 170,
+                tocolor(6, 9, 14, 235), true, true, true, true)
+        eui:uiSetVisible(UI.window.res_editor, false)
+        UI.label.res_editor = eui:uiCreateLabel(10, 15, 400, 25,
+                { en = "Edit Resource", ar = "تعديل المورد" }, tocolor(255, 255, 255, 255),
+                "left", "center", UI.window.res_editor)
+        eui:uiSetFont(UI.label.res_editor, "default-large")
+        UI.label.res_editor_hint = eui:uiCreateLabel(10, 45, 400, 20,
+                { en = "Resource name:", ar = "اسم المورد:" }, tocolor(200, 200, 200, 255),
+                "left", "center", UI.window.res_editor)
+        UI.edit.res_name = eui:uiCreateEdit(10, 70, 400, 25, "",
+                { en = "Resource name", ar = "اسم المورد" }, tocolor(255, 0, 0, 255),
+                UI.window.res_editor)
+        UI.button.res_start2 = eui:uiCreateButton(10, 125, 100, 35,
+                { en = "Start", ar = "تشغيل" }, tocolor(3, 6, 11), UI.window.res_editor)
+        eui:uiSetProperty(UI.button.res_start2, "TextColor", tocolor(0, 255, 0))
+        UI.button.res_stop2 = eui:uiCreateButton(115, 125, 100, 35,
+                { en = "Stop", ar = "إيقاف" }, tocolor(3, 6, 11), UI.window.res_editor)
+        eui:uiSetProperty(UI.button.res_stop2, "TextColor", tocolor(255, 80, 80))
+        UI.button.res_restart2 = eui:uiCreateButton(220, 125, 100, 35,
+                { en = "Restart", ar = "إعادة تشغيل" }, tocolor(3, 6, 11), UI.window.res_editor)
+        eui:uiSetProperty(UI.button.res_restart2, "TextColor", tocolor(255, 194, 14))
+        UI.button.res_close_editor = eui:uiCreateButton(325, 125, 85, 35,
+                { en = "Close", ar = "إغلاق" }, tocolor(3, 6, 11), UI.window.res_editor)
+        eui:uiSetProperty(UI.button.res_close_editor, "TextColor", tocolor(255, 255, 255, 255))
+
         -- [Fix #16] version badge removed - the old client has none
 
         --[[ ----------------------- sidebar menu -----------------------
@@ -465,6 +534,13 @@ function UIKitReady()
         regHit(UI.button.rename_rank, "button", 330, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.save_rank_changes, "button", PANEL_W - MENU_W - 15 - 160, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.gridlist.daily_staff_report, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.daily_staff_report)
+        -- [Fix #160] A5: resources section + its editor window
+        regHit(UI.gridlist.resources, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.resources)
+        regHit(UI.button.res_start, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.resources)
+        regHit(UI.button.res_stop, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.resources)
+        regHit(UI.button.res_restart, "button", 330, PANEL_H - 10 - 45, 150, 35, UI.container.resources)
+        regHit(UI.button.res_edit, "button", 490, PANEL_H - 10 - 45, 150, 35, UI.container.resources)
+        regHit(UI.button.res_refresh, "button", 650, PANEL_H - 10 - 45, 80, 35, UI.container.resources)
         -- floating add-staff window (root element -> own base origin)
         local awX = ((refSx - 400) / 2) * SCALE_X + (400 * SCALE_X - 400 * SCALE_Y) / 2
         local awY = ((refSy - 390) / 2) * SCALE_Y
@@ -474,6 +550,16 @@ function UIKitReady()
         regHit(UI.gridlist.add_staff_ranks, "grid", 10, 90, 380, 250, UI.window.add_staff, awX, awY)
         regHit(UI.button.cancel_add_staff, "button", 10, 345, 185, 35, UI.window.add_staff, awX, awY)
         regHit(UI.button.add_staff, "button", 200, 345, 190, 35, UI.window.add_staff, awX, awY)
+        -- [Fix #160] A5: resource editor (floating, same pattern as add-staff)
+        local rwX = ((refSx - 420) / 2) * SCALE_X + (420 * SCALE_X - 420 * SCALE_Y) / 2
+        local rwY = ((refSy - 170) / 2) * SCALE_Y
+        PANEL_HIT[UI.window.res_editor] = { x = rwX, y = rwY, w = 420 * SCALE_Y,
+                h = 170 * SCALE_Y, kind = "window", section = false, order = 0 }
+        regHit(UI.edit.res_name, "edit", 10, 70, 400, 25, UI.window.res_editor, rwX, rwY)
+        regHit(UI.button.res_start2, "button", 10, 125, 100, 35, UI.window.res_editor, rwX, rwY)
+        regHit(UI.button.res_stop2, "button", 115, 125, 100, 35, UI.window.res_editor, rwX, rwY)
+        regHit(UI.button.res_restart2, "button", 220, 125, 100, 35, UI.window.res_editor, rwX, rwY)
+        regHit(UI.button.res_close_editor, "button", 325, 125, 85, 35, UI.window.res_editor, rwX, rwY)
         -- confirm dialogs float above everything; their buttons handle
         -- themselves inside the dialog draw (independent click detection)
         local dlgX = ((refSx - 300) / 2) * SCALE_X + (300 * SCALE_X - 300 * SCALE_Y) / 2
@@ -491,13 +577,15 @@ addEventHandler("onClientUIKitReady", root, UIKitReady)
 
 --[[ ===================== sidebar menu (1:1) ===================== ]]
 
-function reloadAdminPanelMenu(hasEditMembers, hasEditRanks)
+function reloadAdminPanelMenu(hasEditMembers, hasEditRanks, hasResources)
         eui:uiMenuClear(menu)
         HIT_MENU_ROWS = {}
         for _, section in ipairs(SECTIONS) do
                 local allowed = not section.permission
                         or (section.permission == "editmembers" and hasEditMembers)
                         or (section.permission == "editranks" and hasEditRanks)
+                        -- [Fix #160] A5: Resources/Mods is its own SECTION right
+                        or (section.permission == "resources" and hasResources)
                 if allowed then
                         HIT_MENU_ROWS[#HIT_MENU_ROWS + 1] = section.id
                         eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
@@ -510,7 +598,7 @@ end
 --[[ ===================== events + handlers (1:1) ===================== ]]
 
 addEvent("rpadmin:showPanel", true)
-addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks, hasResources, data)
+addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks, hasResources, data, rights)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then
                 UIKitReady() -- UIKit restarted while we were closed: rebuild
         end
@@ -521,11 +609,52 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         -- [Fix #15] remember the server-issued flags for the raw click layer
         canEditMembers = hasEditMembers and true or false
         canEditRanks = hasEditRanks and true or false
-        reloadAdminPanelMenu(hasEditMembers, hasEditRanks)
+        -- [Fix #160] A5: Resources/Mods SECTION right + per-action button rights
+        canManageResources = hasResources and true or false
+        panelRights = (type(rights) == "table") and rights or {}
+        eui:uiSetVisible(UI.button.res_start, canManageResources)
+        eui:uiSetVisible(UI.button.res_stop, canManageResources)
+        eui:uiSetVisible(UI.button.res_restart, canManageResources)
+        eui:uiSetVisible(UI.button.res_edit, canManageResources)
+        eui:uiSetVisible(UI.button.res_refresh, canManageResources)
+        if not canManageResources then
+                eui:uiSetVisible(UI.window.res_editor, false)
+        end
+        reloadAdminPanelMenu(hasEditMembers, hasEditRanks, hasResources)
         if eui:uiGetVisible(UI.window.admin_panel) and type(data) == "table" then
                 refreshPanel(data.levels, data.admins, data.changelogs, {},
                         data.role_members, data.staff_report)
+                -- [Fix #160] A5: pull the compact resource list for the section
+                if canManageResources then
+                        triggerServerEvent("rpadmin:requestResources", localPlayer)
+                end
+        elseif not eui:uiGetVisible(UI.window.admin_panel) then
+                eui:uiSetVisible(UI.window.res_editor, false)
         end
+end)
+
+-- [Fix #160] A5: compact resource list (name + state) from
+-- rpadmin:requestResources / after every rpadmin:resourceAction
+addEvent("rpadmin:sendResources", true)
+addEventHandler("rpadmin:sendResources", root, function(list)
+        if not (UI.gridlist.resources and isElement(UI.gridlist.resources)) then return end
+        eui:uiGridListClear(UI.gridlist.resources)
+        if type(list) ~= "table" then return end
+        for _, res in ipairs(list) do
+                local row = eui:uiGridListAddRow(UI.gridlist.resources)
+                local name = tostring(res.name or "?")
+                local state = tostring(res.state or "?")
+                eui:uiGridListSetItemText(UI.gridlist.resources, row, 1, name)
+                eui:uiGridListSetItemText(UI.gridlist.resources, row, 2, state)
+                local color = tocolor(255, 194, 14)
+                if state == "running" then
+                        color = tocolor(0, 255, 0)
+                elseif state == "stopped" or state == "failed to load" then
+                        color = tocolor(255, 80, 80)
+                end
+                eui:uiGridListSetItemColor(UI.gridlist.resources, row, 2, color)
+        end
+        eui:uiSetText(UI.label.resources_status, "Select a resource...")
 end)
 
 addEventHandler("onClientUIChanged", root, function()
@@ -574,6 +703,38 @@ addEventHandler("onClientUIDialogButtonClick", root, function(button)
         end
 end)
 
+-- [Fix #160] A5: resources helpers - client mirror of the SERVER rights
+-- (admin.manager.resources for the section, admin.startres/stopres/restartres
+-- per action); the server re-checks everything inside rpadmin:resourceAction.
+local RESOURCE_ACTION_RIGHT = { start = "startres", stop = "stopres", restart = "restartres" }
+
+local function selectedResourceRow()
+        if not (UI.gridlist.resources and isElement(UI.gridlist.resources)) then return nil end
+        local sel = eui:uiGridListGetSelectedItem(UI.gridlist.resources)
+        if sel == -1 then return nil end
+        return eui:uiGridListGetItemText(UI.gridlist.resources, sel, 1),
+                eui:uiGridListGetItemText(UI.gridlist.resources, sel, 2)
+end
+
+local function resourceActionAllowed(action)
+        local right = RESOURCE_ACTION_RIGHT[action]
+        if right and panelRights[right] == false then
+                outputChatBox("You don't have permission to " .. action .. " resources.", 255, 80, 80)
+                return false
+        end
+        return true
+end
+
+local function sendResourceAction(action, resourceName)
+        resourceName = tostring(resourceName or "")
+        if resourceName == "" then
+                outputChatBox("Select a resource first.", 255, 80, 80)
+                return
+        end
+        if not resourceActionAllowed(action) then return end
+        triggerServerEvent("rpadmin:resourceAction", localPlayer, action, resourceName)
+end
+
 local function dispatchPanelAction(el)
         if not (UI.window.admin_panel and isElement(UI.window.admin_panel)) then return end
         if not el or not isElement(el) then return end
@@ -595,6 +756,23 @@ local function dispatchPanelAction(el)
                 or el == UI.button.rename_rank or el == UI.button.save_rank_changes
                 or el == UI.checkbox.permissions_select_all) then
                 outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
+                return
+        end
+        -- [Fix #160] A5: the Resources/Mods SECTION right gates every control
+        -- in it (the section is hidden too, this closes the raw-click hole)
+        if not canManageResources and (el == UI.gridlist.resources
+                or el == UI.button.res_start or el == UI.button.res_stop
+                or el == UI.button.res_restart or el == UI.button.res_edit
+                or el == UI.button.res_refresh or el == UI.button.res_start2
+                or el == UI.button.res_stop2 or el == UI.button.res_restart2
+                or el == UI.button.res_close_editor) then
+                outputChatBox("You don't have permission to manage resources.", 255, 80, 80)
+                return
+        end
+        -- [Fix #160] A5: member add button inside the floating add-staff
+        -- window needs admin.manager.editmembers exactly like the two above
+        if not canEditMembers and el == UI.button.add_staff then
+                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
                 return
         end
 
@@ -765,9 +943,57 @@ local function dispatchPanelAction(el)
         elseif el == UI.button.cancel_add_staff then
                 eui:uiSetVisible(UI.window.add_staff, false)
 
+        -- [Fix #160] A5: Resources/Mods section --------------------------------
+        elseif el == UI.gridlist.resources then
+                local name, state = selectedResourceRow()
+                if name then
+                        eui:uiSetText(UI.label.resources_status, "Selected: " .. tostring(name)
+                                .. "   [" .. tostring(state) .. "]")
+                end
+
+        elseif el == UI.button.res_refresh then
+                triggerServerEvent("rpadmin:requestResources", localPlayer)
+
+        elseif el == UI.button.res_start then
+                sendResourceAction("start", (selectedResourceRow()))
+
+        elseif el == UI.button.res_stop then
+                sendResourceAction("stop", (selectedResourceRow()))
+
+        elseif el == UI.button.res_restart then
+                sendResourceAction("restart", (selectedResourceRow()))
+
+        elseif el == UI.button.res_edit then
+                -- the "edit" affordance: floating editor for the SELECTED row
+                -- (the name can also be typed by hand for a mistyped click)
+                local name, state = selectedResourceRow()
+                if not name then
+                        outputChatBox("Select a resource first.", 255, 80, 80)
+                        return
+                end
+                eui:uiSetText(UI.edit.res_name, tostring(name))
+                eui:uiSetText(UI.label.resources_status, "Selected: " .. tostring(name)
+                        .. "   [" .. tostring(state) .. "]")
+                eui:uiSetVisible(UI.window.res_editor, true)
+                eui:uiBringToFront(UI.window.res_editor)
+
+        elseif el == UI.button.res_start2 then
+                sendResourceAction("start", eui:uiGetText(UI.edit.res_name))
+
+        elseif el == UI.button.res_stop2 then
+                sendResourceAction("stop", eui:uiGetText(UI.edit.res_name))
+
+        elseif el == UI.button.res_restart2 then
+                sendResourceAction("restart", eui:uiGetText(UI.edit.res_name))
+
+        elseif el == UI.button.res_close_editor then
+                eui:uiSetVisible(UI.window.res_editor, false)
+
         elseif el == UI.button.close_panel then
                 eui:uiSetVisible(UI.window.admin_panel, false)
                 eui:uiSetVisible(UI.window.add_staff, false)
+                -- [Fix #160] A5: the floating editor dies with the panel
+                eui:uiSetVisible(UI.window.res_editor, false)
                 showCursor(false)
         end
 end
@@ -896,6 +1122,11 @@ local function panelDispatch(hitEl, info, ax, ay)
                 local idx = math.floor((ay - (info.y + 5 * SCALE_Y)) / step) + 1
                 if HIT_MENU_ROWS[idx] then
                         pcall(eui.uiMenuSetSelectedRow, eui, menu, idx)
+                        -- [Fix #160] A5: pull the resource list when its
+                        -- section is opened through the raw click path
+                        if HIT_MENU_ROWS[idx] == "resources" and canManageResources then
+                                triggerServerEvent("rpadmin:requestResources", localPlayer)
+                        end
                 end
         end
         -- kind "window": swallowed on purpose (floating windows/dialogs
@@ -915,23 +1146,26 @@ local function panelHitTest(ax, ay)
                         end
                 end
         end
-        -- 2) the floating add-staff window
+        -- 2) the floating windows (add-staff + [Fix #160] resource editor)
         local aw = UI.window.add_staff
-        if aw and isElement(aw) then
-                local okV, wv = pcall(eui.uiGetVisible, eui, aw)
-                if okV and wv then
-                        local wr = PANEL_HIT[aw]
-                        if wr and ax >= wr.x and ax <= wr.x + wr.w and ay >= wr.y and ay <= wr.y + wr.h then
-                                local bEl, bInfo, bOrder
-                                for el, info in pairs(PANEL_HIT) do
-                                        if info.section == aw and ax >= info.x and ax <= info.x + info.w
-                                                and ay >= info.y and ay <= info.y + info.h then
-                                                if not bOrder or info.order > bOrder then
-                                                        bEl, bInfo, bOrder = el, info, info.order
+        local fw = UI.window.res_editor
+        for _, fl in ipairs({ aw, fw }) do
+                if fl and isElement(fl) then
+                        local okV, wv = pcall(eui.uiGetVisible, eui, fl)
+                        if okV and wv then
+                                local wr = PANEL_HIT[fl]
+                                if wr and ax >= wr.x and ax <= wr.x + wr.w and ay >= wr.y and ay <= wr.y + wr.h then
+                                        local bEl, bInfo, bOrder
+                                        for el, info in pairs(PANEL_HIT) do
+                                                if info.section == fl and ax >= info.x and ax <= info.x + info.w
+                                                        and ay >= info.y and ay <= info.y + info.h then
+                                                        if not bOrder or info.order > bOrder then
+                                                                bEl, bInfo, bOrder = el, info, info.order
+                                                        end
                                                 end
                                         end
+                                        return bEl or fl, bInfo or wr
                                 end
-                                return bEl or aw, bInfo or wr
                         end
                 end
         end
@@ -942,7 +1176,7 @@ local function panelHitTest(ax, ay)
         if not (okV and pv) then return nil end
         local bEl, bInfo, bOrder
         for el, info in pairs(PANEL_HIT) do
-                if info.kind ~= "window" and info.section ~= aw then
+                if info.kind ~= "window" and info.section ~= aw and info.section ~= fw then
                         local secOK = (info.section == nil or info.section == false)
                         if not secOK and isElement(info.section) then
                                 local ok2, sv = pcall(eui.uiGetVisible, eui, info.section)

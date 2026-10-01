@@ -1,4 +1,4 @@
-﻿mysql = exports.mysql
+mysql = exports.mysql
 
 MTAoutputChatBox = outputChatBox
 function outputChatBox( text, visibleTo, r, g, b, colorCoded )
@@ -2619,6 +2619,44 @@ function staffChat(thePlayer, commandName, ...)
 	end
 end
 addCommandHandler( "st", staffChat, false, false)
+
+-- [Fix #160] /h HIGH STAFF CHAT. The right admin.highstaffchat decides BOTH
+-- sides: the gate (staff_manager/gates_fix160_task6.lua -> onPlayerCommand)
+-- closes /h for anyone without it, and every recipient is re-checked here so
+-- only ranks holding admin.highstaffchat ever see the message.
+local function hasHighStaffRight(thePlayer)
+	local ok, res = pcall(function()
+		return exports['admin-system']:playerHasRight(thePlayer, "admin.highstaffchat")
+	end)
+	return ok and res and true or false
+end
+
+function highStaffChat(thePlayer, commandName, ...)
+	local logged = getElementData(thePlayer, "loggedin")
+
+	if (logged==1) then
+		if not hasHighStaffRight(thePlayer) then
+			outputChatBox("You don't have permission to use this command.", thePlayer, 255, 0, 0)
+			return
+		end
+		if not (...) then
+			outputChatBox("SYNTAX: /".. commandName .. " [Message]", thePlayer, 255, 194, 14)
+		else
+			local affectedElements = { }
+			local message = table.concat({...}, " ")
+			local players = exports.pool:getPoolElementsByType("player")
+			local accountName = getElementData(thePlayer, "account:username")
+			for k, arrayPlayer in ipairs(players) do
+				if getElementData(arrayPlayer, "loggedin")==1 and hasHighStaffRight(arrayPlayer) then
+					table.insert(affectedElements, arrayPlayer)
+					outputChatBox("[HIGH STAFF] "..exports.global:getPlayerAdminTitle(thePlayer).. " " .. accountName .. ": "..message, arrayPlayer, 255, 102, 0)
+				end
+			end
+			exports.logs:dbLog(thePlayer, 4, affectedElements, "High staff chat - Msg: "..message)
+		end
+	end
+end
+addCommandHandler( "h", highStaffChat, false, false)
 
 function fmtChat(thePlayer, commandName, ...)
 	local logged = getElementData(thePlayer, "loggedin")

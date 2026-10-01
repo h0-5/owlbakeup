@@ -1637,6 +1637,16 @@ function callbackInvitePlayer(invitedPlayer)
 
         
 
+        -- [Fix #160] faction blacklist: the server accept point refuses a blocked
+        -- character even when a leader is the one adding him (task A3).
+        local blRow = getFactionBlacklistHitForPlayer(factionID, invitedPlayer)
+        if blRow then
+                outputChatBox("تم رفض اضافة هذا اللاعب لوجوده في القائمة السوداء للفاكشن. السبب: " .. tostring(blRow.reason), client, 255, 0, 0)
+                outputChatBox("لا يمكنك الانضمام الى هذا الفاكشن لوجودك في القائمة السوداء. السبب: " .. tostring(blRow.reason), invitedPlayer, 255, 0, 0)
+                logFactionAction(factionID, getPlayerName(client), "tried to invite blacklisted " .. getPlayerName(invitedPlayer) .. " (blocked: " .. tostring(blRow.reason) .. ")") -- [Fix #146]
+                return
+        end
+
         local invitedPlayerNick = getPlayerName(invitedPlayer)
 
         local safename = mysql:escape_string(invitedPlayerNick)

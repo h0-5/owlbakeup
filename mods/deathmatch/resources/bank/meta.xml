@@ -12,6 +12,7 @@
 
     <script src="s_bank_system.lua" type="server" />
     <script src="s_bank_accounts.lua" type="server" />
+    <script src="s_bank_admin.lua" type="server" />
 
 
     <script src="c_bank_system.lua" type="client" />

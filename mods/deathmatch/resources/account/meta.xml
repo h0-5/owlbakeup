@@ -70,6 +70,9 @@
 
     
 
+    <!-- [Fix #160] server-wide blacklist: commands + join/login/register gates -->
+    <script src="s_blacklist.lua" type="server" />
+
     <script src="s_login.lua" type="server" />
 
     <script src="c_login.lua" type="client" />

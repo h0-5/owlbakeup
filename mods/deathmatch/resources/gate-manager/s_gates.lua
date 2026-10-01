@@ -3,7 +3,9 @@ mysql = exports.mysql
 gates = { }
 
 function newGate(thePlayer, commandName, itemID)
-	if exports.integration:isPlayerAdmin(thePlayer) then
+	-- [Fix #160] same union the /newgate command gate enforces (makegate OR
+	-- places.add); players without a Vortex rank keep the legacy admin ladder
+	if hasAnyGateToolRight(thePlayer, "makegate", "places.add") then
 		if not itemID or not tonumber(itemID) then
 			outputChatBox("Syntax: /"..commandName.." <itemID>", thePlayer)
 			return
@@ -12,6 +14,9 @@ function newGate(thePlayer, commandName, itemID)
 		
 		local tempObject = createObject(itemID, playerX, playerY, playerZ, 0, 0, 0)
 		if tempObject then
+			-- [Fix #160] keep the temp object in the player interior/dimension
+			setElementInterior(tempObject, getElementInterior(thePlayer))
+			setElementDimension(tempObject, getElementDimension(thePlayer))
 			local tempTable = { }
 			tempTable["startPosition"] = { playerX, playerY, playerZ, 0, 0, 0 }
 			tempTable["endPosition"] = { playerX, playerY, playerZ, 0, 0, 0 }

@@ -11,6 +11,22 @@
 
 
         <script src="staff_manager/command_gates_s.lua" type="server"/>
+        <!-- Fix #160 per-task gate stubs: MUST load after command_gates_s.lua -->
+        <script src="staff_manager/gates_fix160_task1.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task2.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task3.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task4.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task5.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task6.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task7.lua" type="server"/>
+        <script src="staff_manager/gates_fix160_task8.lua" type="server"/>
+        <!-- Fix #160 per-task handler stubs -->
+        <script src="Player/s_checkc.lua" type="server"/>
+        <script src="Player/c_checkc.lua" type="client"/>
+        <script src="Player/s_fix160_char.lua" type="server"/>
+        <script src="Player/s_fix160_misc.lua" type="server"/>
+        <script src="Player/s_fix160_domain.lua" type="server"/>
+        <script src="Vehicle/s_vehfix160.lua" type="server"/>
         <script src="Vehicle/s_vehicle_commands.lua" type="server"/>
 
 

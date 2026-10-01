@@ -736,12 +736,31 @@ end
 addCommandHandler("delnearbyvehs", delNearbyVehicles, false, false)
 addCommandHandler("delnearbyvehicles", delNearbyVehicles, false, false)
 
-function respawnCmdVehicle(thePlayer, commandName, id)
+function respawnCmdVehicle(thePlayer, commandName, id, ...)
 	if (exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) or exports.integration:isPlayerScripter(thePlayer) or exports.integration:isPlayerVehicleConsultant(thePlayer)) then
 		if not (id) then
-			outputChatBox("SYNTAX: /respawnveh [id]", thePlayer, 255, 194, 14)
+			outputChatBox("SYNTAX: /respawnveh [Vehicle ID / plate]", thePlayer, 255, 194, 14)
 		else
 			local theVehicle = exports.pool:getElement("vehicle", tonumber(id))
+
+			-- [Fix #160] /respawnveh also resolves a plate (typed as two args: EO0 7122)
+			if not theVehicle then
+				local plate = tostring(id)
+				local rest = { ... }
+				if #rest > 0 then
+					plate = plate .. " " .. table.concat(rest, " ")
+				end
+				plate = plate:gsub("%s+", ""):lower()
+				for _, veh in ipairs(exports.pool:getPoolElementsByType("vehicle")) do
+					local vehPlate = tostring(getElementData(veh, "plate") or ""):gsub("%s+", ""):lower()
+					if vehPlate ~= "" and vehPlate == plate then
+						theVehicle = veh
+						id = getElementData(veh, "dbid")
+						break
+					end
+				end
+			end
+
 			if theVehicle then
 				if isElementAttached(theVehicle) then
 					detachElements(theVehicle)

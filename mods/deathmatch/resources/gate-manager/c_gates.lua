@@ -5,6 +5,8 @@ local savedOpenedPos = { }
 local savedClosedPos = { }
 local savedOptions = { }
 local editingPos = 1
+-- [Fix #160] dbid handed over by gates:startedit (-1 for a fresh /newgate object)
+local editingGateID = -1
 function startEdit(theObject, parameters, dbid)
 	theVictim = theObject
 	
@@ -21,6 +23,11 @@ function startEdit(theObject, parameters, dbid)
 	savedClosedPos = { } 
 	savedOptions = { }
 	editingPos = 1
+
+	-- [Fix #160] the movement/option screens are click driven
+	editingGateID = tonumber(dbid) or -1
+	showCursor(true)
+	guiSetInputEnabled(true)
 end
 addEvent("gates:startedit", true)
 addEventHandler("gates:startedit", getRootElement(), startEdit)
@@ -42,6 +49,107 @@ function edit_save()
 	addEventHandler("onClientGUIClick", movementGUI['btnSave'], edit_save2)
 	
 end
+
+-- [Fix #160] option screen Save: pack the access settings and hand the gate to
+-- the server. The argument order mirrors c_gate_manager.lua (addGate/saveGate
+-- in s_gate_manager.lua) and the gate type/parameter format is the one
+-- canPlayerControlGate() parses in s_gate_action.lua.
+function edit_save2()
+	if not (theVictim and isElement(theVictim)) then
+		outputChatBox("[GATEMANAGER] There is no object left to save.", 255, 0, 0)
+		if movementGUI and movementGUI["_root"] and isElement(movementGUI["_root"]) then
+			destroyElement(movementGUI["_root"])
+		end
+		movementGUI = nil
+		showCursor(false)
+		guiSetInputEnabled(false)
+		editingGateID = -1
+		return
+	end
+
+	if not savedOpenedPos["x"] or not savedClosedPos["x"] then
+		outputChatBox("You didn't make both positions", 255, 0, 0)
+		return
+	end
+
+	-- [Fix #160] access type from the radio group: 1 = everybody, 2 = password,
+	-- 3/4 = item (with/without value), 5 = keypad PIN, 6 = colsphere trigger
+	local gateType, gateSecurity = 1, ""
+	if guiRadioButtonGetSelected(movementGUI['chkbyGatePassword']) then
+		local password = guiGetText(movementGUI['txtGateByPassword'])
+		if password ~= "" then
+			gateType = 2
+			gateSecurity = password
+		else
+			outputChatBox("[GATEMANAGER] No password given - saved as opening by command.", 255, 194, 14)
+		end
+	elseif guiRadioButtonGetSelected(movementGUI['chkbyItem']) then
+		local itemID = guiGetText(movementGUI['txtItemID'])
+		local itemValue = guiGetText(movementGUI['txtItemValue'])
+		if not tonumber(itemID) then
+			outputChatBox("[GATEMANAGER] ItemID must be a number.", 255, 0, 0)
+			return
+		end
+		if itemValue ~= "" then
+			gateType = 4
+			gateSecurity = itemID .. " " .. itemValue
+		else
+			gateType = 3
+			gateSecurity = itemID
+		end
+	elseif guiRadioButtonGetSelected(movementGUI['chkbyKeypad']) then
+		local pin = guiGetText(movementGUI['txtPIN'])
+		if pin ~= "" then
+			gateType = 5
+			gateSecurity = pin
+		else
+			outputChatBox("[GATEMANAGER] No PIN given - saved as opening by command.", 255, 194, 14)
+		end
+	elseif guiRadioButtonGetSelected(movementGUI['chkbyKeypad_2']) then
+		gateType = 6
+	end
+
+	-- [Fix #160] the option screen has no time box: 30 = 3 seconds (100ms units)
+	local autocloseTime = guiCheckBoxGetSelected(movementGUI['chkAutoClose']) and 30 or 0
+	local sound = getElementData(theVictim, "gate:sound") or "metalgate"
+	local triggerDist = getElementData(theVictim, "gate:triggerDistance") or false
+	local triggerDistVeh = getElementData(theVictim, "gate:triggerDistanceVehicle") or false
+	local creator = getElementData(localPlayer, "account:username") or "unknown"
+
+	destroyElement(movementGUI["_root"])
+	movementGUI = nil
+	showCursor(false)
+	guiSetInputEnabled(false)
+
+	-- [Fix #160] DB start = closed = the position edited under the START label,
+	-- DB end = open = the position edited under the END label
+	if (tonumber(editingGateID) or -1) > 0 then
+		triggerServerEvent("saveGate", localPlayer, localPlayer,
+			getElementModel(theVictim),
+			savedOpenedPos["x"], savedOpenedPos["y"], savedOpenedPos["z"], savedOpenedPos["rx"], savedOpenedPos["ry"], savedOpenedPos["rz"],
+			savedClosedPos["x"], savedClosedPos["y"], savedClosedPos["z"], savedClosedPos["rx"], savedClosedPos["ry"], savedClosedPos["rz"],
+			gateType, gateSecurity, autocloseTime, 30,
+			getElementInterior(theVictim), getElementDimension(theVictim),
+			creator, "edited with /newgate", tonumber(editingGateID),
+			sound, triggerDist, triggerDistVeh)
+	else
+		triggerServerEvent("addGate", localPlayer, localPlayer,
+			getElementModel(theVictim),
+			savedOpenedPos["x"], savedOpenedPos["y"], savedOpenedPos["z"], savedOpenedPos["rx"], savedOpenedPos["ry"], savedOpenedPos["rz"],
+			savedClosedPos["x"], savedClosedPos["y"], savedClosedPos["z"], savedClosedPos["rx"], savedClosedPos["ry"], savedClosedPos["rz"],
+			gateType, gateSecurity, autocloseTime, 30,
+			getElementInterior(theVictim), getElementDimension(theVictim),
+			creator, "created with /newgate",
+			sound, triggerDist, triggerDistVeh)
+		-- [Fix #160] the temp object is replaced by the row that was just saved
+		triggerServerEvent("objedit:destroyTemp", localPlayer, theVictim)
+	end
+
+	theVictim = nil
+	editingGateID = -1
+end
+
+
 
 function edit_switch()
 	if editingPos == 1 then -- old: start 		new: end
@@ -80,6 +188,11 @@ end
 
 function edit_cancel()
 	triggerServerEvent("gates:canceledit", theVictim)
+
+	-- [Fix #160] close the cursor/input state of the movement/option screen
+	showCursor(false)
+	guiSetInputEnabled(false)
+	editingGateID = -1
 	if movementGUI then
 		destroyElement(movementGUI["_root"])
 		movementGUI = { }

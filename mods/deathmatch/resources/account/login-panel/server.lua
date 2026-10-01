@@ -19,7 +19,16 @@ end
 addEvent("onRequestLogin",true)
 addEventHandler("onRequestLogin",getRootElement(),validateCredentials)
 
-function playerLogin(username,password,checksave)
+function playerLogin(username,password,checksave)
+	-- [Fix #160] blacklist gate on the login itself: the join kick only covers the first seconds after connecting - this also stops an account whose account/email/serial/IP/IP-range sits on the server-wide blacklist
+	if type(blacklistCheckLogin) == "function" then
+		local blRow, blField = blacklistCheckLogin(client, username)
+		if blRow then
+			triggerClientEvent(client, "set_warning_text", client, "Login",
+				blacklistMessage(blRow, blField, "الدخول إلى السيرفر"))
+			return false
+		end
+	end
 	local encryptionRuleData, encryptionRuleQuery, accountCheckQuery, preparedQuery, accountData,newAccountHash,safeusername,safepassword = nil
 
 	if not validateCredentials(username,password,checksave) then
@@ -249,7 +258,16 @@ addEvent("accounts:playerFinishApps",true)
 addEventHandler("accounts:playerFinishApps",getRootElement(),playerFinishApps)
 
 --local lastClient = nil
-function playerRegister(username,password,confirmPassword, email)
+function playerRegister(username,password,confirmPassword, email)
+	-- [Fix #160] blacklist gate on registration: a blacklisted serial/IP/email/account can never mint a new account (the "new account" evasion path is closed here)
+	if type(blacklistCheckRegister) == "function" then
+		local blRow, blField = blacklistCheckRegister(client, username, email)
+		if blRow then
+			triggerClientEvent(client, "set_warning_text", client, "Register",
+				blacklistMessage(blRow, blField, "إنشاء حساب جديد"))
+			return false
+		end
+	end
 	--CHECK FOR EXISTANCE OF USERNAME AND EMAIL ADDRESS / MAXIME
 	local preparedQuery1 = "SELECT `id` FROM `accounts` WHERE `username`='".. mysql:escape_string(username) .."' OR `email`='".. mysql:escape_string(email) .."' "
 	local Q1 = mysql:query(preparedQuery1)

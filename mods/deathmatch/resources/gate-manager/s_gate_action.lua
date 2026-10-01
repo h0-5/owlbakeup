@@ -10,6 +10,12 @@ function triggerGate(password)
 	if not isGate then
 		return
 	end
+	-- [Fix #160] a locked gate only answers to lockgate holders; the right
+	-- check lives in s_object_tools_fix160.lua (hasGateToolRight)
+	if getElementData(source, "gate:locked") and not hasGateToolRight(client, "lockgate") then
+		outputChatBox("This gate is locked by staff - only lockgate holders can operate it.", client, 255, 0, 0)
+		return
+	end
 	local playerX, playerY, playerZ = getElementPosition(client)		
 	local gateX, gateY, gateZ = getElementPosition(source)		
 	local reachedit = true --false

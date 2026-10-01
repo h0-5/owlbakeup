@@ -76,7 +76,7 @@ local RANK_SEED = {
         { name = "Senior Moderator",        color = { 204,  85,   0, 255}, extras = {
                 "admin.getveh", "admin.giveveh", "admin.setweather", "admin.settime",
                 "admin.setfpslimit", "admin.setgametype", "admin.ann",
-                "admin.highchat /h", "admin.staffchat /st",
+                "admin.highstaffchat", "admin.staffchat /st",
         }},
         { name = "Trial Administrator",     color = { 102, 178, 255, 255}, extras = {
                 "admin.setplayermoney", "admin.giveplayermoney", "admin.takeplayermoney",
@@ -118,7 +118,7 @@ local RANK_SEED = {
                 "makefaction", "removefaction", "setfaction", "setfactionleader",
                 "setfactioncolor", "setfactionname", "setfactiontype", "makeveh",
                 "delveh", "editvehicle", "setvehowner", "setvehfaction", "setvehjob",
-                "property.make", "property.delete", "property.setowner", "makeatm",
+                "property.delete", "property.setowner", "makeatm",
                 "makeshop", "makeped", "delped", "editped", "makegeneric", "makegate",
                 "makephone", "addint", "deleteint", "setintid", "setintowner",
                 "setintprice", "setintforsale", "setintenterance", "setintname",
@@ -238,9 +238,54 @@ local function seedRanks()
         outputDebugString("[Vortex Staff] seeded " .. #RANK_SEED .. " ranks.")
 end
 
+-- [Fix #160] one-time migration: existing ranks were seeded before the new
+-- rights existed (seedRanks only runs on an EMPTY table), so grant
+-- admin.highstaffchat to every rank that already holds the old
+-- admin.highchat /h right, and drop the cancelled property.make right.
+local function migrateRightsFix160()
+        local q = mysql:query("SELECT ID, Rights FROM staff_roles")
+        if not q then return end
+        local pending = {}
+        while true do
+                local row = mysql:fetch_assoc(q)
+                if not row then break end
+                local parsed = fromJSON(row.Rights or "")
+                if type(parsed) == "table" then
+                        -- MTA wraps objects as [ { k = true } ]; unwrap like the bridge does
+                        local rights = parsed
+                        if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+                                rights = parsed[1]
+                        end
+                        local changed = false
+                        if rights["admin.highchat /h"] then
+                                -- [Fix #160] the old dead right is superseded by admin.highstaffchat
+                                rights["admin.highchat /h"] = nil
+                                rights["admin.highstaffchat"] = true
+                                changed = true
+                        end
+                        if rights["property.make"] then
+                                rights["property.make"] = nil
+                                changed = true
+                        end
+                        if changed then
+                                pending[#pending + 1] = { id = tonumber(row.ID), rights = rights }
+                        end
+                end
+        end
+        mysql:free_result(q)
+        for _, p in ipairs(pending) do
+                mysql:query_free("UPDATE staff_roles SET Rights='" .. rightsToJSON(p.rights)
+                        .. "' WHERE ID=" .. p.id)
+        end
+        if #pending > 0 then
+                outputDebugString("[Vortex Staff] Fix #160: migrated rights on " .. #pending .. " rank(s).")
+        end
+end
+
 addEventHandler("onResourceStart", resourceRoot, function()
         ensureTables()
         seedRanks()
+        migrateRightsFix160()
 end)
 
 -- ============================================================================
@@ -285,6 +330,40 @@ local function hasEditRanks(player)
                 return false
         end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
+end
+
+-- [Fix #160] A5: the Resources/Mods SECTION is one more backend-first
+-- permission (admin.manager.resources) - same rule as the two helpers above,
+-- Lead Admin+ decides for staff without a Vortex rank. Every resource action
+-- additionally needs its own admin.startres/stopres/restartres right.
+local function hasManageResources(player)
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, "admin.manager.resources") and true or false
+                end
+                return false
+        end
+        return exports.integration:isPlayerLeadAdmin(player) and true or false
+end
+
+-- [Fix #160] A5: every right the client mirrors (hide/disable buttons).
+-- The server re-checks each one inside the event handlers - this table only
+-- saves the client from showing controls it can never use.
+local function panelRights(player)
+        local function has(right)
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, right) and true or false
+                end
+                return false
+        end
+        return {
+                editmembers = hasEditMembers(player),
+                editranks = hasEditRanks(player),
+                resources = hasManageResources(player),
+                startres = has("admin.startres"),
+                stopres = has("admin.stopres"),
+                restartres = has("admin.restartres"),
+        }
 end
 
 -- ============================================================================
@@ -453,6 +532,8 @@ local function sendPanel(player)
         end
         local editMembers = hasEditMembers(player)
         local editRanks = hasEditRanks(player)
+        -- [Fix #160] A5: Resources/Mods section flag (was a copy of editRanks)
+        local manageResources = hasManageResources(player)
         local levels = fetchLevels()
         -- reuse the same query used by sendFullData for the first paint
         local admins, roleMembers = {}, {}
@@ -469,9 +550,10 @@ local function sendPanel(player)
                 outputDebugString("[Vortex Staff] DB query FAILED: panel admins JOIN - run /staffdb", 1)
                 outputChatBox("Staff system: database error - run /staffdb to diagnose.", player, 255, 80, 80)
                 triggerClientEvent(player, "rpadmin:showPanel", player,
-                        editMembers, editRanks, editRanks,
+                        editMembers, editRanks, hasManageResources(player),
                         { levels = levels, admins = {}, changelogs = {},
-                          role_members = {}, staff_report = {} })
+                          role_members = {}, staff_report = {} },
+                        panelRights(player))
                 return false
         end
         -- [Mod 2 fix] map online players by ACCOUNT id once; every staff row
@@ -518,9 +600,10 @@ local function sendPanel(player)
         mysql:free_result(cq)
 
         triggerClientEvent(player, "rpadmin:showPanel", player,
-                editMembers, editRanks, editRanks,
+                editMembers, editRanks, manageResources,
                 { levels = levels, admins = admins, changelogs = changelogs,
-                  role_members = roleMembers, staff_report = fetchStaffReport() })
+                  role_members = roleMembers, staff_report = fetchStaffReport() },
+                panelRights(player))
         return true
 end
 
@@ -534,6 +617,25 @@ end)
 -- made one typed /staffs fire BOTH paths -> two rpadmin:showPanel events ->
 -- the client TOGGLE showed the panel then instantly hid it (the "<1 second
 -- and it disappears" bug). One command, one toggle.
+
+-- [Fix #160] A5: /managepanel opens the SAME panel as /staffs but is gated to
+-- admin.manager.panel (gate: staff_manager/gates_fix160_task5.lua + the
+-- explicit right check below, so the button/section right is enforced even
+-- when the command is fired without the gate layer).
+addCommandHandler("managepanel", function(player, cmd)
+        if not (isElement(player) and getElementType(player) == "player") then return end
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) ~= "function"
+                        or not playerHasRight(player, "admin.manager.panel") then
+                        outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
+                        return
+                end
+        elseif not exports.integration:isPlayerLeadAdmin(player) then
+                outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
+                return
+        end
+        sendPanel(player)
+end, false, false)
 
 -- ============================================================================
 -- mutations
@@ -1764,3 +1866,128 @@ addCommandHandler("getaccount", function(player, cmd, targetQuery)
         fix157Log(player, "GETACCOUNT " .. tostring(row.username) .. " (#" .. tostring(row.id) .. ")",
                 target)
 end, false, false)
+
+-- ===========================================================================
+-- [Fix #160] A5: RESOURCES/MODS section of the staff panel
+--   list     rpadmin:requestResources -> admin.manager.resources
+--   action   rpadmin:resourceAction    -> admin.manager.resources
+--                                      + admin.startres / admin.stopres /
+--                                        admin.restartres (per action)
+-- Both are BUTTON rights, not commands: /startres /stopres /restartres keep
+-- their own gates in command_gates_s.lua untouched.
+-- ===========================================================================
+
+local function resourceListPayload()
+        local out = {}
+        for _, res in ipairs(getResources()) do
+                out[#out + 1] = {
+                        name = getResourceName(res),
+                        state = getResourceState(res),
+                }
+        end
+        table.sort(out, function(a, b) return tostring(a.name) < tostring(b.name) end)
+        return out
+end
+
+local RESOURCE_ACTION_RIGHTS = {
+        start = "admin.startres",
+        stop = "admin.stopres",
+        restart = "admin.restartres",
+}
+
+-- same backend-first ladder as hasManageResources, per right
+local function resourceRightHas(player, right)
+        if getElementData(player, "rank:index") then
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, right) and true or false
+                end
+                return false
+        end
+        return exports.integration:isPlayerLeadAdmin(player) and true or false
+end
+
+local function checkResourceAction(player, action)
+        if not hasManageResources(player) then
+                outputChatBox("You don't have permission to manage resources.", player, 255, 80, 80)
+                return false
+        end
+        local right = RESOURCE_ACTION_RIGHTS[action]
+        if not right then
+                outputChatBox("Unknown resource action: " .. tostring(action), player, 255, 80, 80)
+                return false
+        end
+        if not resourceRightHas(player, right) then
+                outputChatBox("You don't have permission to " .. action .. " resources (" .. right .. ").",
+                        player, 255, 80, 80)
+                return false
+        end
+        return true
+end
+
+addEvent("rpadmin:requestResources", true)
+addEventHandler("rpadmin:requestResources", root, function()
+        local player = client
+        if not (isElement(player) and getElementType(player) == "player") then return end
+        if not hasManageResources(player) then
+                outputChatBox("You don't have permission to manage resources.", player, 255, 80, 80)
+                return
+        end
+        triggerClientEvent(player, "rpadmin:sendResources", player, resourceListPayload())
+end)
+
+addEvent("rpadmin:resourceAction", true)
+addEventHandler("rpadmin:resourceAction", root, function(action, resourceName)
+        local player = client
+        if not (isElement(player) and getElementType(player) == "player") then return end
+        action = tostring(action or ""):lower()
+        resourceName = tostring(resourceName or "")
+        if not checkResourceAction(player, action) then return end
+
+        local theResource = getResourceFromName(resourceName)
+        if not theResource then
+                outputChatBox("Resource not found: " .. resourceName, player, 255, 0, 0)
+                return
+        end
+        -- [Fix #160] this panel lives in admin-system: never let a click from
+        -- inside it tear the panel (and every gate above) down
+        if resourceName == "admin-system" and action ~= "start" then
+                outputChatBox("The admin-system resource is protected.", player, 255, 0, 0)
+                return
+        end
+
+        local state = getResourceState(theResource)
+        local ok = false
+        if action == "start" then
+                if state == "running" then
+                        outputChatBox(resourceName .. " is already running.", player, 255, 194, 14)
+                        triggerClientEvent(player, "rpadmin:sendResources", player, resourceListPayload())
+                        return
+                end
+                ok = startResource(theResource)
+        elseif action == "stop" then
+                if state ~= "running" then
+                        outputChatBox(resourceName .. " is not running (" .. tostring(state) .. ").",
+                                player, 255, 194, 14)
+                        triggerClientEvent(player, "rpadmin:sendResources", player, resourceListPayload())
+                        return
+                end
+                ok = stopResource(theResource)
+        else -- restart
+                if state == "running" then
+                        ok = restartResource(theResource)
+                else
+                        ok = startResource(theResource)
+                end
+        end
+
+        if ok then
+                outputChatBox("Resource " .. resourceName .. ": " .. action .. " requested.", player, 0, 255, 0)
+                fix157Log(player, ("RESOURCE %s %s (was: %s)"):format(action:upper(), resourceName,
+                        tostring(state)), player)
+        else
+                outputChatBox("Could not " .. action .. " " .. resourceName .. " (" .. tostring(state) .. ").",
+                        player, 255, 0, 0)
+        end
+        triggerClientEvent(player, "rpadmin:sendResources", player, resourceListPayload())
+end)
+

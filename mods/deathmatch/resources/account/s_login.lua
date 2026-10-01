@@ -18,7 +18,21 @@ function clientReady()
 		end
 	end
 	if missingResources then return end
-	local willPlayerBeBanned = false
+	local willPlayerBeBanned = false
+	-- [Fix #160] server-wide blacklist join gate (account/serial/IP/email/device) - the login + registration gates live in login-panel/server.lua
+	if type(blacklistCheckJoin) == "function" then
+		local blRow, blField = blacklistCheckJoin(thePlayer)
+		if blRow then
+			willPlayerBeBanned = true
+			outputChatBox(blacklistMessage(blRow, blField, "الدخول إلى السيرفر"), thePlayer, 255, 0, 0)
+			outputChatBox("سيتم طردك من السيرفر خلال 10 ثوانٍ.", thePlayer, 255, 0, 0)
+			setTimer(function(pl)
+				if isElement(pl) then
+					kickPlayer(pl, "You are blacklisted from this server.")
+				end
+			end, 10000, 1, thePlayer)
+		end
+	end
 	local bannedIPs = exports.global:fetchIPs()
 	local playerIP = getPlayerIP(thePlayer)
 	for key, value in ipairs(bannedIPs) do

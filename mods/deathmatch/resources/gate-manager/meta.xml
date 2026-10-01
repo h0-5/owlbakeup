@@ -6,6 +6,10 @@
 	<script src="c_gate_action.lua" type="client"/>
 	<script src="c_gate_manager.lua" type="client"/> 
 	<script src="s_gate_manager.lua" type="server"/>
+
+	<!-- [Fix #160] OBJECT & GATE system: commands, rights and events -->
+	<script src="s_object_tools_fix160.lua" type="server"/>
+	<script src="c_object_panel_fix160.lua" type="client"/>
 	<export function="createGate" type="server"/>
 	<export function="removeGate" type="server"/>	
 	<file src="sound/gate_open.mp3"/>

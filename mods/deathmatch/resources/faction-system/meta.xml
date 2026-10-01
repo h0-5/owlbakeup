@@ -8,6 +8,9 @@
                                                         
         <script src="s_faction_admin.lua" type="server" />
 
+        <!-- [Fix #160] A3: faction staff command handlers + factions_blacklist -->
+        <script src="s_faction_fix160.lua" type="server" />
+
         <script src="c_faction_uikit.lua" type="client" cache="false" />
 
         <script src="c_faction_admin.lua" type="client" />

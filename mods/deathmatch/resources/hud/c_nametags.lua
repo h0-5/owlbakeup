@@ -79,6 +79,11 @@ local RANK_BADGE_ICONS = {
         ["admin_badge"] = true,
         ["developer_badge"] = true,
         ["support_badge"] = true,
+        -- [Fix #164] the rights-based badge designs: also owned by the right
+        -- (and by their own toggle), so hud:badges can never inject them
+        ["badge_admin"] = true,
+        ["badge_dev"] = true,
+        ["badge_support"] = true,
 }
 
 local function loadBadges()
@@ -86,7 +91,8 @@ local function loadBadges()
         local names = { "AFK", "admin_badge", "admin2", "support_badge",
                         "support_badge_2", "developer_badge", "developer_badge2",
                         "heart", "verified", "youtuber", "pro", "booster",
-                        "police", "facbadge", "mask", "handcuffs" }
+                        "police", "facbadge", "mask", "handcuffs",
+                        "badge_admin", "badge_support", "badge_dev" }
         for _, name in ipairs(names) do
                 local path = "icons/" .. name .. ".png"
                 if fileExists(path) then
@@ -226,32 +232,28 @@ local function buildPlayerEntry(player)
         end
 
         -- badge icons above the head (old client icons row)
-        -- [Fix #54 - user] "الشارة تختفي لو طفي الدوتي أو hideadmin": the
-        -- badge follows duty_admin/duty_supporter AND the REAL hide key the
-        -- server uses ("hiddenadmin" 0/1) - the old "admin:hideadmin" check
-        -- never matched anything server-side, so hidden admins kept their
-        -- badge.
-        -- [Fix #160 / U1 task 2] THREE RIGHT-GATED BADGES.
-        -- The server (staff_manager_bridge_s.lua pushFix160BadgeRights) pushes
-        -- the element data "fix160.badgerights": a comma-separated string of
-        -- the badge rights the player's RANK currently holds, e.g.
-        -- "admin.badge,admin.badge.developer" (set on login/ready and re-set
-        -- after every rank change; "" = a rank that holds none).
-        -- RULE (agreed choice, right beats the manual toggle BOTH ways):
-        --   * rank holds admin.badge            -> admin_badge
-        --   * rank holds admin.badge.developer  -> developer_badge
-        --   * rank holds admin.badge.support    -> support_badge
-        --   * rank holds none of them           -> no rank badge at all, and
-        --     a hud:badges entry pushed by /togdevbadge /togsupportbadge for
-        --     those three names is IGNORED (the right decides, never the
-        --     toggle; the commands still run, sync and log server-side).
-        --   * AFK / heart / every OTHER hud:badges entry is untouched.
-        -- Keep-working rules kept from Fix #54 / Fix #98: hidden admins and
-        -- off-duty staff draw NO badge (they read as plain players, which is
-        -- also what the scoreboard column does).
-        -- Legacy fallback: while the key is still missing (admin-system not
-        -- reloaded yet) the old duty + hud:badges behaviour is kept 1:1 so a
-        -- live server never loses its badges.
+        -- [Fix #164 - user] BADGE = held RIGHT + that badge's OWN toggle.
+        -- The staff bridge still pushes the rank rights in "fix160.badgerights"
+        -- (comma-separated string or table, e.g. "admin.badge,admin.badge.
+        -- developer"; "" = a rank that holds none) and the server now mirrors
+        -- the three F4 badge rows in "fix160.badgetoggles" = { admin, support,
+        -- dev } (row state; missing table / key = on, only an explicit false
+        -- hides that one badge - the 3 toggles are fully independent).
+        -- RULE:
+        --   * right admin.badge            + toggle admin    -> badge_admin
+        --   * right admin.badge.developer  + toggle dev      -> badge_dev
+        --   * right admin.badge.support    + toggle support  -> badge_support
+        --   * no right -> no badge, and a hud:badges entry for any of the six
+        --     rank badge names is IGNORED (RANK_BADGE_ICONS); AFK / heart /
+        --     every OTHER hud:badges entry is untouched.
+        -- DUTY NO LONGER GATES the badges (duty only drives the duty strip row
+        -- and the name color). A hidden admin (hiddenadmin 0/1 or
+        -- admin:hideadmin) still shows NONE of them - that gate is kept.
+        -- Three DISTINCT designs above the head: badge_admin / badge_support /
+        -- badge_dev.
+        -- Legacy fallback: while fix160.badgerights is still missing
+        -- (admin-system not reloaded yet) the old duty-gated admin_badge /
+        -- support_badge path is kept 1:1 so a live server never loses them.
         local badgeRights = nil
         local rawRights = getElementData(player, "fix160.badgerights")
         if rawRights ~= nil then
@@ -271,26 +273,33 @@ local function buildPlayerEntry(player)
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        if not hidden and isPlayerOnDuty(player) then
+        if not hidden then
                 if badgeRights == nil then
-                        -- legacy path (server has not pushed the key yet)
-                        if isOne(getElementData(player, "duty_admin")) then
-                                table.insert(icons, "admin_badge")
-                        end
-                        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
-                        if isOne(getElementData(player, "duty_supporter")) then
-                                table.insert(icons, "support_badge")
+                        -- legacy path (server has not pushed the key yet):
+                        -- duty still gates it, same icons as before Fix #164
+                        if isPlayerOnDuty(player) then
+                                if isOne(getElementData(player, "duty_admin")) then
+                                        table.insert(icons, "admin_badge")
+                                end
+                                -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+                                if isOne(getElementData(player, "duty_supporter")) then
+                                        table.insert(icons, "support_badge")
+                                end
                         end
                 else
-                        -- AllRights order: admin, developer, support
-                        if badgeRights["admin.badge"] then
-                                table.insert(icons, "admin_badge")
+                        -- [Fix #164] rights path: duty no longer required, each
+                        -- badge additionally needs its own toggle ON
+                        local toggles = getElementData(player, "fix160.badgetoggles")
+                        local tg = type(toggles) == "table" and toggles or {}
+                        -- order: admin, developer, support
+                        if badgeRights["admin.badge"] and tg.admin ~= false then
+                                table.insert(icons, "badge_admin")
                         end
-                        if badgeRights["admin.badge.developer"] then
-                                table.insert(icons, "developer_badge")
+                        if badgeRights["admin.badge.developer"] and tg.dev ~= false then
+                                table.insert(icons, "badge_dev")
                         end
-                        if badgeRights["admin.badge.support"] then
-                                table.insert(icons, "support_badge")
+                        if badgeRights["admin.badge.support"] and tg.support ~= false then
+                                table.insert(icons, "badge_support")
                         end
                 end
         end
@@ -341,6 +350,9 @@ local CACHE_KEYS = {
         -- [Fix #160 / U1] the rank's badge rights: an edit / rank change must
         -- rebuild the entry on the same frame (not 2s later)
         ["fix160.badgerights"] = true,
+        -- [Fix #164] the three badge toggles: an F4 click must flip the badge
+        -- row on the same frame
+        ["fix160.badgetoggles"] = true,
         -- [Fix #98] staff detection reads these too (rank ladder / levels) -
         -- a rank push must re-evaluate the off-duty plain-white color now
         ["rank:index"] = true, ["admin_level"] = true, ["supporter_level"] = true,
@@ -691,7 +703,6 @@ function drawNametags()
         local lX, lY, lZ = getElementPosition(localPlayer)
         local recon = getElementData(localPlayer, "reconx")  -- hoisted out of the loop
         local now = getTickCount()
-        local adminTagsOn = not getHudSetting or getHudSetting("admintag")
 
         -- [Fix #47] self-heal: empty cache while other players are streamed in
         if cacheLooksBroken() then updatePlayersHud() end
@@ -788,10 +799,10 @@ function drawNametags()
                                                                 entry.color, 1.3 * rowScale, font, "center", "top")
 
                                                         -- only icons whose texture actually loaded
+                                                        -- [Fix #164] no setting gates this anymore
                                                         local drawable = {}
                                                         for _, icon in ipairs(entry.icons) do
-                                                                if badgeTex[icon]
-                                                                        and (adminTagsOn or not RANK_BADGE_ICONS[icon]) then
+                                                                if badgeTex[icon] then
                                                                         drawable[#drawable + 1] = icon
                                                                 end
                                                         end
@@ -809,14 +820,24 @@ function drawNametags()
                                                                 local iconY = baseY + 4
                                                                 for _, icon in ipairs(drawable) do
                                                                         if icon == "heart" and player == localPlayer
-                                                                                                and getElementHealth(player) > 40
-                                                                                                and now - lastHeartClear >= 10000 then
+                                                                                                        and getElementHealth(player) > 40
+                                                                                                        and now - lastHeartClear >= 10000 then
                                                                                 triggerServerEvent("hud:remove_heart", localPlayer)
                                                                                 lastHeartClear = now
                                                                         end
+                                                                        -- [Fix #164] badge_admin tints with the
+                                                                        -- TARGET's rank color (same rule as the
+                                                                        -- name), every other icon stays white
+                                                                        local ir, ig, ib = 255, 255, 255
+                                                                        if icon == "badge_admin" then
+                                                                                local rgb = getElementData(player, "rank:color")
+                                                                                if type(rgb) == "table" and #rgb >= 3 then
+                                                                                        ir, ig, ib = rgb[1], rgb[2], rgb[3]
+                                                                                end
+                                                                        end
                                                                         dxDrawImage(iconX, iconY, iconSize, iconSize,
                                                                                 badgeTex[icon], 0, 0, 0,
-                                                                                tocolor(255, 255, 255, 240), true)
+                                                                                tocolor(ir, ig, ib, 240), true)
                                                                         iconX = iconX + iconSize + gap
                                                                 end
                                                         end

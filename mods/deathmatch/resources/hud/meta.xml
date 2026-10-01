@@ -292,6 +292,10 @@
     <file src="icons/support_badge_2.png" />
     <file src="icons/developer_badge.png" />
     <file src="icons/developer_badge2.png" />
+    <!-- [Fix #164] badge designs with three distinct silhouettes -->
+    <file src="icons/badge_admin.png" />
+    <file src="icons/badge_support.png" />
+    <file src="icons/badge_dev.png" />
     <file src="icons/booster.png" />
     <file src="icons/pro.png" />
     <file src="icons/AFK.png" />

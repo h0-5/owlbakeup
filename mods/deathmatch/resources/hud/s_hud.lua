@@ -412,7 +412,8 @@ local DEFAULT_ITEMS = {
         -- row still has its own engine/lock/lights buttons like the old client)
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
         { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
-        { "admintag",     "on", "admin_badge",  "Toggle Admin Tag", "" },
+        -- [Fix #164 - user] the single "Toggle Admin Tag" row is REMOVED: the
+        -- badge is now one independent row per badge right (see BADGE_ROW_DEFS)
         -- ("ads" dropped: icons/ads.png does not exist, the item rendered nothing)
 }
 
@@ -422,6 +423,49 @@ local function isStaffForStrip(player)
         if idx then return idx >= 4 end -- Trial Moderator+
         return (tonumber(getElementData(player, "admin_level")) or 0) > 0
                 or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0
+end
+
+-- [Fix #164 - user] rights-based badge rows: one independent F4 row per badge
+-- right the RANK holds. All 3 toggles are fully independent (all on / all off /
+-- any mix) and each row carries its OWN icon design: badge_admin / badge_support
+-- / badge_dev.
+local BADGE_ROW_DEFS = {
+        { id = "badgeadmin",   key = "admin",   right = "admin.badge",
+          icon = "badge_admin",   tip1 = "Toggle Admin Badge" },
+        { id = "badgesupport", key = "support", right = "admin.badge.support",
+          icon = "badge_support", tip1 = "Toggle Support Badge" },
+        { id = "badgedev",     key = "dev",     right = "admin.badge.developer",
+          icon = "badge_dev",     tip1 = "Toggle Developer Badge" },
+}
+local BADGE_ROW_KEY, BADGE_ROW_RIGHT = {}, {}
+for _, def in ipairs(BADGE_ROW_DEFS) do
+        BADGE_ROW_KEY[def.id] = def.key
+        BADGE_ROW_RIGHT[def.id] = def.right
+end
+
+-- [Fix #164] fix160.badgetoggles = the synced mirror of the three badge strip
+-- toggles, { admin = bool, support = bool, dev = bool }, read by the nametags.
+-- Recomputed from hud:items (row present -> its state, row missing -> true),
+-- ALWAYS written with all 3 keys, and only when the value really changed.
+local function syncBadgeToggles(player)
+        if not isElement(player) then return end
+        local items = getElementData(player, "hud:items")
+        local want = { admin = true, support = true, dev = true }
+        if type(items) == "table" then
+                for _, row in ipairs(items) do
+                        if type(row) == "table" then
+                                local key = BADGE_ROW_KEY[row[1]]
+                                if key then want[key] = (row[2] == "on") end
+                        end
+                end
+        end
+        local cur = getElementData(player, "fix160.badgetoggles")
+        if type(cur) ~= "table"
+                or cur.admin ~= want.admin
+                or cur.support ~= want.support
+                or cur.dev ~= want.dev then
+                setProtected(player, "fix160.badgetoggles", want)
+        end
 end
 
 -- [Fix #30] UPSERT, not "only when empty". The old early-return meant any
@@ -447,13 +491,41 @@ local function pushDefaultItems(player)
         for _, item in ipairs(DEFAULT_ITEMS) do
                 upsert(item[1], item[2], item[3], item[4], item[5])
         end
+        -- [Fix #164] the rank's badge rights (comma-separated string or table
+        -- pushed by the staff bridge, same parsing as c_nametags.lua; nil =
+        -- admin-system not up yet -> no badge rows, no badge pruning)
+        local rawRights = getElementData(player, "fix160.badgerights")
+        local rights = nil
+        if rawRights ~= nil then
+                rights = {}
+                if type(rawRights) == "table" then
+                        for _, token in ipairs(rawRights) do
+                                rights[tostring(token):match("^%s*(.-)%s*$")] = true
+                        end
+                elseif type(rawRights) == "string" then
+                        for token in string.gmatch(rawRights, "[^,]+") do
+                                rights[token:match("^%s*(.-)%s*$")] = true
+                        end
+                end
+        end
         -- [Fix #32 - user] rows removed from the strip must be actively
         -- PRUNED (the upsert above would keep stale head_turning/lockvehicle
         -- rows on every account that received them before)
+        -- [Fix #164] the old admintag row is pruned too, and a badge row is
+        -- dropped as soon as the player's current rights no longer include
+        -- its right (rank change).
         for i = #items, 1, -1 do
                 local row = items[i]
-                if type(row) == "table" and (row[1] == "head_turning" or row[1] == "lockvehicle") then
-                        table.remove(items, i)
+                if type(row) == "table" then
+                        if row[1] == "head_turning" or row[1] == "lockvehicle"
+                                or row[1] == "admintag" then
+                                table.remove(items, i)
+                        elseif rights ~= nil then
+                                local need = BADGE_ROW_RIGHT[row[1]]
+                                if need and not rights[need] then
+                                        table.remove(items, i)
+                                end
+                        end
                 end
         end
         -- staff-only duty toggle (on/off duty = badge above the head while on
@@ -479,7 +551,19 @@ local function pushDefaultItems(player)
                         end
                 end
         end
+        -- [Fix #164] one independent badge row per held badge right (state
+        -- defaults to "on", a stored off/on choice survives the upsert).
+        -- nil rights = admin-system not up yet: no rows (the legacy nametag
+        -- path still covers the badges above the head).
+        if rights ~= nil then
+                for _, def in ipairs(BADGE_ROW_DEFS) do
+                        if rights[def.right] then
+                                upsert(def.id, "on", def.icon, def.tip1, "")
+                        end
+                end
+        end
         setProtected(player, "hud:items", items)
+        syncBadgeToggles(player)
 end
 
 -- [Fix #30] the duty state lives in elementData, so keep the strip icon
@@ -515,6 +599,11 @@ addEventHandler("onElementDataChange", root, function(key, _, newValue)
                 pushDefaultItems(source)
         elseif key == "duty_admin" or key == "duty_supporter" then
                 refreshStripDutyState(source)
+        elseif key == "fix160.badgerights" and getElementType(source) == "player" then
+                -- [Fix #164] a rank/rights change must add or drop the badge
+                -- rows live. Safe loop-wise: pushDefaultItems writes hud:items
+                -- and fix160.badgetoggles only, never this key.
+                pushDefaultItems(source)
         end
 end)
 
@@ -556,6 +645,18 @@ addEventHandler("hud:onHudItemClick", root, function(item)
                                 break
                         end
                 end
+        elseif item == "badgeadmin" or item == "badgesupport" or item == "badgedev" then
+                -- [Fix #164] independent badge toggle: flip that one row, then
+                -- recompute the fix160.badgetoggles mirror for the nametags
+                local badgeItems = getElementData(player, "hud:items") or {}
+                for _, row in ipairs(badgeItems) do
+                        if type(row) == "table" and row[1] == item then
+                                row[2] = (row[2] == "on") and "off" or "on"
+                                setProtected(player, "hud:items", badgeItems)
+                                break
+                        end
+                end
+                syncBadgeToggles(player)
         elseif item == "adminduty" then
                 -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
                 -- announcements, element data) instead of a client-side fake

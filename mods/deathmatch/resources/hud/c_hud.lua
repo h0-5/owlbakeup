@@ -91,6 +91,8 @@ local ICON_NAMES = {
         "developer_badge2", "booster", "pro", "AFK", "admin2", "verified",
         "rope", "classic", "youtuber", "vehicle_engine", "vehicle_handbrake",
         "vehicle_lights", "vehicle_lock", "vehicle_seatbelt",
+        -- [Fix #164] the three rights-based badge rows (own design each)
+        "badge_admin", "badge_support", "badge_dev",
 }
 local STATUS_ICON_NAMES = {
         "fatigue", "health", "hungry", "sleep", "thirsty", "toilet",
@@ -347,9 +349,11 @@ end
 function updateHudItemsList(items)
         items = items or getElementData(localPlayer, "hud:items") or {}
         hudItems = items
-        hudSettings = { showhud = hudSettings.showhud, tagmode = hudSettings.tagmode, seatbelt = hudSettings.seatbelt, admintag = hudSettings.admintag }
+        hudSettings = { showhud = hudSettings.showhud, tagmode = hudSettings.tagmode, seatbelt = hudSettings.seatbelt, admintag = true }
         for _, item in ipairs(hudItems) do
-                if type(item[1]) == "string" then
+                -- [Fix #164] the admintag row is gone; a not-yet-pruned stale
+                -- row must never be able to flip the setting to false again
+                if type(item[1]) == "string" and item[1] ~= "admintag" then
                         hudSettings[item[1]] = item[2] == "on"
                 end
         end
@@ -1212,8 +1216,18 @@ local function drawHUD()
                         for i, item in ipairs(visibleItems) do
                                 if item.icon then
                                         local active = item.state == "on"
+                                        -- [Fix #164] the admin badge row tints
+                                        -- with the local rank color (same rule
+                                        -- as the badge above the head)
+                                        local ir, ig, ib = 255, 255, 255
+                                        if item.id == "badgeadmin" then
+                                                local rgb = getElementData(localPlayer, "rank:color")
+                                                if type(rgb) == "table" and #rgb >= 3 then
+                                                        ir, ig, ib = rgb[1], rgb[2], rgb[3]
+                                                end
+                                        end
                                         dxDrawImage(iconX, py + 2.5, STRIP_ICON, STRIP_ICON, item.icon, 0, 0, 0,
-                                                tocolor(255, 255, 255, active and 255 or 130), true)
+                                                tocolor(ir, ig, ib, active and 255 or 130), true)
                                 end
                                 if isMouseInPosition(iconX - 2.5, py, STRIP_PITCH, STRIP_H) then
                                         -- [Fix #32 - LAG] hoveredItem resets to 0 at the top of
@@ -1356,10 +1370,9 @@ addEventHandler("onClientClick", root, function(button, state)
                         rebuildVisibleItems()
                         triggerEvent("onClientHudVisibilityChange", localPlayer, hudSettings.showhud)
                 elseif item.category ~= "disable-click" then
-                        if item.id == "admintag" then
-                                setHudSetting("admintag", not getHudSetting("admintag"))
-                                rebuildVisibleItems()
-                        end
+                        -- [Fix #164] the admintag local toggle is gone (the row
+                        -- was removed); badge rows only ping the server and the
+                        -- UI updates when the synced hud:items arrive
                         -- old client: server event + local event, both
                         triggerServerEvent("hud:onHudItemClick", localPlayer, item.id)
                         triggerEvent("hud:onClientHudItemClick", localPlayer, item.id, getHudSetting(item.id))

@@ -15,11 +15,12 @@
 --   The listeners are implemented NOW even though the staff_manager side may
 --   not fire the fix160:* events yet - they activate the moment it does.
 --
--- LINE FORMAT (owner's screenshots)
---   [{Tag}]: {Character} ({account}) {detail}.      <- admin command usage
---   [{Tag}]: {Character} {detail}.                  <- report lines
---   [DEATHMATCH]: Player '{name}' ({id}) {detail}.  <- kill alerts
---   Tag   = ADMIN (commands + reports), DEATHMATCH (kills), STAFF (ranks)
+-- LINE FORMAT (owner's screenshots - ONE shape for every feed)
+--   [{Tag}] : {Character} ({account}) {detail}.
+--   e.g.  [Admin] : Robson Walton (h05) revived Hamdi DJawfer.
+--   Tag   = Admin (gated command usage), Staff (report opened / accepted,
+--           promotions / demotions), Debug (internal warnings),
+--           DEATHMATCH (kill alerts)
 --   The THREE hide commands (/hidelogs, /hiddenlogs, /hideadmin) are NEVER
 --   logged for anyone.
 --
@@ -272,6 +273,18 @@ local function tierFor(player)
 end
 
 -- ============================================================ emit =========
+-- the ONE line shape every feed prints (owner's screenshots):
+--   "[Admin] : Robson Walton (h05) revived Hamdi DJawfer."
+--   "{Tag} : {Character} ({account}) {detail}."  - actor ALWAYS carries the
+--   account, detail never carries the trailing dot (logLine adds it).
+local TAG_ADMIN      = "[Admin]"
+local TAG_STAFF      = "[Staff]"
+local TAG_DEBUG      = "[Debug]"
+local TAG_DEATHMATCH = "[DEATHMATCH]"
+
+local function logLine(tag, actor, detail)
+        return tag .. " : " .. actor .. " " .. detail .. "."
+end
 
 -- one line -> every online, logged-in viewer whose tier covers it and whose
 -- local hide toggle is OFF
@@ -288,7 +301,7 @@ end
 
 -- ======================================================= formatters ========
 -- Per-command detail builders: (actor, args) -> "detail" WITHOUT the trailing
--- period (emitLog appends it). Returning nil falls back to the generic
+-- period (logLine adds it). Returning nil falls back to the generic
 -- "used /cmd <args>" line built from the cmdok args.
 
 local function a(args, i)
@@ -334,14 +347,16 @@ local function fmtKick(actor, args)
         return line
 end
 
--- /sethp <player> <health> and friends: "set health of player (X) to (100)"
+-- /sethp <player> <health> and friends: "set health of player Hade U.Keeler
+-- to (100)" - the owner's screenshot wording (name unbracketed, value in
+-- brackets)
 local function fmtHealth(what, defValue)
         return function(actor, args)
                 if a(args, 1) == "" then return nil end
                 local value = a(args, 2)
                 if value == "" then value = tostring(defValue or "?") end
-                return "set " .. what .. " of player (" .. resolveName(a(args, 1))
-                        .. ") to (" .. value .. ")"
+                return "set " .. what .. " of player " .. resolveName(a(args, 1))
+                        .. " to (" .. value .. ")"
         end
 end
 
@@ -360,24 +375,33 @@ local function fmtMoney(mode)
         end
 end
 
+-- /closereport <id> / /cr <id> / /endreport <id> / /er <id> - the screenshot
+-- line: "finished report ID 1."
+local function fmtReportFinish(actor, args)
+        local id = tonumber(a(args, 1))
+        if not id then return nil end
+        return "finished report ID " .. id
+end
+
 local FORMATTERS = {
         ---------------------------------------------------------- teleports --
+        -- the screenshot line: "teleported to Cosed Eli Madadiqa."
         ["goto"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                return "went to player '" .. resolveName(a(args, 1)) .. "'"
+                return "teleported to " .. resolveName(a(args, 1))
         end,
         ["atp"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                return "went to player '" .. resolveName(a(args, 1)) .. "'"
+                return "teleported to " .. resolveName(a(args, 1))
         end,
         ["dtp"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                return "went to player '" .. resolveName(a(args, 1)) .. "'"
+                return "teleported to " .. resolveName(a(args, 1))
         end,
-        -- the screenshot line: "went to place 'agm'."
+        -- the screenshot line: "went to place 'agm'." -> teleports to a place
         ["gotoplace"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                local line = "went to place '" .. a(args, 1) .. "'"
+                local line = "teleported to place '" .. a(args, 1) .. "'"
                 if a(args, 2) ~= "" then
                         line = line .. " for '" .. resolveName(a(args, 2)) .. "'"
                 end
@@ -385,11 +409,11 @@ local FORMATTERS = {
         end,
         ["gotofuel"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                return "went to place '" .. a(args, 1) .. "'"
+                return "teleported to place '" .. a(args, 1) .. "'"
         end,
         ["gotogate"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
-                return "went to place '" .. a(args, 1) .. "'"
+                return "teleported to place '" .. a(args, 1) .. "'"
         end,
         ["gethere"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
@@ -451,9 +475,14 @@ local FORMATTERS = {
                 return line
         end,
         ------------------------------------------------------ player state ---
-        -- the screenshot line: "set health of player (Hade U.Keeler) to (100)."
+        -- the screenshot line: "set health of player Hade U.Keeler to (100)."
         ["sethp"] = fmtHealth("health", 100),
         ["setarmor"] = fmtHealth("armor", 100),
+        -- the screenshot line: "revived <target player name>."
+        ["revive"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "revived " .. resolveName(a(args, 1))
+        end,
         ["aheal"] = function(actor, args)
                 if a(args, 1) == "" then return nil end
                 return "healed player (" .. resolveName(a(args, 1)) .. ") to (100)"
@@ -507,6 +536,10 @@ local FORMATTERS = {
                 if reason ~= "" then line = line .. " (" .. reason .. ")" end
                 return line
         end,
+        ------------------------------------------------------------ reports ---
+        -- the screenshot line: "finished report ID 1."
+        ["closereport"] = fmtReportFinish, ["cr"] = fmtReportFinish,
+        ["endreport"] = fmtReportFinish, ["er"] = fmtReportFinish,
         ------------------------------------------------------- announcements -
         ["bc"] = function(actor, args)
                 local msg = rest(args, 1)
@@ -521,7 +554,7 @@ local FORMATTERS = {
 }
 
 -- detail must stay one short line: collapse whitespace, drop a trailing dot
--- (emitLog adds it) and cap the length so one command cannot flood the chat
+-- (logLine adds it) and cap the length so one command cannot flood the chat
 local function sanitizeDetail(detail)
         detail = tostring(detail or ""):gsub("[\r\n]", " ")
         detail = detail:gsub("%s+", " ")
@@ -562,7 +595,7 @@ local function logCommandUsage(player, cmd, args)
         detail = sanitizeDetail(detail)
         if not detail then return end
 
-        local line = "[ADMIN]: " .. who(player) .. " " .. detail .. "."
+        local line = logLine(TAG_ADMIN, who(player), detail)
         local tier = TIER_ADMIN
         if SENSITIVE_COMMANDS[cmd] then
                 tier = TIER_DEBUG
@@ -579,14 +612,15 @@ end
 addEvent("fix160:cmdok", false)
 addEventHandler("fix160:cmdok", root, function(player, cmd, args)
         if client then
-                outputDebugString("[AdminLogs] rejected remote fix160:cmdok from "
-                        .. tostring(getPlayerName(client) or "?"), 2)
+                outputDebugString(logLine(TAG_DEBUG, who(client),
+                        "rejected a remote fix160:cmdok trigger"), 2)
                 return
         end
         local ok, err = pcall(logCommandUsage, player, cmd, args)
         if not ok then
-                outputDebugString("[AdminLogs] cmdok failed for /"
-                        .. tostring(cmd) .. ": " .. tostring(err), 2)
+                outputDebugString(logLine(TAG_DEBUG, who(player),
+                        "cmdok failed for /" .. tostring(cmd) .. ": "
+                        .. tostring(err)), 2)
         end
 end)
 
@@ -675,46 +709,56 @@ local function logRankChange(payload, ...)
                 return -- nothing changed, no line
         end
 
-        local line = "[STAFF]: " .. byChar .. " (" .. byAcct .. ") " .. detail .. "."
+        detail = sanitizeDetail(detail)
+        if not detail then return end
+        local line = logLine(TAG_STAFF, byChar .. " (" .. byAcct .. ")", detail)
         emitLog(COLOR_STAFF, line, TIER_STAFF)
 end
 
 addEvent("fix160:rankchanged", false)
 addEventHandler("fix160:rankchanged", root, function(payload, ...)
         if client then
-                outputDebugString("[AdminLogs] rejected remote fix160:rankchanged from "
-                        .. tostring(client and getPlayerName(client) or "?"), 2)
+                outputDebugString(logLine(TAG_DEBUG, who(client),
+                        "rejected a remote fix160:rankchanged trigger"), 2)
                 return
         end
         local ok, err = pcall(logRankChange, payload, ...)
         if not ok then
-                outputDebugString("[AdminLogs] rankchanged failed: "
-                        .. tostring(err), 2)
+                local byChar, byAcct = "?", "?"
+                if type(payload) == "table" then
+                        byChar, byAcct = resolveWho(payload.by, "?")
+                end
+                outputDebugString(logLine(TAG_DEBUG,
+                        byChar .. " (" .. byAcct .. ")",
+                        "rankchanged failed: " .. tostring(err)), 2)
         end
 end)
 
 -- ================================================ feed 3: reports ==========
 -- report-system/s_reports.lua triggers these; both lines use the owner's
--- screenshot wording and the ADMIN tag in report green.
+-- screenshot wording, the STAFF tag and the reporter as the actor, in report
+-- green.
 
 addEvent("adminlogs:reportopen", false)
 addEventHandler("adminlogs:reportopen", root, function(reporter, id)
         if client then return end
         if not isElement(reporter) then return end
-        local line = "[ADMIN]: " .. charName(reporter)
-                .. " has submitted a report (Report ID: #" .. tostring(id or "?") .. ")."
-        emitLog(COLOR_REPORT, line, TIER_STAFF)
+        local detail = sanitizeDetail("has submitted a report (Report ID: #"
+                .. tostring(id or "?") .. ")")
+        if not detail then return end
+        emitLog(COLOR_REPORT, logLine(TAG_STAFF, who(reporter), detail),
+                TIER_STAFF)
 end)
 
 addEvent("adminlogs:reportaccept", false)
 addEventHandler("adminlogs:reportaccept", root, function(reporter, id, admin)
         if client then return end
-        local reporterName = isElement(reporter) and charName(reporter) or "?"
-        local adminName = isElement(admin) and charName(admin) or "?"
-        local line = "[ADMIN]: " .. reporterName
-                .. " has submitted a report (Report ID: #" .. tostring(id or "?")
-                .. ") | accept by " .. adminName .. "."
-        emitLog(COLOR_REPORT, line, TIER_STAFF)
+        local actor = isElement(reporter) and who(reporter) or "? (?)"
+        local adminWho = isElement(admin) and who(admin) or "? (?)"
+        local detail = sanitizeDetail("has submitted a report (Report ID: #"
+                .. tostring(id or "?") .. ") | accept by " .. adminWho)
+        if not detail then return end
+        emitLog(COLOR_REPORT, logLine(TAG_STAFF, actor, detail), TIER_STAFF)
 end)
 
 -- ============================================== feed 4: multi-kills ========
@@ -743,9 +787,9 @@ addEventHandler("onPlayerWasted", root, function(ammo, killer, weapon, bodypart,
         if #kept > 2 then
                 if not killAlerted[killer] then
                         killAlerted[killer] = true
-                        local line = "[DEATHMATCH]: Player '" .. charName(killer)
-                                .. "' (" .. idOf(killer) .. ") killed " .. #kept
-                                .. " players within 1 minute."
+                        local line = logLine(TAG_DEATHMATCH, who(killer),
+                                "killed " .. #kept
+                                .. " players within 1 minute")
                         emitLog(COLOR_DEATHMATCH, line, TIER_ADMIN)
                 end
         else

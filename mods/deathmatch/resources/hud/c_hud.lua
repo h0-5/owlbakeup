@@ -1216,13 +1216,23 @@ local function drawHUD()
                         for i, item in ipairs(visibleItems) do
                                 if item.icon then
                                         local active = item.state == "on"
-                                        -- [user] badge_admin's PNG carries the FINAL
-                                        -- colors now (black card + mauve shield), so
-                                        -- the rank-color tint is GONE: every icon is
-                                        -- drawn white, only the active/inactive ALPHA
-                                        -- (255 / 130) of the old rule is kept
+                                        -- [Fix #164] the admin badge row tints
+                                        -- with the local rank color (same rule
+                                        -- as the badge above the head): the PNG
+                                        -- shield is PURE WHITE so the multiply
+                                        -- lands on #9032FA etc., the black card
+                                        -- stays black; every other icon stays
+                                        -- white. Active/inactive ALPHA (255 /
+                                        -- 130) of the old rule is kept
+                                        local ir, ig, ib = 255, 255, 255
+                                        if item.id == "badgeadmin" then
+                                                local rgb = getElementData(localPlayer, "rank:color")
+                                                if type(rgb) == "table" and #rgb >= 3 then
+                                                        ir, ig, ib = rgb[1], rgb[2], rgb[3]
+                                                end
+                                        end
                                         dxDrawImage(iconX, py + 2.5, STRIP_ICON, STRIP_ICON, item.icon, 0, 0, 0,
-                                                tocolor(255, 255, 255, active and 255 or 130), true)
+                                                tocolor(ir, ig, ib, active and 255 or 130), true)
                                 end
                                 if isMouseInPosition(iconX - 2.5, py, STRIP_PITCH, STRIP_H) then
                                         -- [Fix #32 - LAG] hoveredItem resets to 0 at the top of

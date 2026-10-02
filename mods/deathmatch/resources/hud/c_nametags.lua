@@ -15,7 +15,11 @@
 --     "TYPING" replaces the old ((TYPING...)) text and chat-system's green
 --     logo, and nothing at all is drawn while a menu/window is open
 --     (ui:f1open / scoreboard / staff panel / right-click menu / cursor) -
---     but NOT while the cursor is the bare M cursor (Fix #161)
+--     the menu gate still keeps Fix #161's bare-M-cursor carve-out, and on
+--     top of it a plain isCursorShowing() early-out in drawNametags() now
+--     pauses the whole pass (name + badges + TYPING) whenever ANY cursor
+--     is up, so tags can never render over an open panel (Player Check /
+--     Character Info)
 --   * 20-unit range + line of sight, tagmode setting respected
 --   * Fix #154: drawn in onClientPreRender so F1 / F3 / /staffs / TAB always
 --     cover the tags, and non-friends read the account "mod:id" instead of
@@ -86,9 +90,10 @@ local RANK_BADGE_ICONS = {
         ["badge_support"] = true,
 }
 
--- [user] the three rights-based badges are the ONLY icons drawn bigger than
--- the plain 26px row (about 2x the name's glyph height, owner's reference);
--- AFK / heart / hud:badges extras / the legacy badge designs keep 26*rowScale.
+-- [user] the three rights-based badges are measured from the name's OWN
+-- rendered height (about 1.1x it - user's size reference, was ~3x / 2x and
+-- rendered EXTRA HUGE over the head); AFK / heart / hud:badges extras /
+-- the legacy badge designs keep 26*rowScale.
 local BIG_BADGE_ICONS = {
         ["badge_admin"] = true,
         ["badge_support"] = true,
@@ -710,6 +715,15 @@ function drawNametags()
                 gateReport("a menu / window is open (F1, TAB, staff panel, ...)")
                 return
         end
+        -- [user] ANY client cursor up (Player Check / Character Info and every
+        -- other panel that holds the mouse) -> no name, no badges and no
+        -- TYPING word over it. Open world (no cursor) draws exactly as before;
+        -- vanish / hidden / duty gating below is untouched - this only stops
+        -- the whole pass while a cursor is out.
+        if isCursorShowing() then
+                gateReport("a window holds the cursor (name/badges paused)")
+                return
+        end
 
         local camX, camY, camZ = getCameraMatrix()
         local lX, lY, lZ = getElementPosition(localPlayer)
@@ -831,10 +845,11 @@ function drawNametags()
                                                         -- (admin/developer/support come from fix160.badgerights;
                                                         -- AFK / heart / hud:badges unchanged)
                                                         -- [user] the three RANK badges (badge_admin / badge_support
-                                                        -- / badge_dev) are noticeably BIGGER now - about 2x the
-                                                        -- name's rendered glyph height, measured with
+                                                        -- / badge_dev) match the NAME's own rendered height now -
+                                                        -- 1.1x the name's glyph height, measured with
                                                         -- dxGetFontHeight at the SAME 1.3*rowScale the name above
-                                                        -- is drawn with (so they keep matching at any distance).
+                                                        -- is drawn with (so they keep matching at any distance;
+                                                        -- the earlier ~3x / 2x sizing rendered EXTRA HUGE).
                                                         -- rowW is summed from each icon's OWN width so the row
                                                         -- stays centred, and every icon shares ONE vertical centre
                                                         -- (badges still sit directly under the name).
@@ -845,8 +860,12 @@ function drawNametags()
                                                                 local nameScale = 1.3 * rowScale
                                                                 local okH, measured = pcall(dxGetFontHeight, nameScale, font)
                                                                 local nameH = (okH and tonumber(measured)) or (18 * nameScale)
-                                                                local bigSize = 2 * nameH
+                                                                -- [user] TARGET SIZE: the badge is the SAME height as the
+                                                                -- name text itself (1.1x it, <= the old plain 26px row) -
+                                                                -- not 2x/3x it
+                                                                local bigSize = 1.1 * nameH
                                                                 local smallSize = 26 * rowScale
+                                                                local rowH = math.max(bigSize, smallSize)
                                                                 local gap = 4 * rowScale
                                                                 local rowW = (#drawable - 1) * gap
                                                                 for _, icon in ipairs(drawable) do
@@ -858,21 +877,32 @@ function drawNametags()
                                                                 for _, icon in ipairs(drawable) do
                                                                         local iconSize = BIG_BADGE_ICONS[icon]
                                                                                 and bigSize or smallSize
-                                                                        -- icons centred on the same line as the big row
-                                                                        local iconY = rowTop + (bigSize - iconSize) / 2
+                                                                        -- icons centred on one shared row centre (rowH = the
+                                                                        -- tallest icon in the row)
+                                                                        local iconY = rowTop + (rowH - iconSize) / 2
                                                                         if icon == "heart" and player == localPlayer
                                                                                                 and getElementHealth(player) > 40
                                                                                                 and now - lastHeartClear >= 10000 then
                                                                                 triggerServerEvent("hud:remove_heart", localPlayer)
                                                                                 lastHeartClear = now
                                                                         end
-                                                                        -- [user] badge_admin draws UNTINTED (255,255,255)
-                                                                        -- now: the PNG carries the final colors; the name
-                                                                        -- keeps its rank color, the badge does not. Alpha
-                                                                        -- 240 unchanged, every other icon white as before.
+                                                                        -- [Fix #164] badge_admin tints with the
+                                                                        -- TARGET's rank color (same rule as the
+                                                                        -- name), every other icon stays white: its
+                                                                        -- shield is PURE WHITE in the png so the
+                                                                        -- multiply lands exactly on the rank color
+                                                                        -- (#9032FA etc.), the black card stays black
+                                                                        -- under multiply. Alpha 240 unchanged.
+                                                                        local ir, ig, ib = 255, 255, 255
+                                                                        if icon == "badge_admin" then
+                                                                                local rgb = getElementData(player, "rank:color")
+                                                                                if type(rgb) == "table" and #rgb >= 3 then
+                                                                                        ir, ig, ib = rgb[1], rgb[2], rgb[3]
+                                                                                end
+                                                                        end
                                                                         dxDrawImage(iconX, iconY, iconSize, iconSize,
                                                                                 badgeTex[icon], 0, 0, 0,
-                                                                                tocolor(255, 255, 255, 240), true)
+                                                                                tocolor(ir, ig, ib, 240), true)
                                                                         iconX = iconX + iconSize + gap
                                                                 end
                                                         end

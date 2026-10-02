@@ -423,6 +423,15 @@ local function gateAllows(player, right)
         return playerHasRight(player, right)
 end
 
+-- [Admin flight] rights authorised by the RIGHTS API (the rank's own rights
+-- OR any held team's rights, plus the canFly give/revoke element data)
+-- instead of by the rankPermits + team-scoping pipeline - see the check
+-- inside hasCommandRight.
+local FLIGHT_RIGHTS = {
+        ["admin.superman"] = true,
+        ["admin.freecam"]  = true,
+}
+
 -- the exported gate. Returns true when the command is ALLOWED.
 --
 -- ===========================================================================
@@ -444,6 +453,16 @@ end
 -- right (commandNeedsTeam in the bridge). rankPermits uses ONLY the rank's
 -- own stored rights - a command the rank forbids stays forbidden even with
 -- the team ("rank restrictions always win").
+--
+-- [Admin flight] ONE EXCEPTION to the pipeline: the rights admin.superman /
+-- admin.freecam do not use it - they are authorised by the rights API
+-- (playerHasRight = the rank's own rights OR any held team's rights) plus
+-- the canFly element data /givesuperman sets. Some team bundles those two
+-- rights (the owner's panel team does), which made the generic rule treat
+-- them as "team scoped" and denied /superman and /freecam to every rank
+-- below 18 that holds the right but belongs to no team - while the
+-- rank-first step denied staff whose TEAM grants the flight right and whose
+-- rank does not list it. See FLIGHT_RIGHTS inside hasCommandRight.
 -- ===========================================================================
 function hasCommandRight(player, commandName)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
@@ -451,6 +470,32 @@ function hasCommandRight(player, commandName)
         -- an unmapped command is not restricted by this layer (the handler's
         -- own legacy check still applies); returning true means "no opinion".
         if not right then return true end
+
+        -- [Admin flight] /superman and /freecam are authorised through the
+        -- rights API instead of the Batch pipeline below: the flight right
+        -- counts when it comes from the RANK (staff_roles rights), from any
+        -- held TEAM (playerHasRight = rank OR team union) or from the canFly
+        -- element data that /givesuperman grants (grant AND revoke keep
+        -- working: revoking removes only the extra grant, not the rights).
+        -- The pipeline could deny both kinds of holders - the team-
+        -- requirement step refused ranks below 18 that hold the right but
+        -- belong to no team (some team bundles admin.superman/admin.freecam,
+        -- so the rights read as "team scoped"), and the rank-first step
+        -- refused staff whose team grants the flight right while their rank
+        -- does not list it - typed /superman and /freecam were cancelled by
+        -- onPlayerCommand before the resource ever saw them, which is what
+        -- made admin flight look broken. Non-staff stay locked out:
+        -- playerHasRight is false for them, and the client side (canFly() in
+        -- superman/c_superman.lua, toggleFreecam in freecam/c_freecam.lua)
+        -- re-checks admin identity before flight actually starts.
+        if type(right) == "string" and FLIGHT_RIGHTS[right] then
+                if getElementData(player, "canFly") then return true end
+                if type(playerHasRight) == "function" then
+                        return playerHasRight(player, right)
+                end
+                return false -- rights API unavailable: fail closed
+        end
+
         local rankIdx = tonumber(getElementData(player, "rank:index"))
 
         if not rankIdx then

@@ -3,12 +3,16 @@ function enterCommand(commandName, ...)
 end
 addCommandHandler("check", enterCommand, false, false)
 
+-- true while the cursor is on because THIS panel turned it on (refcount-safe
+-- close: we never hide a cursor that another panel is using)
+local checkCursorOwned = false
+
 function CreateCheckWindow()
 	local width, height = guiGetScreenSize()	
 	Button = {}
 	Window = guiCreateWindow(width-400,0,400,385,"Player Check",false)
 	guiWindowSetSizable(Window, false)
-	Button[3] = guiCreateButton(0.85,0.86,0.12, 0.125,"Close",true,Window)
+	Button[3] = guiCreateButton(338,336,52,35,"Close",false,Window)
 	addEventHandler( "onClientGUIClick", Button[3], CloseCheck )
 	Label = {
 		guiCreateLabel(0.03,0.06,0.95,0.0887,"Name: N/A",true,Window),
@@ -35,7 +39,7 @@ function CreateCheckWindow()
 	}
 	
 	-- player notes
-	memo = guiCreateMemo(0.03, 0.55, 0.8, 0.42, "", true, Window)
+	memo = guiCreateMemo(16, 240, 314, 131, "", false, Window)
 	addEventHandler( "onClientGUIClick", Window,
 		function( button, state )
 			if button == "left" and state == "up" then
@@ -47,14 +51,14 @@ function CreateCheckWindow()
 			end
 		end
 	)
-	Button[4] = guiCreateButton(0.85,0.55,0.12, 0.175,"Save\nNote",true,Window)
+	Button[4] = guiCreateButton(338,240,52,52,"Save\nNote",false,Window)
 	
 	addEventHandler( "onClientGUIClick", Button[4], SaveNote, false )
 	
-	Button[5] = guiCreateButton(0.7,0.375,0.4093,0.15,"History: N/A",true,Window)
+	Button[5] = guiCreateButton(16,206,314,30,"History: N/A",false,Window)
 	addEventHandler( "onClientGUIClick", Button[5], ShowHistory, false )
 	
-	Button[6] = guiCreateButton(0.85,0.73,0.12,0.125,"Inv.",true,Window)
+	Button[6] = guiCreateButton(338,296,52,36,"Inv.",false,Window)
 	addEventHandler( "onClientGUIClick", Button[6], showInventory, false )
 
 	guiSetVisible(Window, false)
@@ -134,6 +138,11 @@ function OpenCheck( ip, adminreports, donPoints, note, history, warns, transfers
 	end
 
 	if not guiGetVisible( Window ) then
+		if not isCursorShowing() then
+			showCursor( true )
+			checkCursorOwned = true
+		end
+
 		guiSetVisible(Window, true)
 	end
 end
@@ -199,7 +208,10 @@ addEventHandler( "onClientRender", getRootElement(),
 
 function CloseCheck( button, state )
 	if source == Button[3] and button == "left" and state == "up" then
-		triggerEvent("cursorHide", getLocalPlayer())
+		if checkCursorOwned then
+			triggerEvent("cursorHide", getLocalPlayer())
+			checkCursorOwned = false
+		end
 		guiSetVisible( Window, false )
 		guiSetInputEnabled( false )
 		player = nil
@@ -234,6 +246,251 @@ local wHist, gHist, bClose, lastElement
 -- window
 
 
+-- image-4 style dark skin for the Player Check window.
+-- MTA can not recolour the default window chrome, so the whole panel (flat
+-- near-black bg, red left accent bar, centred white title, bullet rows and
+-- dark buttons) is drawn with dx AFTER the GUI (postGUI = true) while the
+-- window is open. The note memo keeps a hole in the skin so it stays native
+-- and editable (caret, selection, scroll). Every row reads guiGetText() of the
+-- existing labels, so all the setters above keep working untouched.
+local checkSkin = {
+
+	bg = tocolor(14, 14, 16, 255),
+
+	line = tocolor(38, 38, 44, 255),
+
+	red = tocolor(226, 59, 59, 255),
+
+	title = tocolor(255, 255, 255, 255),
+
+	key = tocolor(255, 255, 255, 255),
+
+	value = tocolor(200, 200, 206, 255),
+
+	accent = tocolor(255, 92, 92, 255),
+
+	btn = tocolor(24, 24, 28, 255),
+
+	btnHover = tocolor(48, 48, 56, 255),
+
+	btnOff = tocolor(17, 17, 20, 255),
+
+	dim = tocolor(120, 120, 126, 255),
+
+}
+
+
+-- two column row grid (y positions inside the 400x385 window)
+-- left: Name, IP, Admin Level, Weapon, Money, Warns, Faction, Hours, Vehicle, Location
+-- right: X, Y, Z, Interior, Dimension, Health, Armour, Skin, GameCoins, Ping
+local checkRows = { 36, 53, 70, 87, 104, 121, 138, 155, 172, 189 }
+
+local checkLeft = { 1, 2, 18, 7, 3, 11, 8, 19, 10, 12 }
+
+local checkRight = { 13, 14, 15, 16, 17, 4, 5, 6, 20, 9 }
+
+local checkAccent = { [3] = true, [4] = true, [5] = true, [11] = true, [20] = true }
+
+
+
+local function checkMouseOver(x, y, w, h)
+
+	local cx, cy = getCursorPosition()
+
+	if not cx then
+
+		return false
+
+	end
+
+	local sx, sy = guiGetScreenSize()
+
+	cx, cy = cx * sx, cy * sy
+
+	return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+
+end
+
+
+
+local function drawCheckRow(ox, oy, bx, tx, tw, y, index)
+
+	local element = Label and Label[index]
+
+	if not isElement(element) then
+
+		return
+
+	end
+
+	local text = guiGetText(element)
+
+	if not text or text == "" then
+
+		return
+
+	end
+
+	dxDrawRectangle(ox + bx, oy + y + 5, 6, 2, checkSkin.red, true)
+
+	local key, value = string.match(text, "^(.-):%s*(.*)$")
+
+	if not key or key == "" then
+
+		dxDrawText(text, ox + tx, oy + y, ox + tx + tw, oy + y + 15, checkSkin.key, 0.9, "default", "left", "top", true, false, true)
+
+		return
+
+	end
+
+	dxDrawText(key .. ":", ox + tx, oy + y, ox + tx + tw, oy + y + 15, checkSkin.key, 0.9, "default-bold", "left", "top", true, false, true)
+
+	if value ~= "" then
+
+		value = string.gsub(value, "\n", " | ")
+
+		local colour = checkAccent[index] and checkSkin.accent or checkSkin.value
+
+		local kw = dxGetTextWidth(key .. ": ", 0.9, "default-bold")
+
+		dxDrawText(value, ox + tx + kw, oy + y, ox + tx + tw, oy + y + 15, colour, 0.9, "default", "left", "top", true, false, true)
+
+	end
+
+end
+
+
+
+local function drawCheckButton(ox, oy, element)
+
+	if not isElement(element) then
+
+		return
+
+	end
+
+	local bx, by = guiGetPosition(element, false)
+
+	local bw, bh = guiGetSize(element, false)
+
+	bx, by = ox + bx, oy + by
+
+	local enabled = guiGetEnabled(element)
+
+	local hover = enabled and checkMouseOver(bx, by, bw, bh)
+
+	local bg = checkSkin.btn
+
+	if not enabled then
+
+		bg = checkSkin.btnOff
+
+	elseif hover then
+
+		bg = checkSkin.btnHover
+
+	end
+
+	dxDrawRectangle(bx, by, bw, bh, bg, true)
+
+	if hover then
+
+		dxDrawRectangle(bx, by, 2, bh, checkSkin.red, true)
+
+	end
+
+	local colour = enabled and checkSkin.title or checkSkin.dim
+
+	dxDrawText(guiGetText(element), bx + 4, by, bx + bw - 2, by + bh, colour, 0.9, "default-bold", "center", "center", true, false, true)
+
+end
+
+
+
+addEventHandler("onClientRender", getRootElement(),
+
+	function()
+
+		if not (isElement(Window) and guiGetVisible(Window)) then
+
+			return
+
+		end
+
+		-- the panel is open: the cursor must stay on (other panels / nametags rely on it)
+
+		if not isCursorShowing() then
+
+			showCursor(true)
+
+			checkCursorOwned = true
+
+		end
+
+		local ox, oy = guiGetPosition(Window, false)
+
+		local ow, oh = guiGetSize(Window, false)
+
+		if isElement(memo) then
+
+			local mx, my = guiGetPosition(memo, false)
+
+			local mw, mh = guiGetSize(memo, false)
+
+			-- flat near-black panel, drawn around the native note memo
+
+			dxDrawRectangle(ox, oy, ow, my, checkSkin.bg, true)
+
+			dxDrawRectangle(ox, oy + my, mx, mh, checkSkin.bg, true)
+
+			dxDrawRectangle(ox + mx + mw, oy + my, ow - mx - mw, mh, checkSkin.bg, true)
+
+			dxDrawRectangle(ox, oy + my + mh, ow, oh - my - mh, checkSkin.bg, true)
+
+			dxDrawRectangle(ox + mx - 1, oy + my - 1, mw + 2, 1, checkSkin.line, true)
+
+			dxDrawRectangle(ox + mx - 1, oy + my + mh, mw + 2, 1, checkSkin.line, true)
+
+			dxDrawRectangle(ox + mx - 1, oy + my, 1, mh, checkSkin.line, true)
+
+			dxDrawRectangle(ox + mx + mw, oy + my, 1, mh, checkSkin.line, true)
+
+		else
+
+			dxDrawRectangle(ox, oy, ow, oh, checkSkin.bg, true)
+
+		end
+
+		-- red accent bar along the far left edge + centred white title
+
+		dxDrawRectangle(ox, oy, 4, oh, checkSkin.red, true)
+
+		dxDrawText("Player Check", ox + 4, oy + 4, ox + ow, oy + 28, checkSkin.title, 1, "default-bold", "center", "center", false, false, true)
+
+		dxDrawRectangle(ox + 16, oy + 31, ow - 32, 1, checkSkin.line, true)
+
+		for i = 1, #checkRows do
+
+			drawCheckRow(ox, oy, 16, 26, 232, checkRows[i], checkLeft[i])
+
+			drawCheckRow(ox, oy, 262, 272, 118, checkRows[i], checkRight[i])
+
+		end
+
+		drawCheckButton(ox, oy, Button and Button[5])
+
+		drawCheckButton(ox, oy, Button and Button[4])
+
+		drawCheckButton(ox, oy, Button and Button[6])
+
+		drawCheckButton(ox, oy, Button and Button[3])
+
+	end
+
+)
+
+
+
 addEvent( "cshowAdminHistory", true )
 addEventHandler( "cshowAdminHistory", getRootElement(),
 	function( info, targetID )

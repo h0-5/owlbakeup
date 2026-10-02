@@ -86,6 +86,15 @@ local RANK_BADGE_ICONS = {
         ["badge_support"] = true,
 }
 
+-- [user] the three rights-based badges are the ONLY icons drawn bigger than
+-- the plain 26px row (about 2x the name's glyph height, owner's reference);
+-- AFK / heart / hud:badges extras / the legacy badge designs keep 26*rowScale.
+local BIG_BADGE_ICONS = {
+        ["badge_admin"] = true,
+        ["badge_support"] = true,
+        ["badge_dev"] = true,
+}
+
 local function loadBadges()
         badgeTex = {}
         local names = { "AFK", "admin_badge", "admin2", "support_badge",
@@ -239,8 +248,10 @@ local function buildPlayerEntry(player)
         -- the three F4 badge rows in "fix160.badgetoggles" = { admin, support,
         -- dev } (row state; missing table / key = on, only an explicit false
         -- hides that one badge - the 3 toggles are fully independent).
-        -- RULE (only while ON DUTY - the single F4 duty row brings duty AND
-        -- the badges up together in one press, and takes them all down again):
+        -- RULE (only while ON DUTY - duty comes from the THREE F4 badge rows
+        -- now: a badge row switched ON puts the player on duty through the REAL
+        -- /adminduty or /sduty command (capability-routed on the server), all
+        -- three OFF takes him off again; the standalone duty strip row is gone):
         --   * right admin.badge            + toggle admin    -> badge_admin
         --   * right admin.badge.developer  + toggle dev      -> badge_dev
         --   * right admin.badge.support    + toggle support  -> badge_support
@@ -273,8 +284,9 @@ local function buildPlayerEntry(player)
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        -- [Fix #164 - user] duty gates BOTH paths: the ONE F4 duty row turns
-        -- duty AND the badges on/off at the same time (user request)
+        -- [Fix #164 - user] duty gates BOTH paths: the F4 badge rows turn
+        -- duty AND the badges on/off together (any badge on = on duty,
+        -- all three off = off duty - user request)
         if not hidden and isPlayerOnDuty(player) then
                 if badgeRights == nil then
                         -- legacy path (server has not pushed the key yet):
@@ -282,7 +294,7 @@ local function buildPlayerEntry(player)
                         if isOne(getElementData(player, "duty_admin")) then
                                 table.insert(icons, "admin_badge")
                         end
-                        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+                        -- [Fix #32] supporters get their badge above the head too (sduty)
                         if isOne(getElementData(player, "duty_supporter")) then
                                 table.insert(icons, "support_badge")
                         end
@@ -721,6 +733,9 @@ function drawNametags()
                 -- ENGINE nametag is still force-disabled above (Fix #89), so
                 -- MTA's own renderer can never leak the real name either.
                 if isElement(player) and entry then
+                        local vanished = isOne(getElementData(player, "disappear"))
+                        local vanishedOk = (not vanished) or player == localPlayer
+                                or localIsStaff()
                         local pX, pY, pZ = getElementPosition(player)
                         local distance = getDistanceBetweenPoints3D(lX, lY, lZ, pX, pY, pZ)
                         if distance <= NAMETAG_DISTANCE then
@@ -795,49 +810,69 @@ function drawNametags()
                                                         -- edge at baseY-34, NO rectangle behind it. entry.color
                                                         -- carries the point-2 rule (rank color only for a visible
                                                         -- ON-DUTY staff member, white for everyone else).
-                                                        outlineText(nameText, sX - 150, baseY - 34, 300, 28,
-                                                                entry.color, 1.3 * rowScale, font, "center", "top")
+                                                        if vanishedOk then
+                                                                outlineText(nameText, sX - 150, baseY - 34, 300, 28,
+                                                                        entry.color, 1.3 * rowScale, font, "center", "top")
+                                                        end
 
                                                         -- only icons whose texture actually loaded
                                                         -- [Fix #164] no setting gates this anymore
                                                         local drawable = {}
-                                                        for _, icon in ipairs(entry.icons) do
-                                                                if badgeTex[icon] then
-                                                                        drawable[#drawable + 1] = icon
+                                                        if not vanished then
+                                                                for _, icon in ipairs(entry.icons) do
+                                                                        if badgeTex[icon] then
+                                                                                drawable[#drawable + 1] = icon
+                                                                        end
                                                                 end
                                                         end
 
                                                         -- [point 4] the badge row is back BELOW the name / above
-                                                        -- the head: original 26px icons in a horizontally centred
-                                                        -- row at baseY+4 (admin/developer/support come from
-                                                        -- fix160.badgerights; AFK / heart / hud:badges unchanged)
+                                                        -- the head: a horizontally centred row at baseY+4
+                                                        -- (admin/developer/support come from fix160.badgerights;
+                                                        -- AFK / heart / hud:badges unchanged)
+                                                        -- [user] the three RANK badges (badge_admin / badge_support
+                                                        -- / badge_dev) are noticeably BIGGER now - about 2x the
+                                                        -- name's rendered glyph height, measured with
+                                                        -- dxGetFontHeight at the SAME 1.3*rowScale the name above
+                                                        -- is drawn with (so they keep matching at any distance).
+                                                        -- rowW is summed from each icon's OWN width so the row
+                                                        -- stays centred, and every icon shares ONE vertical centre
+                                                        -- (badges still sit directly under the name).
                                                         if #drawable > 0 then
-                                                                local iconSize = 26 * rowScale
+                                                                -- stock fonts measure straight away; the UIKit font
+                                                                -- element is guarded (a failed measure falls back to
+                                                                -- a plain 18px line height at this scale)
+                                                                local nameScale = 1.3 * rowScale
+                                                                local okH, measured = pcall(dxGetFontHeight, nameScale, font)
+                                                                local nameH = (okH and tonumber(measured)) or (18 * nameScale)
+                                                                local bigSize = 2 * nameH
+                                                                local smallSize = 26 * rowScale
                                                                 local gap = 4 * rowScale
-                                                                local rowW = #drawable * iconSize
-                                                                        + (#drawable - 1) * gap
-                                                                local iconX = sX - rowW / 2
-                                                                local iconY = baseY + 4
+                                                                local rowW = (#drawable - 1) * gap
                                                                 for _, icon in ipairs(drawable) do
+                                                                        rowW = rowW + (BIG_BADGE_ICONS[icon]
+                                                                                and bigSize or smallSize)
+                                                                end
+                                                                local iconX = sX - rowW / 2
+                                                                local rowTop = baseY + 4
+                                                                for _, icon in ipairs(drawable) do
+                                                                        local iconSize = BIG_BADGE_ICONS[icon]
+                                                                                and bigSize or smallSize
+                                                                        -- icons centred on the same line as the big row
+                                                                        local iconY = rowTop + (bigSize - iconSize) / 2
                                                                         if icon == "heart" and player == localPlayer
-                                                                                                        and getElementHealth(player) > 40
-                                                                                                        and now - lastHeartClear >= 10000 then
+                                                                                                and getElementHealth(player) > 40
+                                                                                                and now - lastHeartClear >= 10000 then
                                                                                 triggerServerEvent("hud:remove_heart", localPlayer)
                                                                                 lastHeartClear = now
                                                                         end
-                                                                        -- [Fix #164] badge_admin tints with the
-                                                                        -- TARGET's rank color (same rule as the
-                                                                        -- name), every other icon stays white
-                                                                        local ir, ig, ib = 255, 255, 255
-                                                                        if icon == "badge_admin" then
-                                                                                local rgb = getElementData(player, "rank:color")
-                                                                                if type(rgb) == "table" and #rgb >= 3 then
-                                                                                        ir, ig, ib = rgb[1], rgb[2], rgb[3]
-                                                                                end
-                                                                        end
+                                                                        -- [user] badge_admin draws UNTINTED (255,255,255)
+                                                                        -- now: the PNG carries the final colors; the name
+                                                                        -- keeps its rank color, the badge does not. Alpha
+                                                                        -- 240 unchanged, every other icon white as before.
                                                                         dxDrawImage(iconX, iconY, iconSize, iconSize,
                                                                                 badgeTex[icon], 0, 0, 0,
-                                                                                tocolor(ir, ig, ib, 240), true)
+                                                                                tocolor(255, 255, 255, 240), true)
                                                                         iconX = iconX + iconSize + gap
                                                                 end
                                                         end
@@ -845,7 +880,7 @@ function drawNametags()
                                                         -- [U1 task 3 - kept] typing indicator: the word TYPING
                                                         -- right above the restored name box (chat-system's green
                                                         -- logo no longer draws; its chat1/chat0 state sync still runs)
-                                                        if typing[player] then
+                                                        if typing[player] and not vanished then
                                                                 local tnow = getTickCount()
                                                                 if tnow - WaitTyping > 4000 then
                                                                         WaitTyping = tnow

@@ -1631,6 +1631,22 @@ local function buildMainMenuUI()
         -- hidden-admin flag itself, with the global resource as a fallback.
         local function localSeesHiddenAdmins()
                 if tonumber(getElementData(localPlayer, "hiddenadmin")) == 1 then return true end
+                -- [Batch rule 4] the live rank:rights decides: admin.isAdmin
+                -- is THE entitled right for hidden-admin rows (parsed
+                -- defensively - the value is the raw JSON string the staff
+                -- bridge pushes)
+                local rr = getElementData(localPlayer, "rank:rights")
+                if type(rr) == "string" and rr ~= "" then
+                        local okR, parsed = pcall(fromJSON, rr)
+                        if okR and type(parsed) == "table" then
+                                if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+                                        parsed = parsed[1]
+                                end
+                                if type(parsed) == "table" and parsed["admin.isAdmin"] == true then
+                                        return true
+                                end
+                        end
+                end
                 local ridx = tonumber(getElementData(localPlayer, "rank:index"))
                 if ridx and ridx >= 4 then return true end
                 local lvl = tonumber(getElementData(localPlayer, "admin_level"))
@@ -1694,6 +1710,11 @@ local function buildMainMenuUI()
                         pid = pid or tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
+                        -- [Batch rule 4] WHITE "on duty hidden admin" label,
+                        -- prepended so it sits on the LEFT of the row (the
+                        -- server only ever sends entry[10] to admin.isAdmin
+                        -- viewers - everyone else never receives the row)
+                        local labelPrefix = entry[10] and "#ffffffon duty hidden admin  " or ""
                         local line = " -  "
                         if rank ~= "" then
                                 line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
@@ -1710,6 +1731,7 @@ local function buildMainMenuUI()
                                         line = line .. " " .. idHex .. "(" .. acc .. ")"
                                 end
                         end
+                        line = labelPrefix .. line
                         local grid = isSupport and UI.gridlist.staff2 or UI.gridlist.staff
                         local row = eui:uiGridListAddRow(grid)
                         eui:uiGridListSetItemText(grid, row, 1, line)

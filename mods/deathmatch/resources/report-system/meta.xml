@@ -15,6 +15,7 @@
 	<script src="c_top_right_box.lua" type="client"/>
 	
 	<script src="g_reports.lua" type="shared"/>
+	<file src="accept_sound.wav" />
 	
 	<export function="showToAdminPanel" type="server" />
 	<export function="reportLazyFix" type="server"/>

@@ -270,13 +270,21 @@ function toggleInvisibility(thePlayer)
 			setElementAlpha(thePlayer, 255)
 			exports.anticheat:changeProtectedElementDataEx(thePlayer, "reconx", false, false)
 			outputChatBox("You are now visible.", thePlayer, 255, 0, 0)
-			exports.anticheat:changeProtectedElementDataEx(thePlayer, "invisible", false, false)
+			exports.anticheat:changeProtectedElementDataEx(thePlayer, "invisible", false, false)
+
+
+
+			exports.anticheat:changeProtectedElementDataEx(thePlayer, "disappear", false, true)
 			exports.logs:dbLog(thePlayer, 4, thePlayer, "DISAPPEAR DISABLED")
 		elseif (enabled == false or enabled == nil) then
 			setElementAlpha(thePlayer, 0)
 			exports.anticheat:changeProtectedElementDataEx(thePlayer, "reconx", true, false)
 			outputChatBox("You are now invisible.", thePlayer, 0, 255, 0)
-			exports.anticheat:changeProtectedElementDataEx(thePlayer, "invisible", true, false)
+			exports.anticheat:changeProtectedElementDataEx(thePlayer, "invisible", true, false)
+
+
+
+			exports.anticheat:changeProtectedElementDataEx(thePlayer, "disappear", true, true)
 			exports.logs:dbLog(thePlayer, 4, thePlayer, "DISAPPEAR ENABLED")
 		else
 			outputChatBox("Please disable recon first.", thePlayer, 255, 0, 0)

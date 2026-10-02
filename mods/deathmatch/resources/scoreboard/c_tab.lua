@@ -261,7 +261,31 @@ local function getDisplayName(p, id)
         return name
 end
 
+-- [Batch rule 2] hidden-rank / rank-less-team suppression for the TAB.
+-- The VIEWER's entitlement is the synced staff:seehhidden element data the
+-- staff bridge pushes on every rank/team change (1 = may see hidden).
+local function localSeesHidden()
+        return tonumber(getElementData(localPlayer, "staff:seehhidden")) == 1
+end
+
+local function rankSuppressed(p)
+        -- a rank-less member of a TEAM (no rank index, staff:hasTeam = 1)
+        -- reads as a plain player everywhere: no TAB rank at all
+        if not tonumber(getElementData(p, "rank:index"))
+                and tonumber(getElementData(p, "staff:hasTeam")) == 1 then
+                return true
+        end
+        -- a hidden rank's title/colour only reaches entitled viewers
+        if tonumber(getElementData(p, "rank:hidden")) == 1 and not localSeesHidden() then
+                return true
+        end
+        return false
+end
+
 local function getRank(p)
+        -- [Batch rule 2] hidden rank titles / rank-less team members never
+        -- resolve through the ladder or the legacy fallbacks below
+        if rankSuppressed(p) then return "-" end
         -- [Vortex] hidden admins read as regular players: no rank at all
         if isHidden(p) then return "-" end
         -- [Vortex] off-duty staff keep their title, only the color drops to
@@ -346,6 +370,10 @@ end
 -- is off duty / plain (reference: the dimmed row still shows its orange
 -- rank text). No donor/VIP override here.
 function getRankColorRaw(p, rankName)
+        -- [Batch rule 2] a suppressed rank reads plain white (same rule as
+        -- getRank above: hidden ranks for non-entitled viewers, rank-less
+        -- team members for everyone)
+        if rankSuppressed(p) then return PLAIN_COLOR end
         -- [Fix #33 - user] "فعلت الهدن وضل لون اسم شخصية ذي ماهو": a HIDDEN
         -- admin must read as a plain player in the name + rank cells too -
         -- their rank:color was still leaking onto the name and giving them
@@ -1051,6 +1079,8 @@ function getScoreboardTestTable()
                 isStaffOffDuty = isStaffOffDuty,
                 canSeeAccounts = canSeeAccounts,
                 getRankColorRaw = getRankColorRaw,
+                rankSuppressed = rankSuppressed,
+                localSeesHidden = localSeesHidden,
                 LADDER = LADDER,
         }
 end

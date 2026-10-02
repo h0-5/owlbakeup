@@ -154,7 +154,7 @@ end
 
 local function fetchRankByID(roleID)
         if not tonumber(roleID) then return nil end
-        return mysql:query_fetch_assoc("SELECT ID, LevelName, Rights, Color FROM staff_roles WHERE ID="
+        return mysql:query_fetch_assoc("SELECT ID, LevelName, Rights, Color, hidden FROM staff_roles WHERE ID="
                 .. tonumber(roleID) .. " LIMIT 1")
 end
 
@@ -185,14 +185,20 @@ local function decodeColor(raw)
         }
 end
 
+-- [Batch rule 2] the color map is pushed to EVERY client as name -> color,
+-- so a hidden rank's NAME would leak through the keys. Hidden rows are
+-- dropped here; entitled viewers still get the color of a hidden rank
+-- through the per-member rank:color element data (applyPlayerRank).
 function getAllRankColors()
         local out = {}
-        local q = mysql:query("SELECT LevelName, Color FROM staff_roles")
+        local q = mysql:query("SELECT LevelName, Color, hidden FROM staff_roles")
         if q then
                 while true do
                         local row = mysql:fetch_assoc(q)
                         if not row then break end
-                        out[tostring(row.LevelName)] = decodeColor(row.Color)
+                        if tonumber(row.hidden) ~= 1 then
+                                out[tostring(row.LevelName)] = decodeColor(row.Color)
+                        end
                 end
                 mysql:free_result(q)
         end
@@ -202,7 +208,7 @@ end
 -- push the table to every client (called on staff_manager start and after
 -- every rank save, so the tab always mirrors the live staff_roles colors)
 function pushRankColorsToAll()
-        triggerClientEvent("scoreboard:rankColors", root, getAllRankColors())
+        triggerClientEvent(root, "scoreboard:rankColors", resourceRoot, getAllRankColors())
 end
 
 -- shape every consumer expects, built from a staff_roles row
@@ -239,6 +245,9 @@ local function buildRankRecord(role)
                 name = role.LevelName,
                 rights = unwrapRights(fromJSON(role.Rights or "")),
                 color = color,
+                -- [Batch rule 2] the hidden flag rides along so applyPlayerRank
+                -- can push it as element data for the F1/TAB readers
+                hidden = tonumber(role.hidden) == 1,
         }
 end
 
@@ -273,7 +282,7 @@ local function deriveLegacyRankRecord(accountID)
         local title = fetchLegacyRankTitle(accountID)
         if not title then return nil end
         local role = mysql:query_fetch_assoc(
-                "SELECT ID, LevelName, Rights, Color FROM staff_roles WHERE LevelName='"
+                "SELECT ID, LevelName, Rights, Color, hidden FROM staff_roles WHERE LevelName='"
                 .. mysql:escape_string(title) .. "' LIMIT 1")
         if not role then return nil end -- ladder title renamed/removed: no guess
         local record = buildRankRecord(role)
@@ -376,6 +385,11 @@ function applyPlayerRank(player, record)
         -- TAB / nametag all show the same shade)
         setIfChanged(player, "rank:color", clampRankColor(record.color))
         setIfChanged(player, "rank:rights", safeToJSON(record.rights))
+        -- [Batch rule 2] the rank's hidden flag as synced element data (1/0):
+        -- the F1 list, the TAB scoreboard and /checkid are OTHER resources and
+        -- can only reach it through element data - they suppress the rank
+        -- title for every viewer that does not hold staff:seehhidden.
+        setIfChanged(player, "rank:hidden", record.hidden and 1 or 0)
 
 		-- [Fix #163] RIGHTS govern the LEGACY identity numbers as well:
 		-- admin_level / supporter_level are what the nametags, the scoreboard
@@ -423,6 +437,11 @@ function applyPlayerRank(player, record)
         -- (login / ready, rank edited in the panel, refreshRankMembers, the
         -- 3s refreshAllPlayerRanks after a resource start)
         pushFix160BadgeRights(player)
+        -- [Batch rules 1+2] membership/entitlement flags travel with every
+        -- rank (re)application - see staffPushStaffMeta below
+        if type(staffPushStaffMeta) == "function" then
+                staffPushStaffMeta(player)
+        end
         return true
 end
 
@@ -452,7 +471,8 @@ function clearPlayerRank(player)
                         setIfChanged(player, "scripter_level", legacy.scripter or 0)
                 end
         end
-        for _, key in ipairs({ "rank:index", "rank:name", "rank:color", "rank:rights", "rank:legacy" }) do
+        for _, key in ipairs({ "rank:index", "rank:name", "rank:color", "rank:rights",
+                "rank:legacy", "rank:hidden" }) do
                 if getElementData(player, key) ~= nil then
                     setElementData(player, key, nil, true)
                 end
@@ -469,6 +489,11 @@ function clearPlayerRank(player)
         end
         if getElementData(player, "fix160.badgerights") ~= badge then
                 setElementData(player, "fix160.badgerights", badge, true)
+        end
+        -- [Batch rules 1+2] no rank, but the TEAMS (and the seehidden
+        -- entitlement) may still apply - re-push the member flags
+        if type(staffPushStaffMeta) == "function" then
+                staffPushStaffMeta(player)
         end
 end
 
@@ -596,41 +621,84 @@ end
 -- the same key staff_role_members uses). Cached per account and invalidated:
 --   * by staffTeamsInvalidateRights() after EVERY team mutation
 --     (staff_manager_teams_s.lua: create / rename / delete / set rights /
---      add member / remove member),
+--      add member / remove member / hidden toggle),
 --   * on account:id changes (login/logout - the account the cache is keyed
 --     by is going away or just arrived),
 --   * implicitly on resource start (the table starts empty).
-local teamRightsByAccount = {}   -- [accountID] = { [right] = true }
+--
+-- [Batch rule 1] the cached value is now a BUNDLE, not a bare rights set:
+--      rights        { [right] = true }   union of every held team
+--      names         { "team name", ... } raw names (dev-team matching)
+--      fullAccess    member of the Full Access team (exempt from everything)
+--      hasTeam       member of ANY team (rank-less team members are
+--                    invisible as staff - see staffPushStaffMeta)
+--      hasNormalTeam member of a NON-Full-Access team (such a player may
+--                    only use THAT team's commands)
+--
+-- [Batch rule 1] name normalization lives here because this file loads
+-- before the team seed and the payload filter (staff_manager_teams_s.lua)
+-- and after the gate (command_gates_s.lua) - all three call these GLOBALS.
+-- The owner's DB may carry the Full Access team under a legacy spelling, so
+-- matching strips ALL whitespace + lowercases and accepts both "fullaccess"
+-- and the legacy typo "fullacsess".
+function staffNormalizedTeamName(name)
+        return tostring(name or ""):gsub("%s+", ""):lower()
+end
 
-local function loadTeamRights(accountID)
-        local set = {}
-        local q = mysql:query("SELECT t.rights FROM staff_teams t"
+function staffTeamIsFullAccess(name)
+        local n = staffNormalizedTeamName(name)
+        return n == "fullaccess" or n == "fullacsess"
+end
+
+local teamBundleByAccount = {}    -- [accountID] = bundle (see above)
+local teamScopedRightsCache       -- { [right] = true } or nil (not built yet)
+
+local function loadTeamBundle(accountID)
+        local bundle = { rights = {}, names = {}, fullAccess = false,
+                hasTeam = false, hasNormalTeam = false }
+        local q = mysql:query("SELECT t.name, t.rights FROM staff_teams t"
                 .. " JOIN staff_team_members m ON m.teamid = t.id"
                 .. " WHERE m.account_id = " .. tonumber(accountID))
         if q then
                 while true do
                         local row = mysql:fetch_assoc(q)
                         if not row then break end
+                        bundle.hasTeam = true
+                        local name = tostring(row.name or "")
+                        bundle.names[#bundle.names + 1] = name
+                        if staffTeamIsFullAccess(name) then
+                                bundle.fullAccess = true
+                        else
+                                bundle.hasNormalTeam = true
+                        end
+                        -- Full Access rights join the union too: a member of
+                        -- Full Access holds every right through playerHasRight
+                        -- (that is what "full access" means for rights checks)
                         for token in tostring(row.rights or ""):gmatch("[^,]+") do
                                 local right = token:match("^%s*(.-)%s*$")
-                                if right ~= "" then set[right] = true end
+                                if right ~= "" then bundle.rights[right] = true end
                         end
                 end
                 mysql:free_result(q)
         end
-        return set
+        return bundle
 end
 
-local function playerTeamRightsSet(player)
+local function playerTeamBundle(player)
         if not isElement(player) or getElementType(player) ~= "player" then return nil end
         local accountID = tonumber(getElementData(player, "account:id"))
         if not accountID then return nil end
-        local set = teamRightsByAccount[accountID]
-        if set == nil then
-                set = loadTeamRights(accountID)
-                teamRightsByAccount[accountID] = set
+        local bundle = teamBundleByAccount[accountID]
+        if bundle == nil then
+                bundle = loadTeamBundle(accountID)
+                teamBundleByAccount[accountID] = bundle
         end
-        return set
+        return bundle
+end
+
+local function playerTeamRightsSet(player)
+        local bundle = playerTeamBundle(player)
+        return bundle and bundle.rights or nil
 end
 
 local function playerTeamGrantsRight(player, right)
@@ -638,22 +706,132 @@ local function playerTeamGrantsRight(player, right)
         return set ~= nil and set[right] == true
 end
 
+-- [Batch rule 1] the rights SOME non-Full-Access team grants. A right in
+-- this set is "team scoped": ranks other than the top four may only use a
+-- command gated by it while holding a team that grants it (hasCommandRight).
+-- Full Access is excluded on purpose - it grants EVERY right, and counting
+-- it would make every single command team scoped and lock out every
+-- rank-without-team (including the top four bypass's spirit).
+local function teamScopedRightsSet()
+        if teamScopedRightsCache ~= nil then return teamScopedRightsCache end
+        local set = {}
+        local q = mysql:query("SELECT name, rights FROM staff_teams")
+        if q then
+                while true do
+                        local row = mysql:fetch_assoc(q)
+                        if not row then break end
+                        if not staffTeamIsFullAccess(row.name) then
+                                for token in tostring(row.rights or ""):gmatch("[^,]+") do
+                                        local right = token:match("^%s*(.-)%s*$")
+                                        if right ~= "" then set[right] = true end
+                                end
+                        end
+                end
+                mysql:free_result(q)
+        end
+        teamScopedRightsCache = set
+        return set
+end
+
+-- does THIS command's right carry a team requirement? a gate may list
+-- SEVERAL rights (shared commands): ANY of them being team scoped triggers
+-- the requirement (the same ANY-of rule gateAllows uses for permissions)
+function commandNeedsTeam(right)
+        local scoped = teamScopedRightsSet()
+        if type(right) == "table" then
+                for _, r in ipairs(right) do
+                        if scoped[tostring(r)] then return true end
+                end
+                return false
+        end
+        return scoped[tostring(right)] == true
+end
+
+-- [Batch rule 1] RANK-ONLY permission check: the rank's OWN stored rights
+-- decide (live rank:rights element data, else a fresh staff_roles read) -
+-- NO team union, NO legacy flat grant. This is the "rank restrictions
+-- always win" half of the model; the team half lives in hasCommandRight.
+function staffRankPermits(player, right)
+        if type(right) == "table" then
+                for _, r in ipairs(right) do
+                        if staffRankPermits(player, r) then return true end
+                end
+                return false
+        end
+        local idx = tonumber(getElementData(player, "rank:index"))
+        -- no rank at all: there is no rank restriction to apply - the caller
+        -- (hasCommandRight) runs its own rank-less branch for that case
+        if not idx then return true end
+        local raw = getElementData(player, "rank:rights")
+        if type(raw) == "string" and raw ~= "" then
+                local parsed = fromJSON(raw)
+                if type(parsed) == "table" then
+                        if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+                                parsed = parsed[1]
+                        end
+                        if type(parsed) == "table" then
+                                if parsed[right] == true then return true end
+                                -- a live set is the COMPLETE saved set: an
+                                -- absent right denies (Fix #34 rule), the
+                                -- unknown-right carve-out only exists on the
+                                -- DB path below - mirrored exactly
+                                return false
+                        end
+                end
+        end
+        local record = getPlayerRankRecord(player)
+        if not record then return true end -- nothing to restrict against
+        if record.rights[right] == true then return true end
+        if record.rights[right] == nil and not isKnownRight(right)
+                and (tonumber(record.index) or 0) >= 11 then
+                return true
+        end
+        return false
+end
+
+-- [Batch rule 1] membership queries used by hasCommandRight
+function playerTeamInFullAccess(player)
+        local bundle = playerTeamBundle(player)
+        return bundle ~= nil and bundle.fullAccess == true
+end
+
+function playerTeamHoldsNormalTeam(player)
+        local bundle = playerTeamBundle(player)
+        return bundle ~= nil and bundle.hasNormalTeam == true
+end
+
+function playerTeamsGrantRight(player, right)
+        local bundle = playerTeamBundle(player)
+        if not bundle then return false end
+        if type(right) == "table" then
+                for _, r in ipairs(right) do
+                        if bundle.rights[tostring(r)] then return true end
+                end
+                return false
+        end
+        return bundle.rights[tostring(right)] == true
+end
+
 -- global hook: staff_manager_teams_s.lua calls this after every team
--- mutation (no argument = drop every cached account; a number = only that
--- account, when the change is known to be scoped to one member)
+-- mutation (no argument = drop every cached account + the scoped set; a
+-- number = only that account, when the change is known to be scoped to one
+-- member)
 function staffTeamsInvalidateRights(accountID)
         if accountID == nil then
-                teamRightsByAccount = {}
+                teamBundleByAccount = {}
+                teamScopedRightsCache = nil
         else
-                teamRightsByAccount[tonumber(accountID)] = nil
+                teamBundleByAccount[tonumber(accountID)] = nil
         end
 end
 
 -- team-only badge rights string (Fix #160 badges WITHOUT the rank path).
--- Used for players with no Vortex rank so their badge behaviour stays
--- exactly what Fix #160 defined (no legacy-ladder grant), while a team that
--- DOES hold admin.badge still shows its badge.
+-- [Batch rule 1] a player with NO Vortex rank is invisible as staff (no
+-- badge, no title anywhere), so this now returns "" for him even when his
+-- team grants a badge right - teams only decorate RANKED staff. Ranked
+-- players keep the full union through pushFix160BadgeRights.
 function teamBadgeRightsValue(player)
+        if not tonumber(getElementData(player, "rank:index")) then return "" end
         local held = {}
         for _, right in ipairs(FIX160_BADGE_RIGHTS) do
                 if playerTeamGrantsRight(player, right) then
@@ -661,6 +839,45 @@ function teamBadgeRightsValue(player)
                 end
         end
         return table.concat(held, ",")
+end
+
+-- [Batch rule 2] WHO may see hidden ranks/teams: rank 20 (Diverloper),
+-- rank 21 (Owner) or a member of a team whose normalized name CONTAINS
+-- "dev". Uniform everywhere (panel payload filter, F1 list, TAB, /checkid).
+function staffCanSeeHiddenStaff(player)
+        if not isElement(player) or getElementType(player) ~= "player" then
+                return false
+        end
+        local idx = tonumber(getElementData(player, "rank:index"))
+        if idx == 20 or idx == 21 then return true end
+        local bundle = playerTeamBundle(player)
+        if bundle then
+                for _, name in ipairs(bundle.names) do
+                        if staffNormalizedTeamName(name):find("dev", 1, true) then
+                                return true
+                        end
+                end
+        end
+        return false
+end
+
+-- [Batch rules 1+2] two synced flags OTHER resources read off element data
+-- (main-menu F1 list, scoreboard TAB):
+--      staff:hasTeam    1/0 - the player belongs to some team; a rank-less
+--                        team member must be invisible as staff everywhere
+--                        (F1 skips his row entirely),
+--      staff:seehhidden  1/0 - THIS player may see hidden ranks/teams (the
+--                        viewer's entitlement, recomputed for everyone on
+--                        every rank/team change).
+function staffPushStaffMeta(player)
+        if not isElement(player) or getElementType(player) ~= "player" then
+                return false
+        end
+        local bundle = playerTeamBundle(player)
+        local hasTeam = (bundle ~= nil and bundle.hasTeam == true)
+        setIfChanged(player, "staff:hasTeam", hasTeam and 1 or 0)
+        setIfChanged(player, "staff:seehhidden", staffCanSeeHiddenStaff(player) and 1 or 0)
+        return true
 end
 
 -- exact right check against the rank's stored Rights JSON

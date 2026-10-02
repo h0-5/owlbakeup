@@ -473,7 +473,8 @@ end
 -- login, another resource, an older build) NEVER received the new items -
 -- the owner reported "F4 has no duty toggle and no PM lock". Every login
 -- the defaults are merged in (missing rows added, duplicates skipped) and
--- the duty row is re-synced to the live duty state.
+-- the removed rows are pruned below. [user] duty is NEVER touched here
+-- anymore - it only changes from a badge-row click (see the router below).
 local function pushDefaultItems(player)
         if not isElement(player) then return end
         local items = getElementData(player, "hud:items")
@@ -514,11 +515,15 @@ local function pushDefaultItems(player)
         -- [Fix #164] the old admintag row is pruned too, and a badge row is
         -- dropped as soon as the player's current rights no longer include
         -- its right (rank change).
+        -- [user] the standalone DUTY rows (adminduty / supduty - the 4th row
+        -- with the letter-A icon) are gone: the three badge rows are the only
+        -- duty toggle now, so any stale copy of them is dropped as well.
         for i = #items, 1, -1 do
                 local row = items[i]
                 if type(row) == "table" then
                         if row[1] == "head_turning" or row[1] == "lockvehicle"
-                                or row[1] == "admintag" then
+                                or row[1] == "admintag"
+                                or row[1] == "adminduty" or row[1] == "supduty" then
                                 table.remove(items, i)
                         elseif rights ~= nil then
                                 local need = BADGE_ROW_RIGHT[row[1]]
@@ -528,37 +533,16 @@ local function pushDefaultItems(player)
                         end
                 end
         end
-        -- staff-only duty toggle (on/off duty = badge above the head while on
-        -- duty). Trial Moderator+ gets the ADMIN badge (/adminduty); pure
-        -- supporters get the SUPPORT badge (/sduty). Both routed through the
-        -- REAL commands so every check/announcement applies.
-        local ridx = tonumber(getElementData(player, "rank:index"))
-        local adminLevel = tonumber(getElementData(player, "admin_level")) or 0
-        local supporterLevel = tonumber(getElementData(player, "supporter_level")) or 0
-        local isAdminDuty = (ridx and ridx >= 4) or adminLevel > 0
-        local isSupportDuty = not isAdminDuty
-                and ((ridx and ridx >= 1 and ridx <= 3) or supporterLevel > 0
-                        or (tonumber(getElementData(player, "account:gmlevel")) or 0) > 0)
-        if isAdminDuty or isSupportDuty then
-                local duty = (isAdminDuty and tonumber(getElementData(player, "duty_admin")) == 1)
-                        or (isSupportDuty and tonumber(getElementData(player, "duty_supporter")) == 1)
-                local id = isAdminDuty and "adminduty" or "supduty"
-                upsert(id, duty and "on" or "off", isAdminDuty and "admin_badge" or "support_badge",
-                        isAdminDuty and "Admin Duty (Badge)" or "Support Duty (Badge)", "")
-                for _, row in ipairs(items) do
-                        if type(row) == "table" and row[1] == id then
-                                row[2] = duty and "on" or "off"
-                        end
-                end
-        end
         -- [Fix #164] one independent badge row per held badge right (state
-        -- defaults to "on", a stored off/on choice survives the upsert).
+        -- defaults to "off" - a badge never shows and NEVER puts the player on
+        -- duty before he presses it; a stored on/off choice survives the
+        -- upsert).
         -- nil rights = admin-system not up yet: no rows (the legacy nametag
         -- path still covers the badges above the head).
         if rights ~= nil then
                 for _, def in ipairs(BADGE_ROW_DEFS) do
                         if rights[def.right] then
-                                upsert(def.id, "on", def.icon, def.tip1, "")
+                                upsert(def.id, "off", def.icon, def.tip1, "")
                         end
                 end
         end
@@ -568,6 +552,10 @@ end
 
 -- [Fix #30] the duty state lives in elementData, so keep the strip icon
 -- truthful whenever it flips (via /adminduty, /gm duty, the panel, ...)
+-- [user] the adminduty / supduty rows are PRUNED on every push now, so this
+-- loop normally finds nothing; it is kept as the safety net for a legacy row
+-- that slipped in from older data (it only rewrites such a row, never creates
+-- one - duty itself is changed exclusively by the badge-row clicks below).
 local function refreshStripDutyState(player)
         if not isElement(player) then return end
         local items = getElementData(player, "hud:items")
@@ -621,6 +609,44 @@ end)
 --------------------------------------------------------------------------------
 -- STRIP ITEM ROUTER (old client event name, this server's systems)
 --------------------------------------------------------------------------------
+-- [user] DUTY ROUTING for the three badge rows (the standalone admintuty /
+-- supduty strip rows are pruned, so a badge row is now the ONLY thing in F4
+-- that changes duty). Same capability routing the old duty row used: Trial
+-- Moderator+ (rank:index >= 4 / admin_level > 0) goes through the REAL
+-- /adminduty command, everyone else through the REAL /sduty command - both
+-- carry their own checks and announcements, never a client-side fake.
+-- wantDuty = "any of the three badge rows is on" (all three off = off duty).
+-- The commands TOGGLE, so they are only fired when the wanted state differs
+-- from that path's live duty flag: a badge that stays on while another is
+-- switched off therefore never drops duty, and a badge click that only
+-- changes the mirror cannot re-fire a duty that is already correct.
+local function routeBadgeDuty(player, wantDuty)
+        if not isElement(player) then return end
+        local ridx = tonumber(getElementData(player, "rank:index"))
+        local adminLevel = tonumber(getElementData(player, "admin_level")) or 0
+        local isAdminCapable = (ridx and ridx >= 4) or adminLevel > 0
+        local cmd = isAdminCapable and "adminduty" or "sduty"
+        local flag = isAdminCapable and "duty_admin" or "duty_supporter"
+        local function dutyOn(key)
+                local v = getElementData(player, key)
+                return v == true or tonumber(v) == 1
+        end
+        if wantDuty then
+                -- ON: fire only while this path is not on yet (a supporter-badge
+                -- admin already on /adminduty must not toggle himself back off)
+                if not dutyOn(flag) then
+                        executeCommandHandler(cmd, player)
+                end
+        else
+                -- OFF on the capability path, plus the cross path (an admin who
+                -- also sits on /sduty), so all three badges off really = off duty
+                if dutyOn(flag) then executeCommandHandler(cmd, player) end
+                local otherFlag = isAdminCapable and "duty_supporter" or "duty_admin"
+                local otherCmd = isAdminCapable and "sduty" or "adminduty"
+                if dutyOn(otherFlag) then executeCommandHandler(otherCmd, player) end
+        end
+end
+
 addEvent("hud:onHudItemClick", true)
 addEventHandler("hud:onHudItemClick", root, function(item)
         local player = client
@@ -657,12 +683,27 @@ addEventHandler("hud:onHudItemClick", root, function(item)
                         end
                 end
                 syncBadgeToggles(player)
+                -- [user] these three rows ARE the duty toggle now: measured on
+                -- the row list AFTER the flip, so turning one badge off while
+                -- another stays on keeps the player on duty
+                local anyOn = false
+                for _, row in ipairs(badgeItems) do
+                        if type(row) == "table" and BADGE_ROW_KEY[row[1]]
+                                and row[2] == "on" then
+                                anyOn = true
+                                break
+                        end
+                end
+                routeBadgeDuty(player, anyOn)
         elseif item == "adminduty" then
                 -- Fix #23: badge toggle runs the REAL /adminduty command (checks,
-                -- announcements, element data) instead of a client-side fake
+                -- announcements, element data) instead of a client-side fake.
+                -- [user] the standalone rows are pruned from the strip, this id
+                -- stays routed only for legacy data / old clients
                 executeCommandHandler("adminduty", player)
         elseif item == "supduty" then
                 -- Fix #30: supporter duty through the REAL /sduty command
+                -- [user] same as above - the row itself is gone
                 executeCommandHandler("sduty", player)
         end
 end)

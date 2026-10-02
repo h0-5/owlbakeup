@@ -19,8 +19,10 @@
 -- /gms is deliberately NOT gated: it also registers chat-system's GM chat.
 -- NOT MAPPED on purpose - no command/system exists in this server, each one is
 -- reported NOT DONE in the A7 report instead of inventing a command:
---   admin.hide_logs, admin.remove_gov, admin.voice_mute, admin.voice_unmute,
+--   admin.remove_gov, admin.voice_mute, admin.voice_unmute,
 --   cinema, mechanic.panel, activity.create, activity.end
+-- (admin.hide_logs WAS in this list; /hiddenlogs exists now - the gate entry
+-- below maps it, matching the right its handler enforces.)
 if rawget(_G, "FIX160_GATES_TASK7") then return end
 _G.FIX160_GATES_TASK7 = true
 staffRegisterGates({
@@ -56,6 +58,10 @@ staffRegisterGates({
         ["removespecial"]        = "special_membership.remove",
         ["giveexp"]              = "level.give_exp",
         ["levelboost"]           = "level.boost",
-        ["hiddenlogs"]           = "hidden.logs",
+        -- [Fix #160 5d] /hiddenlogs = GLOBAL hide toggle, right admin.hide_logs
+        -- (the handler in Player/s_fix160_misc.lua checks exactly that right;
+        -- the old mapping hidden.logs belonged to the pre-repurpose viewer and
+        -- forced staff to hold BOTH rights to reach the command).
+        ["hiddenlogs"]           = "admin.hide_logs",
         ["givefeature"]          = "feature.give",
 })

@@ -356,4 +356,12 @@ function onOpenCheck(playerID)
 	executeCommandHandler ( "check", tostring(playerID) )
 end
 addEvent("report:onOpenCheck", true)
-addEventHandler("report:onOpenCheck", getRootElement(), onOpenCheck)
+addEventHandler("report:onOpenCheck", getRootElement(), onOpenCheck)
+
+addEvent("reports:playAcceptSound", true)
+addEventHandler("reports:playAcceptSound", getRootElement(), function()
+	local sound = playSound("accept_sound.wav")
+	if sound then
+		setSoundVolume(sound, 1)
+	end
+end)

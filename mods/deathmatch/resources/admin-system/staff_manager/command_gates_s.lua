@@ -356,6 +356,30 @@ local COMMAND_RIGHTS = {
 local gateHeartbeat = { fired = 0, lastCommand = "-" }
 
 -- ===========================================================================
+-- [Batch rule 5b] fix160:cmdok — the command-usage feed the admin-logs
+-- resource consumes. Fires at the CENTRAL choke point whenever a GATED
+-- (mapped) command is ALLOWED, carrying the command's arguments:
+--   triggerEvent("fix160:cmdok", resourceRoot, player, cmdName, { args... })
+-- Two layers, no double-fire:
+--   layer 1 (the addCommandHandler wrapper below) fires for commands
+--          registered by THIS resource and forwards the real varargs,
+--   layer 2 (onPlayerCommand at the bottom) fires for every OTHER resource's
+--          mapped commands with { } (typed commands carry no argument list).
+-- Unmapped commands (pure player/RP commands, /hidelogs) never fire it.
+-- ===========================================================================
+local function fireFix160CmdOk(player, cmdName, args)
+        if not (isElement(player) and getElementType(player) == "player") then return end
+        triggerEvent("fix160:cmdok", resourceRoot, player, cmdName,
+                type(args) == "table" and args or {})
+end
+
+-- command names THIS resource registers (filled by the wrapper below, which
+-- command_gates_s.lua installs FIRST in meta.xml - every admin-system
+-- addCommandHandler call goes through it). Layer 2 uses the set to hand the
+-- args-less fire to layer 1 instead of double-firing.
+local adminSystemCommands = {}
+
+-- ===========================================================================
 -- Layer 1 (Fix #25): the addCommandHandler WRAPPER inside the admin-system
 -- Lua VM. Every command registered by THIS resource gets the right check
 -- inlined at the top of its handler. Layer 2 below covers every OTHER
@@ -364,12 +388,23 @@ local gateHeartbeat = { fired = 0, lastCommand = "-" }
 local rawAddCommandHandler = addCommandHandler
 
 _G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, restricted, ...)
+        local cmdKey = tostring(commandName):lower()
+        adminSystemCommands[cmdKey] = true
         local gated = function(player, cmdName, ...)
-                if player and isElement(player)
-                        and not hasCommandRight(player, cmdName or commandName) then
-                        outputChatBox("You don't have permission to use this command.",
-                                player, 255, 0, 0)
-                        return
+                local key = tostring(cmdKey)
+                if player and isElement(player) then
+                        if not hasCommandRight(player, cmdKey) then
+                                outputChatBox("You don't have permission to use this command.",
+                                        player, 255, 0, 0)
+                                return
+                        end
+                        -- [Batch rule 5b] the gate ALLOWED a mapped
+                        -- admin-system command -> publish it with its args
+                        -- (the handler below may still deny inside; the gate
+                        -- is what the contract calls the choke point)
+                        if COMMAND_RIGHTS[key] then
+                                fireFix160CmdOk(player, key, { ... })
+                        end
                 end
                 return handlerFunction(player, cmdName, ...)
         end
@@ -389,43 +424,102 @@ local function gateAllows(player, right)
 end
 
 -- the exported gate. Returns true when the command is ALLOWED.
+--
+-- ===========================================================================
+-- [Batch rule 1] COMMAND AUTHORIZATION MODEL (teams + ranks + Full Access):
+--
+--   allowed = rankPermits(command)
+--             AND ( command has NO team requirement
+--                   OR viewer rank index >= 18 (the top four)
+--                   OR viewer holds a team granting the command's right
+--                   OR viewer holds the Full Access team )
+--
+-- with the rank-less special cases the owner spelled out:
+--   * Full Access member  -> allowed, EVEN WITHOUT any admin rank,
+--   * member of a normal team -> ONLY that team's commands are allowed,
+--   * neither             -> the legacy ladder keeps its old "no opinion"
+--     behaviour (the handler's own check decides), byte-identical to Fix #U4.
+--
+-- A command is "team scoped" when SOME non-Full-Access team grants its
+-- right (commandNeedsTeam in the bridge). rankPermits uses ONLY the rank's
+-- own stored rights - a command the rank forbids stays forbidden even with
+-- the team ("rank restrictions always win").
+-- ===========================================================================
 function hasCommandRight(player, commandName)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
         local right = COMMAND_RIGHTS[tostring(commandName):lower()]
         -- an unmapped command is not restricted by this layer (the handler's
         -- own legacy check still applies); returning true means "no opinion".
         if not right then return true end
-        -- a logged-in Vortex rank is decided SOLELY by its stored rights
-        if getElementData(player, "rank:index") then
+        local rankIdx = tonumber(getElementData(player, "rank:index"))
+
+        if not rankIdx then
+                -- Full Access grants FULL permission even without any rank
+                if type(playerTeamInFullAccess) == "function"
+                        and playerTeamInFullAccess(player) then
+                        return true
+                end
+                -- [Batch rule 1] a rank-less member of a NORMAL team may use
+                -- THAT TEAM's commands only - he is invisible as staff
+                -- (panel/TAB/badges) but his team keeps working
+                if type(playerTeamHoldsNormalTeam) == "function"
+                        and playerTeamHoldsNormalTeam(player) then
+                        return type(playerTeamsGrantRight) == "function"
+                                and playerTeamsGrantRight(player, right) or false
+                end
+                -- [Fix #U4] no live rank on the player: this branch used to blanket
+                -- ALLOW, which made every revocation a no-op for staff whose
+                -- staff_role_members row is missing while the accounts columns still
+                -- say they are staff (admin_level > 0) - the handler's own legacy
+                -- check then let every command through.
+                -- Ask the rights API when the player looks like staff at all; keep the
+                -- old allow ONLY when there is genuinely nothing to check against (no
+                -- rank record and no live rights set), so a renamed/absent rank can
+                -- never lock a legacy admin out of a mapped command. Players with no
+                -- staff level at all keep the old path - and cost - untouched.
+                if type(playerHasRight) == "function" then
+                        local live = getElementData(player, "rank:rights")
+                        local hasLive = type(live) == "string" and live ~= ""
+                        local looksStaff = (tonumber(getElementData(player, "admin_level")) or 0) > 0
+                                or (tonumber(getElementData(player, "supporter_level")) or 0) > 0
+                                or (tonumber(getElementData(player, "scripter_level")) or 0) > 0
+                        if hasLive then
+                                return gateAllows(player, right)
+                        end
+                        if looksStaff and type(getPlayerRankRecord) == "function"
+                                and getPlayerRankRecord(player) then
+                                return gateAllows(player, right)
+                        end
+                end
+                -- no Vortex rank: the legacy ladder decides (unchanged behaviour)
+                return true
+        end
+
+        -- ranked player ------------------------------------------------------
+        -- 1) the rank's OWN stored rights decide FIRST (a command the rank
+        --    forbids is denied no matter which team he holds)
+        if type(staffRankPermits) ~= "function" then
+                -- bridge not loaded (defensive): keep the old union check
                 if type(playerHasRight) ~= "function" then return false end
                 return gateAllows(player, right)
         end
-        -- [Fix #U4] no live rank on the player: this branch used to blanket
-        -- ALLOW, which made every revocation a no-op for staff whose
-        -- staff_role_members row is missing while the accounts columns still
-        -- say they are staff (admin_level > 0) - the handler's own legacy
-        -- check then let every command through.
-        -- Ask the rights API when the player looks like staff at all; keep the
-        -- old allow ONLY when there is genuinely nothing to check against (no
-        -- rank record and no live rights set), so a renamed/absent rank can
-        -- never lock a legacy admin out of a mapped command. Players with no
-        -- staff level at all keep the old path - and cost - untouched.
-        if type(playerHasRight) == "function" then
-                local live = getElementData(player, "rank:rights")
-                local hasLive = type(live) == "string" and live ~= ""
-                local looksStaff = (tonumber(getElementData(player, "admin_level")) or 0) > 0
-                        or (tonumber(getElementData(player, "supporter_level")) or 0) > 0
-                        or (tonumber(getElementData(player, "scripter_level")) or 0) > 0
-                if hasLive then
-                        return gateAllows(player, right)
-                end
-                if looksStaff and type(getPlayerRankRecord) == "function"
-                        and getPlayerRankRecord(player) then
-                        return gateAllows(player, right)
-                end
+        if not staffRankPermits(player, right) then return false end
+        -- 2) a command no team on the server grants has NO team requirement
+        if type(commandNeedsTeam) ~= "function" then return true end
+        if not commandNeedsTeam(right) then return true end
+        -- 3) the top four ranks (18..21) may use it WITHOUT holding a team
+        if rankIdx >= 18 then return true end
+        -- 4) Full Access is exempt from the team requirement...
+        if type(playerTeamInFullAccess) == "function"
+                and playerTeamInFullAccess(player) then
+                return true
         end
-        -- no Vortex rank: the legacy ladder decides (unchanged behaviour)
-        return true
+        -- 5) ...or he simply holds a team that grants the command's right
+        if type(playerTeamsGrantRight) == "function"
+                and playerTeamsGrantRight(player, right) then
+                return true
+        end
+        return false
 end
 
 -- table lookup for the panel / debugging: which right gates this command
@@ -849,7 +943,18 @@ addEventHandler("onPlayerCommand", root, function(commandName)
                         .. ": " .. tostring(allowed), 1)
                 return -- fail-open but LOUD (never lock the whole server out)
         end
-        if allowed then return end
-        cancelEvent()
-        outputChatBox("You don't have permission to use this command.", source, 255, 0, 0)
+        if not allowed then
+                cancelEvent()
+                outputChatBox("You don't have permission to use this command.", source, 255, 0, 0)
+                return
+        end
+        -- [Batch rule 5b] the command is ALLOWED: publish it for the
+        -- admin-logs feed - but ONLY when layer 1 will not fire it (layer 1
+        -- forwards the real arguments for every command THIS resource
+        -- registers) and only for a MAPPED command. Typed commands carry no
+        -- argument list here, so this fire always ships { }.
+        local key = tostring(commandName):lower()
+        if COMMAND_RIGHTS[key] and not adminSystemCommands[key] then
+                fireFix160CmdOk(source, key, {})
+        end
 end)

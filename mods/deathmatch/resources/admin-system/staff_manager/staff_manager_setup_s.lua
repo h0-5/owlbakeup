@@ -75,7 +75,25 @@ local function runSetup()
                 LevelName VARCHAR(64) NOT NULL,
                 Rights TEXT,
                 Color TEXT,
+                hidden TINYINT NOT NULL DEFAULT 0,
                 PRIMARY KEY (ID))]], "CREATE staff_roles") then
+                -- [Batch rule 2] hidden flag: CREATE ... IF NOT EXISTS does NOT
+                -- add columns to an EXISTING table, so patch old schemas the
+                -- same idempotent way accounts.adminreports is patched below.
+                local hid = fetchOne([[
+                        SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                                AND TABLE_NAME = 'staff_roles' AND COLUMN_NAME = 'hidden']])
+                if hid and tonumber(hid.n) == 0 then
+                        if ddl("ALTER TABLE staff_roles ADD COLUMN hidden TINYINT NOT NULL DEFAULT 0",
+                                "ALTER staff_roles ADD hidden") then
+                                dbg("added missing staff_roles.hidden column")
+                                table.insert(SETUP_REPORT.lines, "staff_roles.hidden: ADDED (was missing)")
+                        else
+                                SETUP_REPORT.problems = SETUP_REPORT.problems + 1
+                                table.insert(SETUP_REPORT.lines, "staff_roles.hidden: ALTER FAILED")
+                        end
+                end
                 local row = fetchOne("SELECT COUNT(*) AS n FROM staff_roles")
                 local n = row and tonumber(row.n) or -1
                 if n == 0 then

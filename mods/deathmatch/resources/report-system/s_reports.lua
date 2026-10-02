@@ -902,6 +902,10 @@ function handleReport(reportedPlayer, reportedReason, reportType)
 		end
 	end
 	updateReportCount()
+	-- [Admin Logs] report feed: the admin-logs resource prints the owner's
+	-- "has submitted a report (Report ID: #..)" line for its tier audience
+	-- (a silent no-op while that resource is not running).
+	triggerEvent("adminlogs:reportopen", resourceRoot, source, slot)
 end
 
 function subscribeToAdminsReports(thePlayer)
@@ -1264,7 +1268,7 @@ function acceptReport(thePlayer, commandName, id)
 					end
 
 					outputChatBox(adminTitle.." " .. getPlayerName(thePlayer) .. " ("..adminName..") has accepted your report (#" .. id .. ") at "..timestring..", Please wait for him/her to contact you.", reportingPlayer, 255,126, 0)--200, 240, 120)
-					triggerClientEvent ( reportingPlayer, "playNudgeSound", reportingPlayer)
+					triggerClientEvent ( reportingPlayer, "reports:playAcceptSound", reportingPlayer)
 
 					outputChatBox("You accepted report #" .. id .. ". Contact the player ID #" .. playerID .. " (" .. getPlayerName(reportingPlayer) .. ").", thePlayer, r, g, b)--200, 240, 120)
 					sendReportToast(reportingPlayer, "Report #" .. id .. " accepted by " .. adminTitle .. " " .. getPlayerName(thePlayer), "accepted", id, "Please wait for them to contact you.")
@@ -1281,6 +1285,9 @@ function acceptReport(thePlayer, commandName, id)
 					--exports.logs:dbLog({"ac"..tostring(accountID), thePlayer }, 38, {reportingPlayer, reportedPlayer}, getPlayerName(thePlayer) .. " accepted a report. Report: " .. reason )
 					sortReports(false)
 					updateReportCount()
+					-- [Admin Logs] report feed: names the accepting admin in
+					-- the "... | accept by .." line (admin-logs resource).
+					triggerEvent("adminlogs:reportaccept", resourceRoot, reportingPlayer, id, thePlayer)
 				end
 			end
 		end
@@ -1392,6 +1399,9 @@ function acceptAdminReport(thePlayer, commandName, id, ...)
 						--exports.logs:dbLog({"ac"..tostring(accountID), thePlayer }, 38, {reportingPlayer, reportedPlayer}, getPlayerName(thePlayer) .. " was assigned a report. Report: " .. reason )
 						sortReports(false)
 						updateReportCount()
+						-- [Admin Logs] report feed: names the accepting admin
+						-- (the assigned head admin) - admin-logs resource.
+						triggerEvent("adminlogs:reportaccept", resourceRoot, reportingPlayer, id, targetAdmin)
 					end
 				end
 			end

@@ -111,6 +111,7 @@ local RankColor = { 255, 255, 255, 255 }
 local LevelNames = {}           -- [roleID] = name
 local LevelRights = {}          -- [roleID] = { right = true }
 local LevelColor = {}           -- [roleID] = {r,g,b,a}
+local LevelHidden = {}          -- [roleID] = true (batch rule 2: hidden rank)
 local getLevelByName = {}       -- [name] = roleID
 
 local panelData = { changelogs = {} }
@@ -444,8 +445,11 @@ function UIKitReady()
         eui:uiSetFont(UI.label.team_rights_title, "default-large")
         UI.label.team_rights_name = eui:uiCreateLabel(10, 40, 440, 20, "Team",
                 tocolor(255, 0, 0, 255), "left", "center", UI.window.team_rights)
+        -- [Batch rule 3] BLACK permission grid: every row of the rights /
+        -- team-rights selection lists sits on a black rectangle (the old
+        -- dark-blue (6,9,14) tint stayed visible against the panel)
         UI.gridlist.team_rights = eui:uiCreateGridList(10, 65, 440, 320,
-                tocolor(6, 9, 14, 235), UI.window.team_rights)
+                tocolor(0, 0, 0, 255), UI.window.team_rights)
         eui:uiGridListAddColumn(UI.gridlist.team_rights, "Permission", 1)
         eui:uiSetAlign(UI.gridlist.team_rights, "left", "center")
         eui:uiSetProperty(UI.gridlist.team_rights, "color_coded", true)
@@ -460,6 +464,11 @@ function UIKitReady()
         UI.checkbox.team_rights_select_all = eui:uiCreateCheckBox(10, 390, 200, 25,
                 "Select All", false, tocolor(255, 0, 0), UI.window.team_rights)
         eui:uiSetFontSize(UI.checkbox.team_rights_select_all, 0.8)
+        -- [Batch rule 2] hide THIS team from viewers who are not rank 20/21
+        -- or dev-team members (applied together with Save Rights)
+        UI.checkbox.team_hidden = eui:uiCreateCheckBox(220, 390, 215, 25,
+                "Hidden team", false, tocolor(255, 0, 0), UI.window.team_rights)
+        eui:uiSetFontSize(UI.checkbox.team_hidden, 0.8)
         UI.button.team_rights_save = eui:uiCreateButton(10, 420, 220, 35,
                 { en = "Save Rights", ar = "حفظ الصلاحيات" }, tocolor(3, 6, 11),
                 UI.window.team_rights)
@@ -501,8 +510,9 @@ function UIKitReady()
         eui:uiSetProperty(UI.gridlist.ranks, "column_height", 35)
         eui:uiSetProperty(UI.gridlist.ranks, "column_font_scale", 0.8)
 
+        -- [Batch rule 3] BLACK permission grid (same as team_rights above)
         UI.gridlist.permissions = eui:uiCreateGridList(permsX, 100, permsW,
-                PANEL_H - 10 - 60 - 100 - 30, tocolor(6, 9, 14, 235), UI.container.ranks)
+                PANEL_H - 10 - 60 - 100 - 30, tocolor(0, 0, 0, 255), UI.container.ranks)
         eui:uiGridListAddColumn(UI.gridlist.permissions, "Permissions", 1)
         eui:uiSetAlign(UI.gridlist.permissions, "left", "center")
         eui:uiSetProperty(UI.gridlist.permissions, "color_coded", true)
@@ -528,6 +538,12 @@ function UIKitReady()
         eui:uiSetFont(UI.edit.rank_name, "default-large")
         UI.rectangle.rank_color = eui:uiCreateRectangle(PANEL_W - MENU_W - 15 - 60, 65, 50, 25,
                 tocolor(255, 255, 255, 255), false, false, false, false, UI.container.ranks)
+        -- [Batch rule 2] hide the SELECTED rank (saved together with Save
+        -- Changes). Only rank 20/21 + dev-team viewers ever receive hidden
+        -- ranks, so everyone else simply has nothing to toggle here.
+        UI.checkbox.rank_hidden = eui:uiCreateCheckBox(588, 65, 88, 25,
+                "Hidden", false, tocolor(255, 0, 0), UI.container.ranks)
+        eui:uiSetFontSize(UI.checkbox.rank_hidden, 0.8)
 
         UI.button.delete_rank = eui:uiCreateButton(10, PANEL_H - 10 - 45, 150, 35,
                 { en = "Delete Rank", ar = "حذف الرتبة" }, tocolor(6, 9, 14, 255), UI.container.ranks)
@@ -685,6 +701,7 @@ function UIKitReady()
         regHit(UI.checkbox.permissions_select_all, "checkbox", permsX, PANEL_H - 10 - 60 - 20, 150, 25, UI.container.ranks)
         regHit(UI.edit.rank_name, "edit", permsX + 55, 65, 300, 25, UI.container.ranks)
         regHit(UI.rectangle.rank_color, "colorrect", PANEL_W - MENU_W - 15 - 60, 65, 50, 25, UI.container.ranks)
+        regHit(UI.checkbox.rank_hidden, "checkbox", 588, 65, 88, 25, UI.container.ranks)
         regHit(UI.button.delete_rank, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.add_rank, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.rename_rank, "button", 330, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
@@ -723,6 +740,7 @@ function UIKitReady()
                 h = 460 * SCALE_Y, kind = "window", section = false, order = 0 }
         regHit(UI.gridlist.team_rights, "grid", 10, 65, 440, 320, UI.window.team_rights, twX, twY)
         regHit(UI.checkbox.team_rights_select_all, "checkbox", 10, 390, 200, 25, UI.window.team_rights, twX, twY)
+        regHit(UI.checkbox.team_hidden, "checkbox", 220, 390, 215, 25, UI.window.team_rights, twX, twY)
         regHit(UI.button.team_rights_save, "button", 10, 420, 220, 35, UI.window.team_rights, twX, twY)
         regHit(UI.button.team_rights_cancel, "button", 235, 420, 215, 35, UI.window.team_rights, twX, twY)
         -- confirm dialogs float above everything; their buttons handle
@@ -824,9 +842,15 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
                         data.role_members, data.staff_report)
                 -- [TEAMS] team list + bundle templates for أعضاء الصلاحيات;
                 -- the same payload rebuilds the LEFT roster grid, so it is
-                -- refreshed on every open (empty payload = empty grid)
-                refreshTeams(type(data.teams) == "table" and data.teams
-                        or { teams = {}, templates = {} })
+                -- refreshed on every open (empty payload = empty grid).
+                -- [Batch rule 2 ship] the server sends the per-viewer team ROW
+                -- ARRAY as data.teams (hidden rows already dropped there) and
+                -- the bundle templates as data.teamTemplates; refreshTeams
+                -- wants the { teams = ..., templates = ... } wrapper - re-wrap.
+                refreshTeams({ teams = type(data.teams) == "table" and data.teams
+                        or {},
+                        templates = type(data.teamTemplates) == "table"
+                                and data.teamTemplates or {} })
                 -- [Fix #160] A5: pull the compact resource list for the section
                 if canManageResources then
                         triggerServerEvent("rpadmin:requestResources", localPlayer)
@@ -992,11 +1016,13 @@ local function dispatchPanelAction(el)
         end
         if not canEditRanks and (el == UI.button.delete_rank or el == UI.button.add_rank
                 or el == UI.button.rename_rank or el == UI.button.save_rank_changes
-                or el == UI.checkbox.permissions_select_all) then
+                or el == UI.checkbox.permissions_select_all
+                or el == UI.checkbox.rank_hidden) then
                 outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
                 -- revert the tick: the UIKit path already flipped the box
                 -- before this gate ran, and the raw path now skips it
-                if el == UI.checkbox.permissions_select_all then
+                if el == UI.checkbox.permissions_select_all
+                        or el == UI.checkbox.rank_hidden then
                         local okC, curC = pcall(eui.uiCheckBoxGetSelected, eui, el)
                         if okC then pcall(eui.uiCheckBoxSetSelected, eui, el, not curC) end
                 end
@@ -1032,7 +1058,8 @@ local function dispatchPanelAction(el)
                 or el == UI.gridlist.team_templates
                 or el == UI.edit.team_name or el == UI.edit.team_member_account
                 or el == UI.gridlist.team_rights
-                or el == UI.checkbox.team_rights_select_all) then
+                or el == UI.checkbox.team_rights_select_all
+                or el == UI.checkbox.team_hidden) then
                 outputChatBox("You don't have permission to edit staff teams.", 255, 80, 80)
                 return
         end
@@ -1053,8 +1080,18 @@ local function dispatchPanelAction(el)
                         if not rowText and sel ~= -1 then
                                 rowText = eui:uiGridListGetItemText(el, sel, 1)
                         end
-                        eui:uiSetText(UI.edit.rank_name, rowText or "")
+                        -- [Batch rule 2] the grid row may carry a " (hidden)"
+                        -- tag for entitled viewers: the EDIT box (and every
+                        -- rename that reads it) always gets the CLEAN stored
+                        -- name
+                        local cleanName = LevelNames[tostring(roleID)] or rowText
+                        eui:uiSetText(UI.edit.rank_name, cleanName or "")
                         eui:uiSetText(UI.label.rank_id, "#" .. tostring(roleID))
+                        -- [Batch rule 2] reflect the rank's hidden state
+                        if UI.checkbox.rank_hidden and isElement(UI.checkbox.rank_hidden) then
+                                eui:uiCheckBoxSetSelected(UI.checkbox.rank_hidden,
+                                        LevelHidden[tostring(roleID)] == true)
+                        end
                         for i, right in ipairs(AllRights) do
                                 local enabled = false
                                 local rights = LevelRights[tostring(roleID)]
@@ -1152,9 +1189,15 @@ local function dispatchPanelAction(el)
                         -- Send the edit box contents; the server renames only
                         -- when it is non-empty, then clear the box.
                         local newName = eui:uiGetText(UI.edit.rank_name) or ""
+                        -- [Batch rule 2] the hidden toggle rides along with
+                        -- the same Save press
+                        local hidden = false
+                        if UI.checkbox.rank_hidden and isElement(UI.checkbox.rank_hidden) then
+                                hidden = eui:uiCheckBoxGetSelected(UI.checkbox.rank_hidden) and true or false
+                        end
                         triggerServerEvent("rpadmin:updateRole", localPlayer,
                                 eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1), newName, rights,
-                                { unpack(RankColor or { 255, 255, 255, 255 }) })
+                                { unpack(RankColor or { 255, 255, 255, 255 }) }, hidden)
                         if newName ~= "" then
                                 eui:uiSetText(UI.edit.rank_name, "")
                         end
@@ -1193,10 +1236,14 @@ local function dispatchPanelAction(el)
                         return
                 end
                 if #eui:uiGetText(UI.edit.add_staff_account) ~= 0 and sel ~= -1 then
+                        -- [Batch rule 2] prefer the CLEAN stored rank name: the
+                        -- row text may carry a " (hidden)" tag
+                        local rankID = eui:uiGridListGetItemData(UI.gridlist.add_staff_ranks, sel, 1)
+                        local rankName = LevelNames[tostring(rankID)]
+                                or eui:uiGridListGetItemText(UI.gridlist.add_staff_ranks, sel, 1)
                         triggerServerEvent("rpadmin:addNewAdmin", localPlayer,
                                 eui:uiGetText(UI.edit.add_staff_account),
-                                eui:uiGridListGetItemData(UI.gridlist.add_staff_ranks, sel, 1),
-                                eui:uiGridListGetItemText(UI.gridlist.add_staff_ranks, sel, 1))
+                                rankID, rankName)
                         eui:uiSetVisible(UI.window.add_staff, false)
                         eui:uiSetText(UI.edit.add_staff_account, "")
                 end
@@ -1354,6 +1401,16 @@ local function dispatchPanelAction(el)
                         end
                 end
                 triggerServerEvent("rpadmin:teamSetRights", localPlayer, teamRightsTarget, rights)
+                -- [Batch rule 2] keep the team's hidden flag in sync with the
+                -- toggle (only fire when it actually changed)
+                if UI.checkbox.team_hidden and isElement(UI.checkbox.team_hidden) then
+                        local wantHidden = eui:uiCheckBoxGetSelected(UI.checkbox.team_hidden) and true or false
+                        local team = findTeamByID(teamRightsTarget)
+                        if team and ((team.hidden and true or false) ~= wantHidden) then
+                                triggerServerEvent("rpadmin:teamSetHidden", localPlayer,
+                                        teamRightsTarget, wantHidden)
+                        end
+                end
                 eui:uiSetVisible(UI.window.team_rights, false)
 
         elseif el == UI.button.team_rights_cancel then
@@ -1788,8 +1845,10 @@ local function fillRoleMembersFromTeams()
                 for _, member in ipairs(team.members or {}) do
                         local account = tostring(member.Account or "?")
                         local row = eui:uiGridListAddRow(UI.gridlist.roles_members)
+                        -- [Batch rule 2] hidden teams are dropped server-side
+                        -- for non-entitled viewers; entitled ones see the tag
                         eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 1,
-                                tostring(team.name))
+                                tostring(team.name) .. (team.hidden and " (hidden)" or ""))
                         eui:uiGridListSetItemText(UI.gridlist.roles_members, row, 2, account)
                         -- clean account name as cell data (same Fix #51 rule the
                         -- staffs / team-members grids use)
@@ -1823,7 +1882,10 @@ function refreshTeams(payload)
         local restored = false
         for _, team in ipairs(teamData.teams) do
                 local row = eui:uiGridListAddRow(UI.gridlist.teams)
-                eui:uiGridListSetItemText(UI.gridlist.teams, row, 1, tostring(team.name))
+                -- [Batch rule 2] hidden teams are dropped server-side for
+                -- non-entitled viewers; entitled ones see the "(hidden)" tag
+                eui:uiGridListSetItemText(UI.gridlist.teams, row, 1,
+                        tostring(team.name) .. (team.hidden and " (hidden)" or ""))
                 eui:uiGridListSetItemData(UI.gridlist.teams, row, 1, team.id)
                 eui:uiGridListSetItemText(UI.gridlist.teams, row, 2,
                         tostring(team.rightsCount or #(team.rights or {})))
@@ -1877,6 +1939,10 @@ function openTeamRightsWindow()
                 setRightsRow(row, granted[right] == true)
         end
         eui:uiCheckBoxSetSelected(UI.checkbox.team_rights_select_all, false)
+        -- [Batch rule 2] seed the hidden toggle from the team's stored flag
+        if UI.checkbox.team_hidden and isElement(UI.checkbox.team_hidden) then
+                eui:uiCheckBoxSetSelected(UI.checkbox.team_hidden, team.hidden and true or false)
+        end
         eui:uiSetVisible(UI.window.team_rights, true)
         eui:uiBringToFront(UI.window.team_rights)
 end
@@ -1932,6 +1998,7 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
         LevelNames = {}
         LevelRights = {}
         LevelColor = {}
+        LevelHidden = {}
         getLevelByName = {}
         for _, level in ipairs(levels or {}) do
                 LevelNames[tostring(level.ID)] = tostring(level.LevelName)
@@ -1941,6 +2008,9 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 -- unwrapped, no brightening) - this table feeds the member /
                 -- role / rank rows, the color preview and the save payload
                 LevelColor[tostring(level.ID)] = normalizeRankColorC(fromJSON(level.Color or ""))
+                -- [Batch rule 2] hidden flag (server only sends it to
+                -- entitled viewers - a dropped row simply never lands here)
+                LevelHidden[tostring(level.ID)] = level.hidden and true or false
                 getLevelByName[tostring(level.LevelName)] = tostring(level.ID)
         end
 
@@ -1974,6 +2044,12 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 local rankName = (staff.Online and staff.LiveRank and staff.LiveRank ~= "")
                         and tostring(staff.LiveRank)
                         or tostring(LevelNames[tostring(staff.AdminID)] or "N/A")
+                -- [Batch rule 2] a masked member (hidden rank, viewer not
+                -- entitled) shows "-" in plain white instead of the rank
+                if staff.RankMasked then
+                        rankName = "-"
+                        color = { 255, 255, 255, 255 }
+                end
                 local rating = 0
                 if tonumber(staff.FeedbackCount) and tonumber(staff.FeedbackCount) > 0 then
                         rating = (tonumber(staff.FeedbackRating) or 0) / tonumber(staff.FeedbackCount)
@@ -2019,14 +2095,17 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 -- lightened (a nested table used to reach color[1] here, so
                 -- tocolor got tables instead of the rank's r/g/b)
                 local color = normalizeRankColorC(fromJSON(level.Color or ""))
+                -- [Batch rule 2] entitled viewers get the "(hidden)" tag -
+                -- non-entitled viewers never receive the row at all
+                local nameText = tostring(level.LevelName)
+                        .. (level.hidden and " (hidden)" or "")
                 local row = eui:uiGridListAddRow(UI.gridlist.ranks)
-                eui:uiGridListSetItemText(UI.gridlist.ranks, row, 1, tostring(level.LevelName))
+                eui:uiGridListSetItemText(UI.gridlist.ranks, row, 1, nameText)
                 eui:uiGridListSetItemData(UI.gridlist.ranks, row, 1, level.ID)
                 eui:uiGridListSetItemColor(UI.gridlist.ranks, row, 1,
                         tocolor(color[1], color[2], color[3], color[4]))
                 local arow = eui:uiGridListAddRow(UI.gridlist.add_staff_ranks)
-                eui:uiGridListSetItemText(UI.gridlist.add_staff_ranks, arow, 1,
-                        tostring(level.LevelName))
+                eui:uiGridListSetItemText(UI.gridlist.add_staff_ranks, arow, 1, nameText)
                 eui:uiGridListSetItemData(UI.gridlist.add_staff_ranks, arow, 1, level.ID)
                 eui:uiGridListSetItemColor(UI.gridlist.add_staff_ranks, arow, 1,
                         tocolor(color[1], color[2], color[3], color[4]))

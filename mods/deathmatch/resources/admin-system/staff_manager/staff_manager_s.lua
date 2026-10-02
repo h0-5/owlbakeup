@@ -186,6 +186,7 @@ local function ensureTables()
                 LevelName VARCHAR(64) NOT NULL,
                 Rights TEXT,
                 Color TEXT,
+                hidden TINYINT NOT NULL DEFAULT 0,
                 PRIMARY KEY (ID))]])
         mysql:query_free([[CREATE TABLE IF NOT EXISTS staff_role_members (
                 RoleID INT NOT NULL,
@@ -403,9 +404,26 @@ end
 -- data assembly
 -- ============================================================================
 
-local function fetchLevels()
+-- [Batch rule 2] may THIS panel viewer see hidden ranks/teams? Rank 20/21
+-- or a "dev" team member (staffCanSeeHiddenStaff lives in the bridge, which
+-- loads after this file - the call is a runtime global lookup, so the order
+-- is fine; pcall because a panel payload must never die on it).
+local function canSeeHiddenStaff(viewer)
+        if viewer == nil then return false end
+        if type(staffCanSeeHiddenStaff) == "function" then
+                local ok, res = pcall(staffCanSeeHiddenStaff, viewer)
+                return ok and res or false
+        end
+        return false
+end
+
+-- [Batch rule 2] EVERY rank row with its hidden flag. The raw form is what
+-- the data-assembly code needs (it must know WHICH rows are hidden even for
+-- a viewer who may not see them, to mask member rows / changelog rank
+-- names); fetchLevels() below is the per-viewer view of it.
+local function fetchLevelsRaw()
         local levels = {}
-        local q = mysql:query("SELECT ID, LevelName, Rights, Color FROM staff_roles ORDER BY ID ASC")
+        local q = mysql:query("SELECT ID, LevelName, Rights, Color, hidden FROM staff_roles ORDER BY ID ASC")
         if not q then
                 -- [V7] loud failure: a dead query used to silently empty the panel
                 outputDebugString("[Vortex Staff] DB query FAILED: staff_roles SELECT - run /staffdb", 1)
@@ -419,10 +437,54 @@ local function fetchLevels()
                         LevelName = row.LevelName,
                         Rights = row.Rights or "{}",
                         Color = row.Color or "[[255,255,255,255]]",
+                        hidden = tonumber(row.hidden) == 1,
                 }
         end
         mysql:free_result(q)
         return levels
+end
+
+-- [Batch rule 2] a hidden rank row is DROPPED for everyone except rank
+-- 20/21 + dev-team members; those viewers receive it with hidden=true so
+-- the client can tag it "(hidden)". viewer == nil is an INTERNAL lookup
+-- (old-name resolution for changelogs) - it always sees every row.
+local function levelsForViewer(all, viewer)
+        if viewer == nil then return all end
+        if canSeeHiddenStaff(viewer) then return all end
+        local out = {}
+        for _, lv in ipairs(all) do
+                if not lv.hidden then out[#out + 1] = lv end
+        end
+        return out
+end
+
+local function fetchLevels(viewer)
+        return levelsForViewer(fetchLevelsRaw(), viewer)
+end
+
+-- [Batch rule 2] per-payload hidden context: the viewer's entitlement plus
+-- the ID set (offline member rows are judged by stored RoleID) and the NAME
+-- set (changelog FromR/ToR are rank names) of every hidden rank.
+local function hiddenRankContext(allLevels, viewer)
+        local ctx = { canSee = canSeeHiddenStaff(viewer), ids = {}, names = {} }
+        for _, lv in ipairs(allLevels) do
+                if lv.hidden then
+                        ctx.ids[tonumber(lv.ID)] = true
+                        ctx.names[tostring(lv.LevelName)] = true
+                end
+        end
+        return ctx
+end
+
+-- is THIS member row's rank hidden from THIS viewer? Online staff are
+-- judged by their LIVE rank (rank:hidden element data - they may have been
+-- promoted while online), offline staff by the stored role.
+local function memberRankMasked(ctx, row, onlinePlayer)
+        if ctx.canSee then return false end
+        if onlinePlayer then
+                return tonumber(getElementData(onlinePlayer, "rank:hidden")) == 1
+        end
+        return ctx.ids[tonumber(row.RoleID)] == true
 end
 
 local function fetchStaffReport()
@@ -479,7 +541,12 @@ local function fetchStaffReport()
 end
 
 local function sendFullData(player)
-        local levels = fetchLevels()
+        -- [Batch rule 2] the payload is per VIEWER: hidden ranks are dropped
+        -- from `levels` for non-entitled viewers and their member rows /
+        -- changelog rank names are masked to "-".
+        local allLevels = fetchLevelsRaw()
+        local levels = levelsForViewer(allLevels, player)
+        local ctx = hiddenRankContext(allLevels, player)
         -- staff members with feedback + report counts (same sources the old
         -- staff manager used: accounts.adminreports + feedbacks.rating)
         local admins = {}
@@ -515,13 +582,29 @@ local function sendFullData(player)
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
                 local onlinePlayer = onlineByAccount[tonumber(row.id)]
+                -- [Batch rule 2] hidden-rank members: for a non-entitled
+                -- viewer the live title becomes "-" and the rank color is
+                -- dropped (the client paints the cell plain white); the
+                -- RankMasked flag also stops the client falling back to the
+                -- (filtered-out) DB rank of an OFFLINE member.
+                local masked = memberRankMasked(ctx, row, onlinePlayer)
+                local liveRank, liveColor
+                if onlinePlayer then
+                        if masked then
+                                liveRank = "-"
+                        else
+                                liveRank = getElementData(onlinePlayer, "rank:name")
+                                liveColor = getElementData(onlinePlayer, "rank:color")
+                        end
+                end
                 admins[#admins + 1] = {
                         AdminID = tonumber(row.RoleID),
                         Account = row.username,
                         AccountID = tonumber(row.id),
                         Online = onlinePlayer ~= nil,
-                        LiveRank = onlinePlayer and getElementData(onlinePlayer, "rank:name") or nil,
-                        LiveColor = onlinePlayer and getElementData(onlinePlayer, "rank:color") or nil,
+                        LiveRank = liveRank,
+                        LiveColor = liveColor,
+                        RankMasked = masked or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,
@@ -549,6 +632,16 @@ local function sendFullData(player)
         end
         if cq then mysql:free_result(cq) end
 
+        -- [Batch rule 2] a hidden rank name must not appear in the viewer's
+        -- changelog history either: From/To collapse to "-" for anyone who
+        -- is not entitled to see hidden ranks.
+        if not ctx.canSee then
+                for _, cl in ipairs(changelogs) do
+                        if ctx.names[tostring(cl.FromR)] then cl.FromR = "-" end
+                        if ctx.names[tostring(cl.ToR)] then cl.ToR = "-" end
+                end
+        end
+
         triggerClientEvent(player, "rpadmin:sendSQLInformations", player,
                 levels, admins, changelogs, {}, roleMembers, fetchStaffReport())
         return levels, admins
@@ -561,12 +654,21 @@ end
 -- [TEAMS] the Teams block of the panel payload. staff_manager_teams_s.lua
 -- loads AFTER this file (see meta.xml), so the hook is resolved at call time
 -- and guarded: a missing/disabled teams script must never stop the panel.
-local function teamsPayload()
+-- [Batch rule 2] viewer-scoped: fetchStaffTeamsPayload(viewer) drops hidden
+-- teams for non-entitled viewers (entitled ones get hidden=true flags).
+-- [Batch rule 2 ship] sendPanel ships the per-viewer TEAM ROW ARRAY as
+-- data.teams (+ the bundle templates as data.teamTemplates). The panel client
+-- re-wraps both into { teams = ..., templates = ... } for refreshTeams;
+-- consumers (test contract included) iterate data.teams directly as rows.
+local function teamsPayload(viewer)
         if type(fetchStaffTeamsPayload) == "function" then
-                local ok, payload = pcall(fetchStaffTeamsPayload)
-                if ok and type(payload) == "table" then return payload end
+                local ok, payload = pcall(fetchStaffTeamsPayload, viewer)
+                if ok and type(payload) == "table" then
+                        return (type(payload.teams) == "table" and payload.teams or {}),
+                                (type(payload.templates) == "table" and payload.templates or {})
+                end
         end
-        return nil
+        return {}, {}
 end
 
 local function sendPanel(player)
@@ -578,7 +680,13 @@ local function sendPanel(player)
         local editRanks = hasEditRanks(player)
         -- [Fix #160] A5: Resources/Mods section flag (was a copy of editRanks)
         local manageResources = hasManageResources(player)
-        local levels = fetchLevels()
+        -- [Batch rule 2] per-viewer payload (same rules as sendFullData:
+        -- hidden ranks dropped / member rows + changelogs masked)
+        local allLevels = fetchLevelsRaw()
+        local levels = levelsForViewer(allLevels, player)
+        local ctx = hiddenRankContext(allLevels, player)
+        -- [Batch rule 2 ship] Teams block: per-viewer row array + templates
+        local teamRows, teamTemplates = teamsPayload(player)
         -- reuse the same query used by sendFullData for the first paint
         local admins, roleMembers = {}, {}
         local q = mysql:query([[
@@ -595,10 +703,10 @@ local function sendPanel(player)
                 outputChatBox("Staff system: database error - run /staffdb to diagnose.", player, 255, 80, 80)
                 triggerClientEvent(player, "rpadmin:showPanel", player,
                         editMembers, editRanks, hasManageResources(player),
-                        { levels = levels, admins = {}, changelogs = {},
-                          role_members = {}, staff_report = {},
-                          teams = teamsPayload() },
-                        panelRights(player))
+                { levels = levels, admins = {}, changelogs = {},
+                  role_members = {}, staff_report = {},
+                  teams = teamRows, teamTemplates = teamTemplates },
+                panelRights(player))
                 return false
         end
         -- [Mod 2 fix] map online players by ACCOUNT id once; every staff row
@@ -614,13 +722,29 @@ local function sendPanel(player)
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
                 local onlinePlayer = onlineByAccount[tonumber(row.id)]
+                -- [Batch rule 2] hidden-rank members: for a non-entitled
+                -- viewer the live title becomes "-" and the rank color is
+                -- dropped (the client paints the cell plain white); the
+                -- RankMasked flag also stops the client falling back to the
+                -- (filtered-out) DB rank of an OFFLINE member.
+                local masked = memberRankMasked(ctx, row, onlinePlayer)
+                local liveRank, liveColor
+                if onlinePlayer then
+                        if masked then
+                                liveRank = "-"
+                        else
+                                liveRank = getElementData(onlinePlayer, "rank:name")
+                                liveColor = getElementData(onlinePlayer, "rank:color")
+                        end
+                end
                 admins[#admins + 1] = {
                         AdminID = tonumber(row.RoleID),
                         Account = row.username,
                         AccountID = tonumber(row.id),
                         Online = onlinePlayer ~= nil,
-                        LiveRank = onlinePlayer and getElementData(onlinePlayer, "rank:name") or nil,
-                        LiveColor = onlinePlayer and getElementData(onlinePlayer, "rank:color") or nil,
+                        LiveRank = liveRank,
+                        LiveColor = liveColor,
+                        RankMasked = masked or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,
@@ -644,11 +768,19 @@ local function sendPanel(player)
         end
         mysql:free_result(cq)
 
+        -- [Batch rule 2] hide hidden-rank names from the changelog history
+        if not ctx.canSee then
+                for _, cl in ipairs(changelogs) do
+                        if ctx.names[tostring(cl.FromR)] then cl.FromR = "-" end
+                        if ctx.names[tostring(cl.ToR)] then cl.ToR = "-" end
+                end
+        end
+
         triggerClientEvent(player, "rpadmin:showPanel", player,
                 editMembers, editRanks, manageResources,
                 { levels = levels, admins = admins, changelogs = changelogs,
                   role_members = roleMembers, staff_report = fetchStaffReport(),
-                  teams = teamsPayload() },
+                  teams = teamRows, teamTemplates = teamTemplates },
                 panelRights(player))
         return true
 end
@@ -687,7 +819,20 @@ end, false, false)
 -- mutations
 -- ============================================================================
 
-local function addChangelog(cType, username, fromRank, toRank, actor)
+-- [Batch rule 5a] CONTRACT: every INSERT into staff_rank_changelogs IS a
+-- rank change, so the INSERT lives here and fires fix160:rankchanged with
+-- ONE table argument (source = this resource's resourceRoot, as the
+-- contract specifies). The admin-logs feed listens for it.
+--   account = target's accounts.id when the change belongs to an ACCOUNT
+--             (promotion/demotion/removal); rank-level events (create /
+--             delete / rename / edit a rank) carry no account (nil).
+--   from/to = rank names; "-" (and empty) means "from nothing" / "to
+--             nothing" and is passed as nil, exactly as contracted.
+--   by      = the acting staff member's account username ("System" when a
+--             handler fired with no actor and no event client).
+--   cType   = extra (adaptation the contract allows): "Promotion",
+--             "Demotion", "Rank Added", ... so the feed can word it.
+local function addChangelog(cType, username, fromRank, toRank, actor, targetAccount)
         -- [Fix #157] optional actor: command handlers have no event `client`,
         -- so /giverole and friends pass themselves; event callers stay as-is
         local src = actor
@@ -707,6 +852,19 @@ local function addChangelog(cType, username, fromRank, toRank, actor)
                 mysql:escape_string(tostring(fromRank or "-")),
                 mysql:escape_string(tostring(toRank or "-")),
                 mysql:escape_string(tostring(by))))
+        local function rankOrNil(v)
+                v = tostring(v or "")
+                if v == "" or v == "-" then return nil end
+                return v
+        end
+        triggerEvent("fix160:rankchanged", resourceRoot, {
+                account = tonumber(targetAccount),
+                target = tostring(username),
+                from = rankOrNil(fromRank),
+                to = rankOrNil(toRank),
+                by = by,
+                cType = tostring(cType),
+        })
 end
 
 -- [Fix #50 - user] MICRO-STUTTER KILL: every mutation used to fire
@@ -815,7 +973,9 @@ addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelNam
                         changeType = "Demotion"
                 end
         end
-        addChangelog(changeType, user.username, oldName, tostring(levelName or "-"))
+        -- [Batch rule 5a] account-bound change: report the target's accounts.id
+        addChangelog(changeType, user.username, oldName, tostring(levelName or "-"),
+                nil, tonumber(user.id))
         outputChatBox("Staff updated: " .. user.username .. " -> " .. tostring(levelName)
                 .. " (" .. changeType .. ")", client, 0, 255, 0)
         -- [Fix #15] public chat log of the rank change
@@ -893,11 +1053,27 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
                         end
                 end
         end
+        -- [Batch rule 5a] a DERIVED rank (legacy accounts.admin, no membership
+        -- row) still HAS a name - resolve it BEFORE the row and the legacy
+        -- level are cleared below, otherwise the rank the target actually
+        -- held is gone and fix160:rankchanged fires with from=nil instead of
+        -- from='<the held rank>'.
+        if oldName == "-" and type(getPlayerRankRecordByAccountID) == "function" then
+                local rec = getPlayerRankRecordByAccountID(tonumber(user.id))
+                if type(rec) == "table" and type(rec.name) == "string"
+                        and rec.name ~= "" and rec.name ~= "-" then
+                        oldName = rec.name
+                end
+        end
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(user.id))
         -- [Fix #U1] drop the legacy level too, BEFORE the live refresh: it is
         -- what would otherwise re-derive the very same rank (see above)
         clearLegacyStaffLevel(user.id)
-        addChangelog("Demotion", user.username, oldName, "Player")
+        -- [Batch rule 5a] account-bound change: report the target's accounts.id;
+        -- to="-" (never a literal "Player"): rankOrNil maps "-" to nil, so a
+        -- removal records to=nil - the target is back in the Player group and
+        -- there is no "Player" rank the changelog could name.
+        addChangelog("Demotion", user.username, oldName, "-", nil, tonumber(user.id))
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
         -- [Fix #15] public chat log of the removal
         broadcastRankChange("removed", user.username, false, true)
@@ -975,7 +1151,7 @@ end)
 -- save rights + color (the UIKit panel path) + legacy alias. The panel
 -- sends the CHECKED rights set and the original replaced the stored set
 -- with exactly that, so both paths share one implementation.
-local function updateRoleImpl(sender, levelID, rights, color)
+local function updateRoleImpl(sender, levelID, rights, color, hidden)
         if not hasEditRanks(sender) then
                 outputChatBox("You don't have permission to edit ranks.", sender, 255, 80, 80)
                 return
@@ -1012,9 +1188,18 @@ local function updateRoleImpl(sender, levelID, rights, color)
         -- background while the game showed the pure RGB.
         local colorJSON = toJSON({ tonumber(color[1]) or 255, tonumber(color[2]) or 255,
                 tonumber(color[3]) or 255, 255 })
+        -- [Batch rule 2] the hidden flag only rides along when the caller sent
+        -- it (the legacy rpadmin:saveLevelRights path never does, so its
+        -- saved state stays untouched)
+        local hiddenSQL = ""
+        if hidden ~= nil then
+                hiddenSQL = ", hidden=" .. ((hidden == true or tonumber(hidden) == 1)
+                        and 1 or 0)
+        end
         mysql:query_free("UPDATE staff_roles SET Rights='"
                 .. rightsToJSON(rights) .. "', Color='"
-                .. mysql:escape_string(colorJSON) .. "' WHERE ID=" .. levelID)
+                .. mysql:escape_string(colorJSON) .. "'" .. hiddenSQL
+                .. " WHERE ID=" .. levelID)
         addChangelog("Rank Edited", row.LevelName, "-",
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))
         -- [Fix #30] LOUD proof the backend fired: what was saved + that
@@ -1031,8 +1216,8 @@ local function updateRoleImpl(sender, levelID, rights, color)
 end
 
 addEvent("rpadmin:updateRole", true)
-addEventHandler("rpadmin:updateRole", root, function(levelID, name, rights, color)
-        updateRoleImpl(client, levelID, rights, color)
+addEventHandler("rpadmin:updateRole", root, function(levelID, name, rights, color, hidden)
+        updateRoleImpl(client, levelID, rights, color, hidden)
         -- [Fix #53] persist a non-empty rank name from the SAME Save press
         -- (the client used to send nil here, so typed names never saved).
         if type(name) == "string" and name ~= "" and tonumber(levelID) and hasEditRanks(client) then
@@ -1586,7 +1771,21 @@ end
 local function fix157CurrentRoleName(accountID)
         local old = mysql:query_fetch_assoc("SELECT m.RoleID FROM staff_role_members m WHERE m.AccountID="
                 .. tonumber(accountID) .. " LIMIT 1")
-        if not old then return nil, nil end
+        if not old then
+                -- [Batch rule 5a] no membership row: the rank may still be
+                -- DERIVED from legacy accounts.admin - report its NAME (the
+                -- role id stays nil, so the caller keeps INSERTing the row);
+                -- takerole on a derived rank then records from='<rank>'
+                -- instead of from=nil.
+                if type(getPlayerRankRecordByAccountID) == "function" then
+                        local rec = getPlayerRankRecordByAccountID(tonumber(accountID))
+                        if type(rec) == "table" and type(rec.name) == "string"
+                                and rec.name ~= "" and rec.name ~= "-" then
+                                return nil, rec.name
+                        end
+                end
+                return nil, nil
+        end
         local oldName = "-"
         for _, level in ipairs(fetchLevels()) do
                 if tonumber(level.ID) == tonumber(old.RoleID) then
@@ -1614,7 +1813,9 @@ local function fix157AssignRole(actor, row, levelID, levelName)
                         changeType = "Demotion"
                 end
         end
-        addChangelog(changeType, row.username, oldName or "-", tostring(levelName or "-"), actor)
+        -- [Batch rule 5a] account-bound change: report the target's accounts.id
+        addChangelog(changeType, row.username, oldName or "-", tostring(levelName or "-"),
+                actor, tonumber(row.id))
         outputChatBox("Staff updated: " .. tostring(row.username) .. " -> "
                 .. tostring(levelName) .. " (" .. changeType .. ")", actor, 0, 255, 0)
         broadcastRankChange(changeType == "Demotion" and "demoted" or "promoted",
@@ -1635,7 +1836,11 @@ local function fix157ClearRole(actor, row)
         local oldRoleID, oldName = fix157CurrentRoleName(row.id)
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(row.id))
         clearLegacyStaffLevel(row.id)
-        addChangelog("Demotion", row.username, oldName or "-", "Player", actor)
+        -- [Batch rule 5a] account-bound change: report the target's accounts.id;
+        -- to="-" -> rankOrNil maps it to nil (the Player group), never a
+        -- bogus "Player" rank name
+        addChangelog("Demotion", row.username, oldName or "-", "-", actor,
+                tonumber(row.id))
         outputChatBox("Staff removed: " .. tostring(row.username)
                 .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), actor, 0, 255, 0)
         broadcastRankChange("removed", row.username, false, true, actor)

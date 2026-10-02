@@ -22,11 +22,15 @@
 --     applications.edit              -> /appstate
 --     special_membership.add/remove  -> /addspecial /removespecial
 --     level.give_exp / level.boost   -> /giveexp /levelboost
---     hidden.logs                    -> /hiddenlogs
 --     feature.give                   -> /givefeature
+--   REPURPOSED by the admin-logs task (owner request): /hiddenlogs is no
+--   longer a hiddenlogs/*.log file viewer, it now toggles the GLOBAL hide of
+--   this admin's OWN usage (right admin.hide_logs, checked inside the
+--   handler). The local toggle /hidelogs (right hidden.logs) lives in the
+--   admin-logs resource next to the log feed it controls.
 --   NOT DONE (no command/system/consumer in this server, intentionally left
 --   out of the gate table - the A7 report gives the reason per right):
---     admin.hide_logs, admin.remove_gov, admin.voice_mute, admin.voice_unmute,
+--     admin.remove_gov, admin.voice_mute, admin.voice_unmute,
 --     cinema, mechanic.panel, activity.create, activity.end
 --
 -- [Fix #160] They register through the WRAPPED addCommandHandler
@@ -718,75 +722,29 @@ addCommandHandler("levelboost", function(player, cmd, query, levelsArg)
 end, false, false)
 
 -- ======================================================== hidden logs ======
--- files live in the logs resource: resources/logs/hiddenlogs/*.log, opened
--- with the @resource/path syntax (read-only)
-
-local FIX160_HIDDEN_LOGS = {
-        "admincmds.log", "connect.log", "moneyspawn.log", "sqlqueries.log",
-        "stevie.log", "unitedshield.log", "valhallashield.log", "weaponspawn.log",
-}
-
-local function fix160MiscReadLogFile(name)
-        local ok, handle = pcall(fileOpen, "@logs/hiddenlogs/" .. name)
-        if not ok or not handle then return nil end
-        local data = ""
-        while true do
-                local okRead, chunk = pcall(fileRead, handle, 65536)
-                if not okRead or not chunk or chunk == "" then break end
-                data = data .. chunk
-                if #data >= 1048576 then break end -- 1 MB safety cap
-        end
-        pcall(fileClose, handle)
-        return data
-end
-
-addCommandHandler("hiddenlogs", function(player, cmd, fileArg, linesArg)
-        if not fix160MiscCheck(player, "hidden.logs") then return end
-        if not fileArg then
-                outputChatBox("Hidden log files:", player, 255, 194, 14)
-                for _, name in ipairs(FIX160_HIDDEN_LOGS) do
-                        local exists = false
-                        pcall(function() exists = fileExists("@logs/hiddenlogs/" .. name) end)
-                        outputChatBox("  " .. name .. (exists and "" or "  (missing)"),
-                                player, 200, 200, 200)
-                end
-                fix160MiscSyntax(player, cmd, "[file.log] [lines, default 15, max 50]")
-                return
-        end
-        local name = fix160MiscTrim(fileArg):lower()
-        if not name:match("%.log$") then name = name .. ".log" end
-        if not name:match("^[%w_%-]+%.log$") then
-                outputChatBox("Invalid file name.", player, 255, 0, 0)
-                return
-        end
-        local lines = math.floor(math.max(1, math.min(50, tonumber(linesArg) or 15)))
-        local data = fix160MiscReadLogFile(name)
-        if not data then
-                outputChatBox("Could not open @logs/hiddenlogs/" .. name, player, 255, 0, 0)
-                return
-        end
-        local all = {}
-        if data ~= "" then
-                for line in (data .. "\n"):gmatch("(.-)\n") do
-                        all[#all + 1] = (line:gsub("\r$", ""))
-                end
-        end
-        local startFrom = math.max(1, #all - lines + 1)
-        outputChatBox("hiddenlogs/" .. name .. " - last " .. (#all - startFrom + 1)
-                .. " line(s) of " .. #all .. ":", player, 255, 194, 14)
-        local shown = 0
-        for i = startFrom, #all do
-                local line = all[i]
-                if line ~= "" then
-                        if #line > 160 then line = line:sub(1, 157) .. "..." end
-                        outputChatBox(line, player, 220, 220, 220)
-                        shown = shown + 1
-                end
-        end
-        if shown == 0 then
-                outputChatBox("  (no content)", player, 170, 170, 170)
-        end
-        fix160MiscLog(player, "HIDDENLOGS " .. name .. " (" .. shown .. " line(s))", player)
+-- [REPURPOSED - admin-logs task, owner request] /hiddenlogs used to list and
+-- tail the files of the logs resource (resources/logs/hiddenlogs/*.log) with
+-- optional [file.log] [lines] arguments. That viewer (and both arguments) is
+-- gone: the command is now a TOGGLE of the GLOBAL hide of this admin's OWN
+-- usage. While it is ON every command he uses produces NO log line for
+-- ANYONE - including himself - while he keeps seeing the other admins' lines
+-- normally. Feedback is local (to him) only, and the command itself is never
+-- logged (admin-logs keeps it in its never-logged list).
+--
+-- Right: admin.hide_logs, enforced right here. NOTE (reported, not edited
+-- here): staff_manager/gates_fix160_task7.lua still gates the command to
+-- hidden.logs, so a ranked staff member needs BOTH rights to reach this
+-- handler - the gate table belongs to the staff_manager agent.
+--
+-- State key "adminlogs:hide_global" (server-only element data) is owned and
+-- read by the admin-logs resource, which also wipes it when the player quits.
+addCommandHandler("hiddenlogs", function(player, cmd)
+        if not fix160MiscCheck(player, "admin.hide_logs") then return end
+        local on = (tonumber(getElementData(player, "adminlogs:hide_global")) or 0) ~= 1
+        -- synchronize = false: the flag never reaches a client, only the
+        -- admin-logs feed reads it server-side
+        setElementData(player, "adminlogs:hide_global", on and 1 or 0, false)
+        outputChatBox(on and "hidden logs on" or "hidden logs off", player, 255, 194, 14)
 end, false, false)
 
 -- ========================================================== features =======

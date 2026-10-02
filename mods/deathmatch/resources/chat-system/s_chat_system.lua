@@ -32,6 +32,56 @@ function getChatName(p, resetRGB)
 	return name
 end
 
+-- [Staff chat line] shared renderer for every staff chat of this resource
+-- (/a, /st, /h, /g, /ua, /fmt, /dev, /v, /mt). One line renders as:
+--   [STAFF]: [821] Trial Administrator Jelly Brock (JELLY): message
+-- {RankTitle} is the LIVE rank title the staff system pushes as element data
+-- ("rank:name"); when it is missing we fall back to the legacy rank
+-- computation (global getPlayerAdminTitle). Hidden admins (element data
+-- "hiddenadmin" == 1) get the " (hidden)" marker right after the rank title,
+-- {CharacterName} is the current character, {accountName} the account name.
+-- A sender without any rank keeps the plain fallback line used for players,
+-- so regular player chats are never affected.
+local function getStaffRankTitle(thePlayer)
+	-- live rank title pushed on login by the staff_manager rank bridge
+	local rankTitle = getElementData(thePlayer, "rank:name")
+	if rankTitle and rankTitle ~= "" then
+		return tostring(rankTitle)
+	end
+	-- legacy fallback: old numeric admin/supporter/scripter ladder titles
+	local legacyTitle = exports.global:getPlayerAdminTitle(thePlayer)
+	if not legacyTitle or legacyTitle == "" or legacyTitle == "Player" then
+		return nil -- regular player, no staff rank to display
+	end
+	-- getPlayerAdminTitle() appends " (Hidden)" on its own; the shared
+	-- formatter owns that marker, so strip it here to avoid doubling it
+	return (tostring(legacyTitle):gsub("%s*%(Hidden%)$", ""))
+end
+
+local function getStaffCharName(thePlayer)
+	-- current character name: "character:name" is what the account/report
+	-- panels read, otherwise the MTA player name already holds it
+	local charName = getElementData(thePlayer, "character:name")
+	if charName and charName ~= "" then
+		return (tostring(charName):gsub("_", " "))
+	end
+	return getPlayerName(thePlayer) -- local override turns "First_Last" into "First Last"
+end
+
+local function buildStaffChatLine(thePlayer, prefix, message)
+	local accountName = tostring(getElementData(thePlayer, "account:username") or "?")
+	local charName = getStaffCharName(thePlayer)
+	local rankTitle = getStaffRankTitle(thePlayer)
+	if not rankTitle then
+		-- sender without a rank: keep the plain player style line
+		return "[" .. prefix .. "] " .. charName .. " (" .. accountName .. "): " .. message
+	end
+	-- hidden admins are marked immediately after their rank title
+	local hidden = (tonumber(getElementData(thePlayer, "hiddenadmin")) or 0) == 1 and " (hidden)" or ""
+	local playerid = tostring(getElementData(thePlayer, "playerid") or "?")
+	return "[" .. prefix .. "]: [" .. playerid .. "] " .. rankTitle .. hidden .. " " .. charName .. " (" .. accountName .. "): " .. message
+end
+
 function trunklateText(thePlayer, text, factor)
 	--[[if getElementData(thePlayer,"alcohollevel") and getElementData(thePlayer,"alcohollevel") > 0 then
 		local level = math.ceil( getElementData(thePlayer,"alcohollevel") * #text / ( factor or 15 ) )
@@ -883,7 +933,8 @@ function scripterChat(thePlayer, commandName, ...)
                 local logged = getElementData(arrayPlayer, "loggedin")
 
                 if(exports.integration:isPlayerTester(arrayPlayer)) and (logged==1) then
-                    outputChatBox("[DEV] ".. exports.global:getPlayerAdminTitle(thePlayer) .. " " .. getElementData(thePlayer, "account:username") .. ": " .. message, arrayPlayer, 217, 40, 255)
+                    -- [Staff chat line format] shared renderer, colour unchanged
+                    outputChatBox(buildStaffChatLine(thePlayer, "DEV", message), arrayPlayer, 217, 40, 255)
                 end
             end
         end
@@ -906,7 +957,8 @@ function vctChat(thePlayer, commandName, ...)
                 local logged = getElementData(arrayPlayer, "loggedin")
 
                 if exports.integration:isPlayerVCTMember(arrayPlayer) and (logged==1) then
-                    outputChatBox("[VCT] ("..getElementData(thePlayer, "playerid")..") "..(exports.integration:isPlayerVehicleConsultant(thePlayer) and "Leader" or "Member" ).." " .. username .. " : " .. message, arrayPlayer, 222, 222, 31)
+                    -- [Staff chat line format] shared renderer, colour unchanged
+                    outputChatBox(buildStaffChatLine(thePlayer, "VCT", message), arrayPlayer, 222, 222, 31)
                 end
             end
         end
@@ -930,7 +982,8 @@ function mappingTeamChat(thePlayer, commandName, ...)
                 local logged = getElementData(arrayPlayer, "loggedin")
 
                 if exports.integration:isPlayerMappingTeamMember(arrayPlayer) and (logged==1) then
-                    outputChatBox("[MT] ("..getElementData(thePlayer, "playerid")..") "..(exports.integration:isPlayerMappingTeamLeader(thePlayer) and "Leader" or "Member" ).." " .. username .. " : " .. message, arrayPlayer, 222, 222, 31)
+                    -- [Staff chat line format] shared renderer, colour unchanged
+                    outputChatBox(buildStaffChatLine(thePlayer, "MT", message), arrayPlayer, 222, 222, 31)
                 end
             end
         end
@@ -1756,7 +1809,8 @@ function adminChat(thePlayer, commandName, ...)
 
 				if(exports.integration:isPlayerTrialAdmin(arrayPlayer)) and (logged==1) and (hiddena ~= "true") then
 					table.insert(affectedElements, arrayPlayer)
-					outputChatBox("[INST-HosT] ("..playerid..") ".. adminTitle .." " .. username .. " (".. dude .."): " .. message, arrayPlayer, 255, 0, 0)
+					-- [Colour spec] ADMIN chat is PURPLE (was red)
+					outputChatBox(buildStaffChatLine(thePlayer, "ADMIN", message), arrayPlayer, 170, 85, 255)
 				end
 			end
 			exports.logs:dbLog(thePlayer, 3, affectedElements, message)
@@ -1784,7 +1838,8 @@ function leadAdminChat(thePlayer, commandName, ...)
 				local logged = getElementData(arrayPlayer, "loggedin")
 				if (exports.integration:isPlayerLeadAdmin(arrayPlayer)) and (logged==1) then
 					table.insert(affectedElements, arrayPlayer)
-					outputChatBox("[UAT] ("..playerid..") " ..adminTitle .. " "..accountName.. ": " .. message, arrayPlayer, 204, 102, 255)
+					-- [Staff chat line format] shared renderer, colour unchanged
+					outputChatBox(buildStaffChatLine(thePlayer, "UAT", message), arrayPlayer, 204, 102, 255)
 				end
 			end
 			exports.logs:dbLog(thePlayer, 2, affectedElements, message)
@@ -1884,7 +1939,8 @@ function gmChat(thePlayer, commandName, ...)
 						end
 					else
 						table.insert(affectedElements, arrayPlayer)
-						outputChatBox("[INST-HoST] ("..playerid..") "..adminTitle .. " " .. accountName..": " .. message, arrayPlayer,  4, 255, 0)
+						-- [Colour spec] SUPPORT chat is GREEN (kept the green it already had)
+						outputChatBox(buildStaffChatLine(thePlayer, "SUPPORT", message), arrayPlayer, 4, 255, 0)
 					end
 				end
 			end
@@ -2610,7 +2666,8 @@ function staffChat(thePlayer, commandName, ...)
 						end
 					else
 						table.insert(affectedElements, arrayPlayer)
-						outputChatBox("[STAFF] "..exports.global:getPlayerAdminTitle(thePlayer).. " " .. getElementData(thePlayer, "account:username") .. ": "..message, arrayPlayer, 153, 51, 255)
+						-- [Colour spec] STAFF chat is YELLOW (was purple)
+						outputChatBox(buildStaffChatLine(thePlayer, "STAFF", message), arrayPlayer, 255, 255, 0)
 					end
 				end
 			end
@@ -2649,7 +2706,8 @@ function highStaffChat(thePlayer, commandName, ...)
 			for k, arrayPlayer in ipairs(players) do
 				if getElementData(arrayPlayer, "loggedin")==1 and hasHighStaffRight(arrayPlayer) then
 					table.insert(affectedElements, arrayPlayer)
-					outputChatBox("[HIGH STAFF] "..exports.global:getPlayerAdminTitle(thePlayer).. " " .. accountName .. ": "..message, arrayPlayer, 255, 102, 0)
+					-- [Colour spec] HIGH STAFF chat is RED (was orange)
+					outputChatBox(buildStaffChatLine(thePlayer, "HIGH STAFF", message), arrayPlayer, 255, 0, 0)
 				end
 			end
 			exports.logs:dbLog(thePlayer, 4, affectedElements, "High staff chat - Msg: "..message)
@@ -2675,7 +2733,8 @@ function fmtChat(thePlayer, commandName, ...)
 				local logged = getElementData(arrayPlayer, "loggedin")
 				if logged==1 and exports.integration:isPlayerFMT(arrayPlayer) then
 					table.insert(affectedElements, arrayPlayer)
-					outputChatBox("[FMT] ".. exports.global:getPlayerAdminTitle(thePlayer).." " .. getElementData(thePlayer, "account:username") .. ": "..message, arrayPlayer, 255,42,149)
+					-- [Staff chat line format] shared renderer, colour unchanged
+					outputChatBox(buildStaffChatLine(thePlayer, "FMT", message), arrayPlayer, 255,42,149)
 				end
 			end
 		end

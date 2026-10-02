@@ -72,6 +72,8 @@
 
 
         <script src="Player/s_search.lua" type="server"/>
+        <!-- /showalts + /findalts list panel (dark UIKit window) -->
+        <script src="c_showalts.lua" type="client"/>
 
 
 

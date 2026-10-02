@@ -74,6 +74,11 @@
 
 local mysql = exports.mysql
 
+-- [Batch rule 1] staffTeamIsFullAccess / staffNormalizedTeamName are
+-- GLOBALS owned by the bridge (staff_manager_bridge_s.lua) - it loads before
+-- this file in meta.xml, so the seed below and the payload filter can call
+-- them directly at runtime.
+
 -- ============================================================================
 -- templates + bundle rules
 -- ============================================================================
@@ -216,6 +221,7 @@ local function ensureTeamTables()
                 rights TEXT,
                 createdby VARCHAR(64),
                 created DATETIME,
+                hidden TINYINT NOT NULL DEFAULT 0,
                 PRIMARY KEY (id))]])
         mysql:query_free([[CREATE TABLE IF NOT EXISTS staff_team_members (
                 id INT NOT NULL AUTO_INCREMENT,
@@ -226,6 +232,19 @@ local function ensureTeamTables()
                 PRIMARY KEY (id),
                 UNIQUE KEY stm_team_account (teamid, account_id),
                 KEY stm_account (account_id))]])
+        -- [Batch rule 2] hidden flag: CREATE ... IF NOT EXISTS does NOT add
+        -- columns to an EXISTING table, so patch an old schema idempotently
+        -- (same INFORMATION_SCHEMA pattern staff_manager_setup_s.lua uses).
+        pcall(function()
+                local col = mysql:query_fetch_assoc([[
+                        SELECT COUNT(*) AS n FROM INFORMATION_SCHEMA.COLUMNS
+                        WHERE TABLE_SCHEMA = DATABASE()
+                                AND TABLE_NAME = 'staff_teams' AND COLUMN_NAME = 'hidden']])
+                if col and tonumber(col.n) == 0 then
+                        mysql:query_free("ALTER TABLE staff_teams ADD COLUMN hidden TINYINT NOT NULL DEFAULT 0")
+                        outputDebugString("[Vortex Staff] added missing staff_teams.hidden column")
+                end
+        end)
 end
 
 addEventHandler("onResourceStart", resourceRoot, function()
@@ -292,6 +311,43 @@ local function isKnownRight(right)
         end
         return knownRightsSet[tostring(right)] == true
 end
+
+-- [Batch rule 1] STARTUP SEED: a team row with a normalized name of
+-- "fullaccess" (or the legacy typo "fullacsess") MUST exist, carrying EVERY
+-- right in AllRights - Full Access is what grants full command permission to
+-- a member with no admin rank at all (hasCommandRight). Idempotent: it only
+-- inserts when no matching row is there, never touches an existing one.
+-- Registered as its OWN onResourceStart handler because the CSV helper above
+-- is a local declared after the first start handler (lexical scope).
+local function ensureFullAccessTeam()
+        if type(AllRights) ~= "table" or #AllRights == 0 then return end
+        local found = false
+        local q = mysql:query("SELECT id, name FROM staff_teams")
+        if q then
+                while true do
+                        local row = mysql:fetch_assoc(q)
+                        if not row then break end
+                        if staffTeamIsFullAccess(row.name) then
+                                found = true
+                                break
+                        end
+                end
+                mysql:free_result(q)
+        end
+        if found then return end
+        mysql:query_free("INSERT INTO staff_teams (name, rights, createdby, created) VALUES ('"
+                .. mysql:escape_string("Full Access") .. "', '"
+                .. mysql:escape_string(joinRightsCSV(AllRights)) .. "', 'system', NOW())")
+        outputDebugString("[Vortex Staff] seeded the Full Access team (" .. #AllRights
+                .. " rights) - granted to members even without any admin rank")
+        if type(staffTeamsInvalidateRights) == "function" then
+                staffTeamsInvalidateRights()
+        end
+end
+
+addEventHandler("onResourceStart", resourceRoot, function()
+        ensureFullAccessTeam()
+end)
 
 local function fetchTeamByID(teamID)
         teamID = tonumber(teamID)
@@ -398,28 +454,42 @@ end
 -- panel payload
 -- ============================================================================
 
-local function fetchTeamsPayload()
+-- [Batch rule 2] the payload is built PER VIEWER: a hidden team (hidden=1)
+-- is dropped entirely for everyone except rank 20/21 and dev-team members;
+-- those entitled viewers receive the row with hidden=true so the panel can
+-- tag it "(hidden)". viewer == nil (internal callers that never render the
+-- list) is treated as NOT entitled - hidden rows never leak by accident.
+local function fetchTeamsPayload(viewer)
         local payload = { teams = {}, templates = {} }
         for _, t in ipairs(TEAM_TEMPLATES) do
                 payload.templates[#payload.templates + 1] = { id = t.id, name = t.name }
         end
-        local q = mysql:query("SELECT id, name, rights FROM staff_teams ORDER BY name ASC")
+        local canSee = false
+        if viewer ~= nil and type(staffCanSeeHiddenStaff) == "function" then
+                local ok, res = pcall(staffCanSeeHiddenStaff, viewer)
+                canSee = ok and res or false
+        end
+        local q = mysql:query("SELECT id, name, rights, hidden FROM staff_teams ORDER BY name ASC")
         if not q then return payload end
         local teamsByID = {}
         while true do
                 local row = mysql:fetch_assoc(q)
                 if not row then break end
-                local rights = splitRightsCSV(row.rights)
-                local team = {
-                        id = tonumber(row.id),
-                        name = tostring(row.name or ""),
-                        rights = rights,
-                        rightsCount = #rights,
-                        members = {},
-                        memberCount = 0,
-                }
-                teamsByID[team.id] = team
-                payload.teams[#payload.teams + 1] = team
+                local hidden = tonumber(row.hidden) == 1
+                if not hidden or canSee then
+                        local rights = splitRightsCSV(row.rights)
+                        local team = {
+                                id = tonumber(row.id),
+                                name = tostring(row.name or ""),
+                                rights = rights,
+                                rightsCount = #rights,
+                                members = {},
+                                memberCount = 0,
+                                hidden = hidden,
+                        }
+                        teamsByID[team.id] = team
+                        payload.teams[#payload.teams + 1] = team
+                end
         end
         mysql:free_result(q)
 
@@ -453,17 +523,19 @@ local function fetchTeamsPayload()
         return payload
 end
 
--- global hook: staff_manager_s.lua sendPanel() pulls the teams block from here
-function fetchStaffTeamsPayload()
-        return fetchTeamsPayload()
+-- global hook: staff_manager_s.lua sendPanel() pulls the teams block from
+-- here (the viewing player travels with it so hidden rows can be filtered)
+function fetchStaffTeamsPayload(viewer)
+        return fetchTeamsPayload(viewer)
 end
 
 local function pushTeamsToViewers()
-        local payload = fetchTeamsPayload()
         for _, p in ipairs(getElementsByType("player")) do
                 if type(canPlayerAccessStaffManager) ~= "function"
                         or canPlayerAccessStaffManager(p) then
-                        triggerClientEvent(p, "rpadmin:sendTeams", p, payload)
+                        -- [Batch rule 2] per-viewer payload: a hidden team is
+                        -- invisible to every non-entitled viewer
+                        triggerClientEvent(p, "rpadmin:sendTeams", p, fetchTeamsPayload(p))
                 end
         end
 end
@@ -475,6 +547,19 @@ end
 local function afterTeamMutation()
         if type(staffTeamsInvalidateRights) == "function" then
                 staffTeamsInvalidateRights()
+        end
+        -- [Batch rules 1+2] a membership/hidden change moves two flags the
+        -- OTHER resources read off element data (F1 list, TAB scoreboard):
+        --   staff:hasTeam    - the player belongs to some team (rank-less team
+        --                      members are invisible as staff),
+        --   staff:seehhidden  - the viewer may see hidden ranks/teams (rank
+        --                      20/21 or a "dev" team member).
+        -- Re-push them for EVERYONE - the hidden flag of a team can flip for
+        -- all viewers at once.
+        if type(staffPushStaffMeta) == "function" then
+                for _, p in ipairs(getElementsByType("player")) do
+                        staffPushStaffMeta(p)
+                end
         end
         -- [Fix #U3] a team can grant (or lose) duty.adminduty, and a team
         -- membership change can also drop the union below what an on-duty
@@ -525,12 +610,12 @@ addEventHandler("rpadmin:requestTeams", root, function()
                 outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
                 return
         end
-        triggerClientEvent(player, "rpadmin:sendTeams", player, fetchTeamsPayload())
+        triggerClientEvent(player, "rpadmin:sendTeams", player, fetchTeamsPayload(player))
 end)
 
 -- create a team from a template (name + template, the minimum-viable create)
 addEvent("rpadmin:teamCreate", true)
-addEventHandler("rpadmin:teamCreate", root, function(name, templateID)
+addEventHandler("rpadmin:teamCreate", root, function(name, templateID, hidden)
         local player = client
         if not (isElement(player) and getElementType(player) == "player") then return end
         if not canEditTeams(player) then denyEdit(player) return end
@@ -556,10 +641,12 @@ addEventHandler("rpadmin:teamCreate", root, function(name, templateID)
                 return
         end
         local rights = templateRights(template.id) or {}
-        mysql:query_free("INSERT INTO staff_teams (name, rights, createdby, created) VALUES ('"
+        -- [Batch rule 2] optional hidden flag straight from the editor checkbox
+        local hiddenFlag = (hidden == true or tonumber(hidden) == 1) and 1 or 0
+        mysql:query_free("INSERT INTO staff_teams (name, rights, createdby, created, hidden) VALUES ('"
                 .. mysql:escape_string(name) .. "', '"
                 .. mysql:escape_string(joinRightsCSV(rights)) .. "', '"
-                .. mysql:escape_string(actorName(player)) .. "', NOW())")
+                .. mysql:escape_string(actorName(player)) .. "', NOW(), " .. hiddenFlag .. ")")
         outputChatBox("Team created: " .. name .. "  |  template: " .. template.name
                 .. "  |  rights: " .. #rights, player, 0, 255, 0)
         afterTeamMutation()
@@ -650,6 +737,28 @@ addEventHandler("rpadmin:teamSetRights", root, function(teamID, rights)
                 line = line .. "  (" .. dropped .. " unknown right(s) ignored)"
         end
         outputChatBox(line, player, 0, 255, 0)
+        afterTeamMutation()
+end)
+
+-- [Batch rule 2] toggle a team's hidden flag (the team editor checkbox).
+-- Hidden teams are invisible to every panel viewer except rank 20/21 and
+-- "dev" team members - see fetchTeamsPayload above.
+addEvent("rpadmin:teamSetHidden", true)
+addEventHandler("rpadmin:teamSetHidden", root, function(teamID, hidden)
+        local player = client
+        if not (isElement(player) and getElementType(player) == "player") then return end
+        if not canEditTeams(player) then denyEdit(player) return end
+
+        local team = fetchTeamByID(teamID)
+        if not team then
+                outputChatBox("Team not found.", player, 255, 80, 80)
+                return
+        end
+        local flag = (hidden == true or tonumber(hidden) == 1) and 1 or 0
+        mysql:query_free("UPDATE staff_teams SET hidden=" .. flag
+                .. " WHERE id=" .. tonumber(team.id))
+        outputChatBox("Team " .. (flag == 1 and "hidden" or "unhidden") .. ": "
+                .. tostring(team.name), player, 0, 255, 0)
         afterTeamMutation()
 end)
 

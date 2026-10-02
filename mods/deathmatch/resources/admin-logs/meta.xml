@@ -1,0 +1,7 @@
+<meta>
+	<info author="Vortex Staff System" type="script" description="Tiered admin/staff/deathmatch chat log feed (Fix #160 companion)"/>
+
+	<!-- server-side only: the feed renders with outputChatBox, no client script
+	     is needed (the owner confirmed server-side display is fine) -->
+	<script src="s_logs.lua" type="server"/>
+</meta>

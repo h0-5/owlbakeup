@@ -360,7 +360,7 @@ local function resolveAccountQuery(query)
         return nil
 end
 
-local function buildCheckidRows(accountID)
+local function buildCheckidRows(accountID, viewer)
         local acc = mysql:query_fetch_assoc(
                 "SELECT id, username, email, registerdate, mtaserial, ip, hiddenadmin, admin, supporter, scripter, warns, credits, adminnote, lastlogin"
                 .. " FROM accounts WHERE id=" .. tonumber(accountID) .. " LIMIT 1")
@@ -373,6 +373,11 @@ local function buildCheckidRows(accountID)
         local online = findPlayerByNamePart(username)
 
         -- rank through the staff bridge (nil-safe: account may hold no rank)
+        -- [Batch rule 2] a hidden rank's name only reaches a viewer holding
+        -- the synced staff:seehhidden flag (1); everyone else sees "-".
+        -- A rank-less member of a TEAM has no rank title to show either.
+        local seesHidden = viewer ~= nil
+                and tonumber(getElementData(viewer, "staff:seehhidden")) == 1
         local rankText = "-"
         local rankRecord = false
         pcall(function()
@@ -382,12 +387,20 @@ local function buildCheckidRows(accountID)
                 end
         end)
         if type(rankRecord) == "table" and rankRecord.name then
-                rankText = tostring(rankRecord.name)
+                if rankRecord.hidden and not seesHidden then
+                        rankText = "-"
+                else
+                        rankText = tostring(rankRecord.name)
+                end
         else
-                local legacyAdmin = tonumber(acc.admin) or 0
-                local legacySup = tonumber(acc.supporter) or 0
-                if legacyAdmin > 0 or legacySup > 0 then
-                        rankText = "admin=" .. legacyAdmin .. " supporter=" .. legacySup
+                local teamMember = online ~= nil
+                        and tonumber(getElementData(online, "staff:hasTeam")) == 1
+                if not teamMember then
+                        local legacyAdmin = tonumber(acc.admin) or 0
+                        local legacySup = tonumber(acc.supporter) or 0
+                        if legacyAdmin > 0 or legacySup > 0 then
+                                rankText = "admin=" .. legacyAdmin .. " supporter=" .. legacySup
+                        end
                 end
         end
 
@@ -455,7 +468,7 @@ addEventHandler("checkid:lookup", root, function(query)
                 })
                 return
         end
-        local rows = buildCheckidRows(accountID)
+        local rows = buildCheckidRows(accountID, player)
         if not rows then
                 triggerClientEvent(player, "checkid:result", player, {
                         error = "Account data not found (id " .. tostring(accountID) .. ").",

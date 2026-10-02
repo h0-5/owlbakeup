@@ -173,6 +173,19 @@ addEventHandler("admin:showStaff", root, function()
         local thePlayer = client or source
         if not isElement(thePlayer) then return end
 
+        -- [Batch rule 4] WHO may see a hiddenadmin row at all? Only a viewer
+        -- holding admin.isAdmin (staff-only viewers and players must not even
+        -- receive the row). pcall'd like every rights lookup here: if the
+        -- API cannot be reached the conservative fallback hides hidden admins
+        -- from everyone, which never leaks one.
+        local okV, viewerIsAdmin = pcall(function()
+                return exports["admin-system"]:playerHasRight(thePlayer, "admin.isAdmin")
+        end)
+        viewerIsAdmin = okV and viewerIsAdmin or false
+        -- [Batch rule 2] may THIS viewer see hidden rank titles? The staff
+        -- bridge syncs staff:seehhidden (1/0) on every rank/team change.
+        local viewerSeesHidden = tonumber(getElementData(thePlayer, "staff:seehhidden")) == 1
+
         local list = {}
         for _, player in ipairs(getElementsByType("player")) do
                 -- [Vortex fix] rank-aware classification for the 21-rank ladder:
@@ -235,22 +248,46 @@ addEventHandler("admin:showStaff", root, function()
                 -- Players the staff system does not know yet (no live rank) keep
                 -- the old level behaviour.
                 if (admin > 0 or support > 0) then
-                        -- [Fix #14] unified rank title + color ship with the row
-                        local rname = tostring(getElementData(player, "rank:name") or "")
-                        local rcolor = getElementData(player, "rank:color")
-                        list[#list + 1] = {
-                                admin == 0 and support > 0,                -- [1] isSupport
-                                getPlayerIDStrSafe(player),                -- [2] mod id (Fix #156)
-                                getPlayerName(player):gsub("_", " "),      -- [3] name
-                                (getElementData(player, "hiddenadmin") or 0) == 1, -- [4] hidden
-                                rname ~= "" and rname or nil,              -- [5] rank title
-                                type(rcolor) == "table" and rcolor or nil, -- [6] rank color
-                                tostring(getElementData(player, "account:username") or "-"), -- [7] account name (Fix #26)
-                                tostring(getElementData(player, "account:id")
-                                        or getElementData(player, "account:character:id") or "-"), -- [8] account id (Fix #26)
-                                (tonumber(getElementData(player, "duty_admin")) == 1
-                                        or tonumber(getElementData(player, "duty_supporter")) == 1), -- [9] on duty (Fix #26)
-                        }
+                        local isHiddenAdmin = (getElementData(player, "hiddenadmin") or 0) == 1
+                        -- [Batch rule 4] hidden admins are INVISIBLE to every
+                        -- viewer without admin.isAdmin (isStaff-only viewers,
+                        -- players, broken rights API)
+                        if not (isHiddenAdmin and not viewerIsAdmin) then
+                                -- [Batch rule 2] a rank-less member of a TEAM
+                                -- (no rank index, staff:hasTeam = 1) is not
+                                -- staff anywhere: skip his F1 row entirely
+                                if not (not ridx
+                                        and tonumber(getElementData(player, "staff:hasTeam")) == 1) then
+                                        -- [Fix #14] unified rank title + color ship with the row
+                                        local rname = tostring(getElementData(player, "rank:name") or "")
+                                        local rcolor = getElementData(player, "rank:color")
+                                        -- [Batch rule 2] a hidden rank's title is "-" in
+                                        -- plain white for every viewer who is not
+                                        -- entitled (staff:seehhidden)
+                                        if tonumber(getElementData(player, "rank:hidden")) == 1
+                                                and not viewerSeesHidden then
+                                                rname, rcolor = "-", nil
+                                        end
+                                        list[#list + 1] = {
+                                                admin == 0 and support > 0,                -- [1] isSupport
+                                                getPlayerIDStrSafe(player),                -- [2] mod id (Fix #156)
+                                                getPlayerName(player):gsub("_", " "),      -- [3] name
+                                                isHiddenAdmin,                             -- [4] hidden (Batch rule 4)
+                                                rname ~= "" and rname or nil,              -- [5] rank title
+                                                type(rcolor) == "table" and rcolor or nil, -- [6] rank color
+                                                tostring(getElementData(player, "account:username") or "-"), -- [7] account name (Fix #26)
+                                                tostring(getElementData(player, "account:id")
+                                                        or getElementData(player, "account:character:id") or "-"), -- [8] account id (Fix #26)
+                                                (tonumber(getElementData(player, "duty_admin")) == 1
+                                                        or tonumber(getElementData(player, "duty_supporter")) == 1), -- [9] on duty (Fix #26)
+                                                -- [Batch rule 4] WHITE left label
+                                                -- "on duty hidden admin" - only ever
+                                                -- sent to admin.isAdmin viewers (they
+                                                -- are the only ones receiving the row)
+                                                isHiddenAdmin and viewerIsAdmin or false,  -- [10] hidden-admin label
+                                        }
+                                end
+                        end
                 end
         end
         reply(thePlayer, "admin:showStaff", list)

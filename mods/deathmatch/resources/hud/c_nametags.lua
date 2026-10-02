@@ -232,23 +232,23 @@ local function buildPlayerEntry(player)
         end
 
         -- badge icons above the head (old client icons row)
-        -- [Fix #164 - user] BADGE = held RIGHT + that badge's OWN toggle.
+        -- [Fix #164 - user] BADGE = DUTY + held RIGHT + that badge's OWN toggle.
         -- The staff bridge still pushes the rank rights in "fix160.badgerights"
         -- (comma-separated string or table, e.g. "admin.badge,admin.badge.
         -- developer"; "" = a rank that holds none) and the server now mirrors
         -- the three F4 badge rows in "fix160.badgetoggles" = { admin, support,
         -- dev } (row state; missing table / key = on, only an explicit false
         -- hides that one badge - the 3 toggles are fully independent).
-        -- RULE:
+        -- RULE (only while ON DUTY - the single F4 duty row brings duty AND
+        -- the badges up together in one press, and takes them all down again):
         --   * right admin.badge            + toggle admin    -> badge_admin
         --   * right admin.badge.developer  + toggle dev      -> badge_dev
         --   * right admin.badge.support    + toggle support  -> badge_support
         --   * no right -> no badge, and a hud:badges entry for any of the six
         --     rank badge names is IGNORED (RANK_BADGE_ICONS); AFK / heart /
         --     every OTHER hud:badges entry is untouched.
-        -- DUTY NO LONGER GATES the badges (duty only drives the duty strip row
-        -- and the name color). A hidden admin (hiddenadmin 0/1 or
-        -- admin:hideadmin) still shows NONE of them - that gate is kept.
+        -- A hidden admin (hiddenadmin 0/1 or admin:hideadmin) still shows NONE
+        -- of them - that gate is kept.
         -- Three DISTINCT designs above the head: badge_admin / badge_support /
         -- badge_dev.
         -- Legacy fallback: while fix160.badgerights is still missing
@@ -273,22 +273,22 @@ local function buildPlayerEntry(player)
         if getElementData(player, "temp:AFK") then
                 table.insert(icons, "AFK")
         end
-        if not hidden then
+        -- [Fix #164 - user] duty gates BOTH paths: the ONE F4 duty row turns
+        -- duty AND the badges on/off at the same time (user request)
+        if not hidden and isPlayerOnDuty(player) then
                 if badgeRights == nil then
                         -- legacy path (server has not pushed the key yet):
-                        -- duty still gates it, same icons as before Fix #164
-                        if isPlayerOnDuty(player) then
-                                if isOne(getElementData(player, "duty_admin")) then
-                                        table.insert(icons, "admin_badge")
-                                end
-                                -- [Fix #32] supporters get their badge above the head too (F4 supduty)
-                                if isOne(getElementData(player, "duty_supporter")) then
-                                        table.insert(icons, "support_badge")
-                                end
+                        -- same duty-based icons as before Fix #164
+                        if isOne(getElementData(player, "duty_admin")) then
+                                table.insert(icons, "admin_badge")
+                        end
+                        -- [Fix #32] supporters get their badge above the head too (F4 supduty)
+                        if isOne(getElementData(player, "duty_supporter")) then
+                                table.insert(icons, "support_badge")
                         end
                 else
-                        -- [Fix #164] rights path: duty no longer required, each
-                        -- badge additionally needs its own toggle ON
+                        -- [Fix #164] rights path: right + own toggle (duty gates
+                        -- this whole block, see above)
                         local toggles = getElementData(player, "fix160.badgetoggles")
                         local tg = type(toggles) == "table" and toggles or {}
                         -- order: admin, developer, support

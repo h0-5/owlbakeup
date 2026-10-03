@@ -330,6 +330,17 @@ local function itemIcon(name)
         return tex[name]
 end
 
+-- [Fix #167 - user] "لوحة ريبورتات من f4 ظاهرة للكل": the Report Center row
+-- opens the LIVE REPORTS LIST (report-system/c_report_panel.lua), a staff
+-- tool gated by the access.reports right. s_hud.lua pushes the answer as the
+-- SYNCED hud:reportsright mirror (1/0) and prunes the row from hud:items for
+-- everyone else - this read is the client-side belt on top of that, used by
+-- the strip build below and by the click gate further down. nil/absent = no
+-- right (fail closed, e.g. hud started before admin-system was up).
+local function holdsReportsRight()
+        return tonumber(getElementData(localPlayer, "hud:reportsright")) == 1
+end
+
 local function rebuildVisibleItems()
         visibleItems = {}
         -- old client always prepends showhud (icon: tagmode)
@@ -338,11 +349,16 @@ local function rebuildVisibleItems()
                 icon = tex.tagmode, tip1 = "Show/Hide Hud", category = "local",
         })
         for _, item in ipairs(hudItems) do
-                table.insert(visibleItems, {
-                        id = item[1], state = item[2] or "on",
-                        icon = itemIcon(item[3]),
-                        tip1 = item[4], tip2 = item[5], category = item[6],
-                })
+                -- [Fix #167] never DRAW the staff-only reportpanel row for a
+                -- viewer without the right, even while a stale hud:items still
+                -- carries it (revoked before the next server push)
+                if item[1] ~= "reportpanel" or holdsReportsRight() then
+                        table.insert(visibleItems, {
+                                id = item[1], state = item[2] or "on",
+                                icon = itemIcon(item[3]),
+                                tip1 = item[4], tip2 = item[5], category = item[6],
+                        })
+                end
         end
 end
 
@@ -449,6 +465,11 @@ end
 addEventHandler("onClientElementDataChange", localPlayer, function(key, _, newValue)
         if key == "hud:items" then
                 updateHudItemsList(newValue)
+        elseif key == "hud:reportsright" then
+                -- [Fix #167] a live rights change must add or drop the staff
+                -- reportpanel row in the strip right away (the server prunes
+                -- hud:items too, this covers the window before that arrives)
+                rebuildVisibleItems()
         end
 end)
 
@@ -1411,6 +1432,12 @@ addEventHandler("hud:onClientHudItemClick", localPlayer, function(id)
                 -- the old client opens the LIVE REPORTS LIST through the
                 -- reports:showUnansweredReportsPanel protocol (report-system
                 -- c_report_panel.lua), not the /report submit window
+                -- [Fix #167] STAFF ONLY: without access.reports nothing is
+                -- opened and nothing is sent - the server re-checks the same
+                -- right (hud:onHudItemClick router +
+                -- reports:showUnansweredReportsPanel) and force-closes this
+                -- panel if the mirror was stale, so this side fails closed
+                if not holdsReportsRight() then return end
                 if getElementData(localPlayer, "report_panel_state") then
                         setElementData(localPlayer, "report_panel_state", false, false)
                         triggerServerEvent("reports:onHideUnansweredReportsPanel", localPlayer)

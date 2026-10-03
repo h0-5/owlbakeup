@@ -94,6 +94,33 @@ local SECTIONS = {
         { id = "jobs",           en = "Jobs",            ar = "الوظائف",            icon = "icons/menu_suitcase.png" },
 }
 
+-- [Fix #167 - user] "لوحة ريبورتات من f4 ظاهرة للكل لهيك اخفيها": the F1
+-- "Report" row opens the same reports stack the F4 "Report Center" item
+-- feeds, so it is gated on the SAME entitlement: the access.reports right,
+-- mirrored onto this player by hud/s_hud.lua as the SYNCED hud:reportsright
+-- key (1/0) - this resource has no direct view of the admin-system right
+-- API, it reads the answer hud pushed from that API. Absent/0 = no right
+-- (fail closed: hud pushed a 0, or hud has not answered yet).
+local function holdsReportsRight()
+        return tonumber(getElementData(localPlayer, "hud:reportsright")) == 1
+end
+
+-- [Fix #167] the sidebar rows are added by skipping a hidden section, so a
+-- raw SECTIONS index is no longer the row index the menu was built with.
+-- Every "select row N of section X" call goes through THIS so the numbers
+-- still line up for the rows that ARE in the menu (F2 landing on the reports
+-- section at 852, the Level Awards jump at 1521).
+local function sectionRowTarget(openSection)
+        local target, row = 1, 0
+        for _, section in ipairs(SECTIONS) do
+                if section.id ~= "report" or holdsReportsRight() then
+                        row = row + 1
+                        if section.id == openSection then target = row end
+                end
+        end
+        return target
+end
+
 --[[ report types — MUST stay in report-system/g_reports.lua order ]]
 local REPORT_TYPES = {
         "Issue with another player",
@@ -786,6 +813,13 @@ addCommandHandler("menu", MainMenuKey, false, false)
 
 -- F2 = reports hub (opens the same sidebar directly on the reports section)
 function ReportsMenuKey()
+        -- [Fix #167] without access.reports there is no reports row to land
+        -- on (the F1 "Report" row is hidden), so F2 falls back to the plain
+        -- F1 open - the menu opens on row 1 exactly like F1 would
+        if not holdsReportsRight() then
+                MainMenuKey()
+                return
+        end
         if getElementData(localPlayer, "character:id")
                 or getElementData(localPlayer, "account:character:id")
                 or tonumber(getElementData(localPlayer, "loggedin")) == 1 then
@@ -819,12 +853,31 @@ end
 -- is dropped and one clean rebuild+retry runs immediately. ]=]
 local uiBuilt = false -- rebuild guard (declared BEFORE its users - Fix #33)
 
+-- [Fix #167] set when the hud:reportsright mirror flips while this menu is
+-- already built: the sidebar row list (Report row present or not) is fixed
+-- at build time, so drop+rebuild it on the NEXT open instead of on the fly -
+-- rebuilding under a live open menu would swap the window out from under the
+-- cursor. Rare path (the mirror only moves when access.reports really does).
+local menuReportsDirty = false
+
 local function showSideBarInner(show, openSection)
         -- [Fix #32] if the UIKit window was ever lost (a UIKit restart, or
         -- the old draw-list wipe when another resource stopped), rebuild it
         -- on demand instead of pressing F1 into nothing
         if show and (not UI.window.MainMenu or not isElement(UI.window.MainMenu)) then
                 uiBuilt = false
+                UIKitReady()
+        end
+        -- [Fix #167] rights changed since this menu was built: rebuild it
+        -- before opening so the Report row matches the current right
+        -- (clears the flag first: UIKitReady can fail and re-arm it)
+        if show and uiBuilt and menuReportsDirty then
+                menuReportsDirty = false
+                uiBuilt = false
+                if UI.window.MainMenu and isElement(UI.window.MainMenu) then
+                        destroyElement(UI.window.MainMenu)
+                end
+                UI.window.MainMenu = nil
                 UIKitReady()
         end
         state.state = show
@@ -847,12 +900,10 @@ local function showSideBarInner(show, openSection)
                 -- [Fix #100 #1] raise status/zone HUD + minimap above the menu
                 setHudLayerAboveMenu(true)
                 -- optional section to land on (F2 -> reports)
-                local target = 1
-                if openSection then
-                        for i, section in ipairs(SECTIONS) do
-                                if section.id == openSection then target = i end
-                        end
-                end
+                -- [Fix #167] row index over the FILTERED row list (sectionRowTarget),
+                -- and an openSection whose row is not in the menu (reports,
+                -- no access.reports) simply lands on row 1
+                local target = sectionRowTarget(openSection)
                 eui:uiMenuSetSelectedRow(menu, target)
         else
                 removeEventHandler("onClientRender", root, main_menu_draw)
@@ -943,8 +994,15 @@ local function buildMainMenuUI()
                         "center", "center", UI.container[section.id])
                 eui:uiSetFont(UI.label.title, "default-large")
 
-                eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
-                        tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)
+                -- [Fix #167] STAFF ONLY: the Report row is NOT added for a
+                -- viewer without access.reports. The container above is still
+                -- created (every later block parents into UI.container.report)
+                -- - it just never becomes selectable, so no other section's
+                -- row id / container mapping shifts either.
+                if section.id ~= "report" or holdsReportsRight() then
+                        eui:uiMenuAddRow(menu, { en = section.en, ar = section.ar },
+                                tocolor(29, 32, 37, 0), section.icon, UI.container[section.id], section.id)
+                end
         end
 
         --[[ ------------------ character_info ------------------
@@ -1517,10 +1575,8 @@ local function buildMainMenuUI()
                         currentLinkCode = false
                 elseif source == UI.button.goto_level_awards then
                         -- old jumped to the awards section row (row 9 in the old menu)
-                        local target = 1
-                        for i, section in ipairs(SECTIONS) do
-                                if section.id == "awards" then target = i end
-                        end
+                        -- [Fix #167] over the filtered row list (sectionRowTarget)
+                        local target = sectionRowTarget("awards")
                         eui:uiMenuSetSelectedRow(menu, target)
                 end
         end)
@@ -1710,11 +1766,9 @@ local function buildMainMenuUI()
                         pid = pid or tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
-                        -- [Batch rule 4] WHITE "on duty hidden admin" label,
-                        -- prepended so it sits on the LEFT of the row (the
-                        -- server only ever sends entry[10] to admin.isAdmin
-                        -- viewers - everyone else never receives the row)
-                        local labelPrefix = entry[10] and "#ffffffon duty hidden admin  " or ""
+                        -- [user] the old WHITE "on duty hidden admin" prefix on
+                        -- the LEFT of the row is gone - the hidden-admin mark now
+                        -- sits inside the Duty column, left of the duty word.
                         local line = " -  "
                         if rank ~= "" then
                                 line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
@@ -1731,7 +1785,6 @@ local function buildMainMenuUI()
                                         line = line .. " " .. idHex .. "(" .. acc .. ")"
                                 end
                         end
-                        line = labelPrefix .. line
                         local grid = isSupport and UI.gridlist.staff2 or UI.gridlist.staff
                         local row = eui:uiGridListAddRow(grid)
                         eui:uiGridListSetItemText(grid, row, 1, line)
@@ -1739,8 +1792,12 @@ local function buildMainMenuUI()
                         -- [Fix #100 #3] the Duty column always reports the real
                         -- duty state; it used to be overwritten with "Hidden",
                         -- which left no way to see whether a member was on duty.
-                        eui:uiGridListSetItemText(grid, row, 3,
-                                entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty")
+                        -- [user] "hidden admin" sits to the LEFT of the duty word
+                        -- in the Duty column (only admin.isAdmin viewers get the
+                        -- row at all - entry[10] is their flag)
+                        local dutyText = entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty"
+                        if entry[10] then dutyText = "#ffffffhidden admin " .. dutyText end
+                        eui:uiGridListSetItemText(grid, row, 3, dutyText)
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")
@@ -1936,6 +1993,16 @@ end
 addEventHandler("onClientUIReady", resourceRoot, UIKitReady)
 addEvent("onClientUIKitReady", true)
 addEventHandler("onClientUIKitReady", root, UIKitReady)
+
+-- [Fix #167] the Report row list is built from hud:reportsright, so a LIVE
+-- change of that right has to reach the menu: arm the dirty flag, and
+-- showSideBarInner drops+rebuilds the whole menu on the next open (the flag
+-- is only read there, so nothing is swapped while the menu is on screen).
+addEventHandler("onClientElementDataChange", localPlayer, function(key)
+        if key == "hud:reportsright" and uiBuilt then
+                menuReportsDirty = true
+        end
+end)
 
 --[[ Fix #26 (user): "البلاغات م تقدر تكتب بها ولاحرف" — UIKit's own pipeline
      does not always hand keyboard focus to the report edit/memo. A raw click

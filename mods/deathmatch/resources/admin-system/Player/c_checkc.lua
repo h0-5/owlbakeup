@@ -2,46 +2,71 @@
 -- Owned exclusively by the matching Fix #160 task agent.
 --
 -- Raw MTA GUI in the same shape as admin-system/c_check.lua ("Player Check"):
--- one small window, one label grid, one Close button. The command itself is
+-- one window, one label grid, one Close button. The command itself is
 -- SERVER-side (Player/s_checkc.lua, right admin.checkc); this file only
 -- renders the table the server sends on "checkc:show".
 --
--- Skin: image-4 style flat dark panel. MTA can not recolour the default
--- window chrome, so the whole panel (near-black bg, red left accent bar,
--- centred white title, bullet rows, dark Close button) is drawn with dx AFTER
--- the GUI (postGUI = true) while the window is open. The gui labels below are
--- kept as the data store - the skin reads them back with guiGetText(), so
--- every setText() in the "checkc:show" handler keeps working untouched.
+-- Skin: reference "Character Info" panel - centered near-black rectangle
+-- (10,10,12,245), red accent bar on the far left edge, (20,20,28) header strip
+-- with the centred white title, a single active "Info" tab with the red
+-- underline, two columns of "▸" bullet rows and a wide dark Close button. MTA
+-- can not recolour the default window chrome, so the whole panel is drawn with
+-- dx AFTER the GUI (postGUI = true) while the window is open. The gui labels
+-- below are kept as the data store - the skin reads them back with
+-- guiGetText(), so every setText() in the "checkc:show" handler keeps working
+-- untouched.
 
 local checkcWindow = nil
 local checkcClose = nil
 local checkcLabels = {}
 local checkcCursorOwned = false
 
+-- reference panel size at 1920x1080; every inner offset below is in these
+-- base units and gets multiplied by checkcScale (smaller screens scale down)
+local CHECKC_BASE_W, CHECKC_BASE_H = 660, 470
+local checkcScale = 1
+
+local checkcLabelDefs = {
+        { "name",     "Name: N/A" },
+        { "account",  "Account: N/A" },
+        { "status",   "Status: N/A" },
+        { "age",      "Age: N/A" },
+        { "birthday", "Birthday: N/A" },
+        { "gender",   "Gender: N/A" },
+        { "body",     "Height/Weight: N/A" },
+        { "job",      "Job: N/A" },
+        { "faction",  "Faction: N/A" },
+        { "hours",    "Hours played: N/A" },
+        { "deaths",   "Deaths: N/A" },
+        { "money",    "Cash: N/A" },
+        { "bank",     "Bank: N/A" },
+        { "area",     "Area: N/A" },
+}
+
 local function buildCheckcWindow()
         if checkcWindow and isElement(checkcWindow) then return end
-        local width, height = guiGetScreenSize()
-        checkcWindow = guiCreateWindow(width - 440, 0, 430, 420, "Character Info", false)
+        local sx, sy = guiGetScreenSize()
+        local sc = math.min(sx / 1920, sy / 1080)
+        if sc < 0.7 then sc = 0.7 end
+        checkcScale = sc
+
+        local width, height = CHECKC_BASE_W * sc, CHECKC_BASE_H * sc
+        checkcWindow = guiCreateWindow((sx - width) / 2, (sy - height) / 2, width, height, "Character Info", false)
         guiWindowSetSizable(checkcWindow, false)
 
-        checkcLabels = {
-                name     = guiCreateLabel(15, 45, 400, 22, "Name: N/A", false, checkcWindow),
-                account  = guiCreateLabel(15, 71, 400, 22, "Account: N/A", false, checkcWindow),
-                status   = guiCreateLabel(15, 97, 400, 22, "Status: N/A", false, checkcWindow),
-                age      = guiCreateLabel(15, 123, 205, 22, "Age: N/A", false, checkcWindow),
-                birthday = guiCreateLabel(225, 123, 205, 22, "Birthday: N/A", false, checkcWindow),
-                gender   = guiCreateLabel(15, 149, 205, 22, "Gender: N/A", false, checkcWindow),
-                body     = guiCreateLabel(225, 149, 205, 22, "Height/Weight: N/A", false, checkcWindow),
-                job      = guiCreateLabel(15, 175, 400, 22, "Job: N/A", false, checkcWindow),
-                faction  = guiCreateLabel(15, 201, 400, 22, "Faction: N/A", false, checkcWindow),
-                hours    = guiCreateLabel(15, 227, 205, 22, "Hours played: N/A", false, checkcWindow),
-                deaths   = guiCreateLabel(225, 227, 205, 22, "Deaths: N/A", false, checkcWindow),
-                money    = guiCreateLabel(15, 253, 205, 22, "Cash: N/A", false, checkcWindow),
-                bank     = guiCreateLabel(225, 253, 205, 22, "Bank: N/A", false, checkcWindow),
-                area     = guiCreateLabel(15, 279, 400, 44, "Area: N/A", false, checkcWindow),
-        }
+        checkcLabels = {}
+        for i = 1, #checkcLabelDefs do
+                local def = checkcLabelDefs[i]
+                local label = guiCreateLabel(14 * sc, (66 + (i - 1) * 24) * sc,
+                        (CHECKC_BASE_W - 30) * sc, 22 * sc, def[2], false, checkcWindow)
+                -- invisible data store: the dx panel is drawn with alpha 245, so
+                -- paint the label text in the panel colour to avoid ghosting
+                guiLabelSetColor(label, 10, 10, 12)
+                checkcLabels[def[1]] = label
+        end
 
-        checkcClose = guiCreateButton(155, 376, 120, 30, "Close", false, checkcWindow)
+        checkcClose = guiCreateButton((CHECKC_BASE_W - 200) / 2 * sc, 404 * sc,
+                200 * sc, 34 * sc, "Close", false, checkcWindow)
         addEventHandler("onClientGUIClick", checkcClose, function(button, state)
                 if button ~= "left" or state ~= "up" then return end
                 guiSetVisible(checkcWindow, false)
@@ -102,41 +127,47 @@ addEventHandler("checkc:show", root, function(data)
 end)
 
 -- ---------------------------------------------------------------------------
--- image-4 style dark skin (dx drawn AFTER the gui, so it covers the default
--- window chrome, the default labels and the default button look)
+-- reference "Character Info" skin (dx drawn AFTER the gui, so it covers the
+-- default window chrome, the default labels and the default button look)
 -- ---------------------------------------------------------------------------
 local checkcSkin = {
-        bg       = tocolor(14, 14, 16, 255),
-        line     = tocolor(38, 38, 44, 255),
-        red      = tocolor(226, 59, 59, 255),
-        title    = tocolor(255, 255, 255, 255),
-        key      = tocolor(255, 255, 255, 255),
-        value    = tocolor(200, 200, 206, 255),
-        accent   = tocolor(255, 92, 92, 255),
-        btn      = tocolor(24, 24, 28, 255),
-        btnHover = tocolor(48, 48, 56, 255),
-        dim      = tocolor(120, 120, 126, 255),
+        bg        = tocolor(10, 10, 12, 245),
+        header    = tocolor(20, 20, 28, 255),
+        red       = tocolor(226, 59, 59, 255),
+        title     = tocolor(255, 255, 255, 255),
+        key       = tocolor(255, 255, 255, 255),
+        value     = tocolor(216, 216, 220, 255),
+        money     = tocolor(255, 92, 92, 255),
+        online    = tocolor(76, 175, 80, 255),
+        offline   = tocolor(154, 154, 160, 255),
+        btn       = tocolor(22, 22, 28, 255),
+        btnHover  = tocolor(48, 48, 56, 255),
+        btnBorder = tocolor(42, 42, 50, 255),
+        dim       = tocolor(120, 120, 126, 255),
 }
 
--- two column row grid (y positions inside the 430x420 window)
+local CHECKC_HEADER_H = 34     -- header strip
+local CHECKC_TAB_H = 26        -- tab row under the header
+
+-- two column row grid (base y inside the 660x470 panel, 30px row spacing)
 local checkcRows = {
-        { y = 50,  left = "name" },
-        { y = 80,  left = "account" },
-        { y = 110, left = "status" },
-        { y = 144, left = "age",    right = "birthday" },
-        { y = 174, left = "gender", right = "body" },
-        { y = 204, left = "job" },
-        { y = 234, left = "faction" },
-        { y = 264, left = "hours",  right = "deaths" },
-        { y = 294, left = "money",  right = "bank" },
-        { y = 324, left = "area" },
+        { y = 72,  left = "name" },
+        { y = 102, left = "account" },
+        { y = 132, left = "status" },
+        { y = 162, left = "age",    right = "birthday" },
+        { y = 192, left = "gender", right = "body" },
+        { y = 222, left = "job" },
+        { y = 252, left = "faction" },
+        { y = 282, left = "hours",  right = "deaths" },
+        { y = 312, left = "money",  right = "bank" },
+        { y = 342, left = "area" },
 }
-local checkcAccent = { money = true, bank = true, hours = true, deaths = true }
 
-local COL_LX, COL_LW = 28, 196      -- left column text
-local COL_RX, COL_RW = 244, 170     -- right column text
-local COL_FULLX, COL_FULLW = 28, 386
-local BULLET_L, BULLET_R = 18, 234
+local BULLET_L = 28             -- left column chevron
+local COL_LX, COL_LW = 44, 287  -- left column text
+local BULLET_R = 343            -- right column chevron (52% of the panel)
+local COL_RX, COL_RW = 359, 281 -- right column text
+local COL_FULLW = 596           -- full width rows
 
 local function checkcMouseOver(x, y, w, h)
         local cx, cy = getCursorPosition()
@@ -146,32 +177,57 @@ local function checkcMouseOver(x, y, w, h)
         return cx >= x and cx <= x + w and cy >= y and cy <= y + h
 end
 
-local function drawCheckcRow(ox, oy, bx, tx, tw, y, key)
+-- "Label: value" -> red chevron bullet + white bold label + coloured value
+local function drawCheckcRow(ox, oy, sc, bulletX, tx, tw, y, key)
         local element = checkcLabels[key]
         if not isElement(element) then return end
         local text = guiGetText(element)
         if not text or text == "" then return end
 
-        dxDrawRectangle(ox + bx, oy + y + 5, 6, 2, checkcSkin.red, true)
+        local top = oy + y * sc
+        local bottom = top + 17 * sc
+        local x = ox + tx * sc
+        local right = ox + (tx + tw) * sc
+
+        dxDrawText("▸", ox + bulletX * sc, top, x - 2 * sc, bottom,
+                checkcSkin.red, 0.9 * sc, "default-bold", "left", "top", false, false, true)
 
         local label, value = string.match(text, "^(.-):%s*(.*)$")
         if not label or label == "" then
-                dxDrawText(text, ox + tx, oy + y, ox + tx + tw, oy + y + 15,
-                        checkcSkin.key, 0.9, "default", "left", "top", true, false, true)
+                dxDrawText(text, x, top, right, bottom,
+                        checkcSkin.value, 0.9 * sc, "default", "left", "top", true, false, true)
                 return
         end
 
-        dxDrawText(label .. ":", ox + tx, oy + y, ox + tx + tw, oy + y + 15,
-                checkcSkin.key, 0.9, "default-bold", "left", "top", true, false, true)
-        if value ~= "" then
-                local colour = checkcAccent[key] and checkcSkin.accent or checkcSkin.value
-                local kw = dxGetTextWidth(label .. ": ", 0.9, "default-bold")
-                dxDrawText(value, ox + tx + kw, oy + y, ox + tx + tw, oy + y + 15,
-                        colour, 0.9, "default", "left", "top", true, false, true)
+        dxDrawText(label .. ":", x, top, right, bottom,
+                checkcSkin.key, 0.9 * sc, "default-bold", "left", "top", true, false, true)
+        if value == "" then return end
+
+        local vx = x + dxGetTextWidth(label .. ": ", 0.9 * sc, "default-bold")
+        if key == "status" then
+                -- "Status: <state>  |  Online/Offline"
+                local main, flag = string.match(value, "^(.-)%s*|%s*(.*)$")
+                if main then
+                        local prefix = main .. "  |  "
+                        dxDrawText(prefix, vx, top, right, bottom,
+                                checkcSkin.value, 0.9 * sc, "default", "left", "top", true, false, true)
+                        local fx = vx + dxGetTextWidth(prefix, 0.9 * sc, "default")
+                        local colour = (flag == "Online") and checkcSkin.online or checkcSkin.offline
+                        dxDrawText(flag, fx, top, right, bottom,
+                                colour, 0.9 * sc, "default", "left", "top", true, false, true)
+                        return
+                end
+        elseif key == "money" or key == "bank" then
+                dxDrawText(value, vx, top, right, bottom,
+                        checkcSkin.money, 0.9 * sc, "default", "left", "top", true, false, true)
+                return
         end
+
+        dxDrawText(value, vx, top, right, bottom,
+                checkcSkin.value, 0.9 * sc, "default", "left", "top", true, false, true)
 end
 
-local function drawCheckcButton(ox, oy, element)
+local function drawCheckcButton(ox, oy, sc, element)
         if not isElement(element) then return end
         local bx, by = guiGetPosition(element, false)
         local bw, bh = guiGetSize(element, false)
@@ -182,43 +238,63 @@ local function drawCheckcButton(ox, oy, element)
         local bg = checkcSkin.btn
         if hover then bg = checkcSkin.btnHover end
         dxDrawRectangle(bx, by, bw, bh, bg, true)
+        -- 1px border (4 thin rectangles)
+        dxDrawRectangle(bx, by, bw, sc, checkcSkin.btnBorder, true)
+        dxDrawRectangle(bx, by + bh - sc, bw, sc, checkcSkin.btnBorder, true)
+        dxDrawRectangle(bx, by, sc, bh, checkcSkin.btnBorder, true)
+        dxDrawRectangle(bx + bw - sc, by, sc, bh, checkcSkin.btnBorder, true)
         if hover then
-                dxDrawRectangle(bx, by, 2, bh, checkcSkin.red, true)
+                dxDrawRectangle(bx, by, 3 * sc, bh, checkcSkin.red, true)
         end
         local colour = enabled and checkcSkin.title or checkcSkin.dim
         dxDrawText(guiGetText(element), bx + 4, by, bx + bw - 2, by + bh,
-                colour, 0.9, "default-bold", "center", "center", true, false, true)
+                colour, 0.9 * sc, "default-bold", "center", "center", true, false, true)
 end
 
 addEventHandler("onClientRender", root, function()
         if not (isElement(checkcWindow) and guiGetVisible(checkcWindow)) then return end
 
-        -- the panel is open: the cursor must stay on (nametags rely on it)
-        if not isCursorShowing() then
-                showCursor(true)
-                checkcCursorOwned = true
-        end
+        -- [user] The cursor is turned ONCE when the panel opens (the checkc:show
+-- handler) and is NOT re-asserted here any more: forcing it back on every
+-- frame meant M / /togglecursor did nothing - the panel re-showed it 60x a
+-- second. It now hides on M like every other window, and the Close button
+-- still only drops the cursor it turned on itself.
 
         local ox, oy = guiGetPosition(checkcWindow, false)
         local ow, oh = guiGetSize(checkcWindow, false)
+        local sc = checkcScale
 
         -- flat near-black panel
         dxDrawRectangle(ox, oy, ow, oh, checkcSkin.bg, true)
-        -- red accent bar along the far left edge + centred white title
-        dxDrawRectangle(ox, oy, 4, oh, checkcSkin.red, true)
-        dxDrawText("Character Info", ox + 4, oy + 6, ox + ow, oy + 32,
-                checkcSkin.title, 1, "default-bold", "center", "center", false, false, true)
-        dxDrawRectangle(ox + 16, oy + 36, ow - 32, 1, checkcSkin.line, true)
+
+        -- header strip with the centred white title
+        local headerH = CHECKC_HEADER_H * sc
+        dxDrawRectangle(ox, oy, ow, headerH, checkcSkin.header, true)
+        dxDrawText("Character Info", ox + 5 * sc, oy, ox + ow, oy + headerH,
+                checkcSkin.title, sc, "default-bold", "center", "center", true, false, true)
+
+        -- tab row: only the single page we have ("Info"), active = white bold
+        -- + red underline
+        local tabY = oy + headerH
+        local tabH = CHECKC_TAB_H * sc
+        dxDrawText("Info", ox, tabY, ox + ow, tabY + tabH,
+                checkcSkin.title, 0.95 * sc, "default-bold", "center", "center", false, false, true)
+        local tabW = dxGetTextWidth("Info", 0.95 * sc, "default-bold")
+        if tabW < 8 * sc then tabW = 8 * sc end
+        dxDrawRectangle(ox + (ow - tabW) / 2, tabY + tabH - 3 * sc, tabW, 3 * sc, checkcSkin.red, true)
+
+        -- red accent bar along the far left edge (over the header + tab row)
+        dxDrawRectangle(ox, oy, 5 * sc, oh, checkcSkin.red, true)
 
         for i = 1, #checkcRows do
                 local row = checkcRows[i]
                 if row.right then
-                        drawCheckcRow(ox, oy, BULLET_L, COL_LX, COL_LW, row.y, row.left)
-                        drawCheckcRow(ox, oy, BULLET_R, COL_RX, COL_RW, row.y, row.right)
+                        drawCheckcRow(ox, oy, sc, BULLET_R, COL_RX, COL_RW, row.y, row.right)
+                        drawCheckcRow(ox, oy, sc, BULLET_L, COL_LX, COL_LW, row.y, row.left)
                 else
-                        drawCheckcRow(ox, oy, BULLET_L, COL_FULLX, COL_FULLW, row.y, row.left)
+                        drawCheckcRow(ox, oy, sc, BULLET_L, COL_LX, COL_FULLW, row.y, row.left)
                 end
         end
 
-        drawCheckcButton(ox, oy, checkcClose)
+        drawCheckcButton(ox, oy, sc, checkcClose)
 end)

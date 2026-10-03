@@ -1946,6 +1946,8 @@ end)
 -- { [1]=id, [2]=reporter, [7]=handler, [8]=timestring }. Those handlers
 -- NEVER existed in this stack, so the list was always empty. Registered
 -- viewers are re-synced every 5s and on every new report.
+-- [Fix #167] the whole protocol is STAFF ONLY on the access.reports right:
+-- show + feed both re-check it (g_reports.lua hasReportsPanelAccess).
 -- ============================================================================
 local panelViewers = { }
 
@@ -1963,10 +1965,17 @@ end
 local function syncPanelViewers( )
 	local rows = buildSyncRows( )
 	for viewer in pairs( panelViewers ) do
-		if isElement( viewer ) then
-			triggerClientEvent( viewer, "reports:sync", viewer, rows )
-		else
+		if not isElement( viewer ) then
 			panelViewers[ viewer ] = nil
+		-- [Fix #167] SERVER AUTHORITY on the FEED too: whoever lost
+		-- access.reports since the last tick stops receiving rows and is
+		-- force-closed client-side (client may be stale - the mirror is only
+		-- an optimisation, this is the re-check)
+		elseif not hasReportsPanelAccess( viewer ) then
+			panelViewers[ viewer ] = nil
+			triggerClientEvent( viewer, "reports:togglePanel", viewer, false )
+		else
+			triggerClientEvent( viewer, "reports:sync", viewer, rows )
 		end
 	end
 end
@@ -1975,8 +1984,15 @@ addEvent( "reports:showUnansweredReportsPanel", true )
 addEventHandler( "reports:showUnansweredReportsPanel", root, function( )
 	local player = client
 	if not player then return end
-	if not ( exports.integration:isPlayerTrialAdmin( player ) or exports.integration:isPlayerSupporter( player ) ) then
+	-- [Fix #167 - user] "لوحة ريبورتات من f4 ظاهرة للكل لهيك اخفيها": the
+	-- entitlement is the access.reports right (staff_manager_rights.lua:134),
+	-- NOT the old isPlayerTrialAdmin/isPlayerSupporter pair - same right the
+	-- /reports command family is already gated on, one rule for the whole
+	-- feature. Fail closed: no right -> chat red + panel forced CLOSED, never
+	-- registered as a viewer, so no reports:sync is ever sent to this player.
+	if not hasReportsPanelAccess( player ) then
 		outputChatBox( "You don't have permission to use this.", player, 255, 0, 0 )
+		triggerClientEvent( player, "reports:togglePanel", player, false )
 		return
 	end
 	panelViewers[ player ] = true

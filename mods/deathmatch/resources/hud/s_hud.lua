@@ -18,8 +18,8 @@
 --   * Fix #21: life:setAnimation server bridge (old life-system event the
 --     client triggers for the forced tired animation — nothing handled it
 --     before, so the tired animation never played and never stopped)
---   * hud:items default strip pushed on login (walkingstyle/head_turning/
---     togpm/reportpanel/ads)
+--   * hud:items default strip pushed on login (walkingstyle/togpm + the
+--     rights-gated reportpanel row, see pushDefaultItems)
 --------------------------------------------------------------------------------
 
 -- [old client] typing relay ----------------------------------------------------
@@ -411,7 +411,10 @@ local DEFAULT_ITEMS = {
         -- and Lock/Unlock-Vehicle strip items are REMOVED (the in-vehicle quick
         -- row still has its own engine/lock/lights buttons like the old client)
         { "togpm",        "on", "togpm",        "Toggle Personal Messages", "" },
-        { "reportpanel",  "on", "reportpanel",  "Report Center", "" },
+        -- [Fix #167 - user] "لوحة ريبورتات من f4 ظاهرة للكل": the
+        -- "reportpanel" (Report Center) row is NOT a default row anymore - it
+        -- is pushed/pruned by RIGHT in pushDefaultItems below (access.reports),
+        -- exactly like the badge rows.
         -- [Fix #164 - user] the single "Toggle Admin Tag" row is REMOVED: the
         -- badge is now one independent row per badge right (see BADGE_ROW_DEFS)
         -- ("ads" dropped: icons/ads.png does not exist, the item rendered nothing)
@@ -468,6 +471,51 @@ local function syncBadgeToggles(player)
         end
 end
 
+--------------------------------------------------------------------------------
+-- [Fix #167 - user] STAFF-ONLY F4 ROW + RIGHTS MIRROR ("access.reports")
+--------------------------------------------------------------------------------
+-- The F4 "reportpanel" (Report Center) strip item opens the LIVE REPORTS
+-- LIST - the green box report-system/c_report_panel.lua draws - which used to
+-- be pushed to EVERY player. It is a staff tool and is now gated by the
+-- access.reports right (staff_manager_rights.lua:134 - the same right the
+-- /reports + acceptreport command family is gated on in command_gates_s).
+-- admin-system OWNS the right (exports["admin-system"]:playerHasRight), this
+-- resource only mirrors the answer:
+--   * hud:reportsright  1/0, SYNCED element data written here on every
+--     pushDefaultItems (login / character select / rank or rights change).
+--     Consumed by hud/c_hud.lua (the row must not even draw), by
+--     report-system/c_report_panel.lua (the panel must not render) and by
+--     main-menu/c_main.lua (the F1 "Report" sidebar row).
+--   * hud:items         the row itself is added/removed here exactly like the
+--     Fix #164 badge rows: held -> upserted, not held -> pruned.
+-- The mirror can only ever be STALE-TRUE for a moment (a rank edit no
+-- element-data key moved) and fails closed there: the server re-checks the
+-- right on every open (hud:onHudItemClick router +
+-- reports:showUnansweredReportsPanel) and force-closes the client.
+local REPORTS_RIGHT = "access.reports"
+
+local function hasReportsRight(player)
+        if not isElement(player) or getElementType(player) ~= "player" then
+                return false
+        end
+        -- pcall like every cross-resource rights lookup in this repo: if
+        -- admin-system is not up yet the answer is "no right" (fail closed),
+        -- the fix160.badgerights hook below re-pushes once it is back
+        local ok, held = pcall(function()
+                return exports["admin-system"]:playerHasRight(player, REPORTS_RIGHT)
+        end)
+        return ok and held == true
+end
+
+local function syncReportsRight(player, want)
+        if not isElement(player) then return end
+        if want == nil then want = hasReportsRight(player) end
+        local value = want and 1 or 0
+        if getElementData(player, "hud:reportsright") ~= value then
+                setProtected(player, "hud:reportsright", value)
+        end
+end
+
 -- [Fix #30] UPSERT, not "only when empty". The old early-return meant any
 -- player whose hud:items had been set once (stale list from an earlier
 -- login, another resource, an older build) NEVER received the new items -
@@ -479,6 +527,12 @@ local function pushDefaultItems(player)
         if not isElement(player) then return end
         local items = getElementData(player, "hud:items")
         if type(items) ~= "table" then items = {} end
+
+        -- [Fix #167] re-evaluate the staff-only report row and refresh the
+        -- hud:reportsright mirror in the same pass (both are decided by the
+        -- ONE right lookup above)
+        local reportsRight = hasReportsRight(player)
+        syncReportsRight(player, reportsRight)
 
         local function upsert(id, state, icon, tip1, tip2)
                 for _, row in ipairs(items) do
@@ -518,12 +572,17 @@ local function pushDefaultItems(player)
         -- [user] the standalone DUTY rows (adminduty / supduty - the 4th row
         -- with the letter-A icon) are gone: the three badge rows are the only
         -- duty toggle now, so any stale copy of them is dropped as well.
+        -- [Fix #167] the Report Center row is dropped for every viewer without
+        -- access.reports (rank revoked, admin-system down, plain player) - it
+        -- is re-added by the upsert at the bottom of this function.
         for i = #items, 1, -1 do
                 local row = items[i]
                 if type(row) == "table" then
                         if row[1] == "head_turning" or row[1] == "lockvehicle"
                                 or row[1] == "admintag"
                                 or row[1] == "adminduty" or row[1] == "supduty" then
+                                table.remove(items, i)
+                        elseif not reportsRight and row[1] == "reportpanel" then
                                 table.remove(items, i)
                         elseif rights ~= nil then
                                 local need = BADGE_ROW_RIGHT[row[1]]
@@ -545,6 +604,12 @@ local function pushDefaultItems(player)
                                 upsert(def.id, "off", def.icon, def.tip1, "")
                         end
                 end
+        end
+        -- [Fix #167] holders of access.reports get the Report Center row (a
+        -- stored on/off choice survives the upsert, exactly like the badge
+        -- rows); everyone else never receives it back after the prune above
+        if reportsRight then
+                upsert("reportpanel", "on", "reportpanel", "Report Center", "")
         end
         setProtected(player, "hud:items", items)
         syncBadgeToggles(player)
@@ -592,6 +657,16 @@ addEventHandler("onElementDataChange", root, function(key, _, newValue)
                 -- rows live. Safe loop-wise: pushDefaultItems writes hud:items
                 -- and fix160.badgetoggles only, never this key.
                 pushDefaultItems(source)
+        elseif (key == "rank:rights" or key == "staff:hasTeam")
+                and getElementType(source) == "player" then
+                -- [Fix #167] a rights edit / team membership change must add
+                -- or drop the staff-only reportpanel row AND refresh its
+                -- hud:reportsright mirror live (same mechanism as the badge
+                -- rows above - fix160.badgerights alone misses a rights edit
+                -- that does not move the three badge rights). pushDefaultItems
+                -- writes hud:items / fix160.badgetoggles / hud:reportsright
+                -- only, never this key - safe loop-wise.
+                pushDefaultItems(source)
         end
 end)
 
@@ -604,6 +679,28 @@ addEventHandler("onPlayerResourceStart", root, function(res)
         if res == getThisResource() and getElementData(source, "loggedin") == 1 then
                 pushDefaultItems(source)
         end
+end)
+
+-- [Fix #167] admin-system coming UP is the other half of the fail-closed
+-- answer in hasReportsRight: while it was not running every lookup returned
+-- "no right" (row pruned, mirror 0), so re-push both for every logged-in
+-- player the moment the rights API is back - its own re-rank push can come
+-- out identical to the element data that survived the restart and fire no
+-- change event at all. Runs now and once more after 2s so a rights API that
+-- is still wiring up its exports on the first call is retried (the push is
+-- idempotent: the same rows + mirror value come back out of it).
+addEventHandler("onResourceStart", root, function()
+        if source ~= getResourceFromName("admin-system") then return end
+        local function repushAll()
+                for _, player in ipairs(getElementsByType("player")) do
+                        if isElement(player)
+                                and tonumber(getElementData(player, "loggedin")) == 1 then
+                                pushDefaultItems(player)
+                        end
+                end
+        end
+        repushAll()
+        setTimer(repushAll, 2000, 1)
 end)
 
 --------------------------------------------------------------------------------
@@ -651,6 +748,18 @@ addEvent("hud:onHudItemClick", true)
 addEventHandler("hud:onHudItemClick", root, function(item)
         local player = client
         if not player or client ~= source then return end
+        -- [Fix #167] SERVER AUTHORITY for the F4 Report Center row: the row is
+        -- only ever pushed to holders of access.reports (pushDefaultItems) and
+        -- the client only opens the panel while its hud:reportsright mirror
+        -- says 1, so a deny here means a stale/forged open (a rank edit no
+        -- element-data key moved, a hand-set mirror). Answer with the
+        -- authoritative CLOSED state instead of feeding the list - the client
+        -- opened optimistically in the same click, so close it right back.
+        if item == "reportpanel" and not hasReportsRight(player) then
+                outputChatBox("You don't have permission to use this.", player, 255, 0, 0)
+                triggerClientEvent(player, "reports:togglePanel", player, false)
+                return
+        end
         if item == "walkingstyle" then
                 triggerEvent("realism:switchWalkingStyle", player, player)
         elseif item == "togpm" then

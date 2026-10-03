@@ -417,15 +417,9 @@ addEventHandler("onClientRender", getRootElement(),
 
 		end
 
-		-- the panel is open: the cursor must stay on (other panels / nametags rely on it)
-
-		if not isCursorShowing() then
-
-			showCursor(true)
-
-			checkCursorOwned = true
-
-		end
+		-- [user] The cursor is turned ONCE when the panel opens and is NOT
+		-- re-asserted here any more: forcing it back on every frame meant M /
+		-- /togglecursor did nothing - the panel re-showed it 60x a second.
 
 		local ox, oy = guiGetPosition(Window, false)
 
@@ -491,92 +485,448 @@ addEventHandler("onClientRender", getRootElement(),
 
 
 
-addEvent( "cshowAdminHistory", true )
-addEventHandler( "cshowAdminHistory", getRootElement(),
-	function( info, targetID )
-		if wHist then
-			destroyElement( wHist )
-			wHist = nil
-			
-			showCursor( false )
-		else
-			local sx, sy = guiGetScreenSize()
-			
-			local name
-			if targetID == nil then
-				name = getPlayerName( source )
-			else
-				name = "Account " .. tostring(targetID)
-			end
-			
-			wHist = guiCreateWindow( sx / 2 - 350, sy / 2 - 250, 800, 600, "Admin History: ".. name, false )
-			
-			-- date, action, reason, duration, a.username, c.charactername, id
-			
-			gHist = guiCreateGridList( 0, 0.04, 1, 0.88, true, wHist )
-			local colID = guiGridListAddColumn( gHist, "ID", 0.05 )
-			local colAction = guiGridListAddColumn( gHist, "Action", 0.07 )
-			local colChar = guiGridListAddColumn( gHist, "Character", 0.2 )
-			local colReason = guiGridListAddColumn( gHist, "Reason", 0.25 )
-			local colDuration = guiGridListAddColumn( gHist, "Time", 0.07 )
-			local colAdmin = guiGridListAddColumn( gHist, "Admin", 0.15 )
-			local colDate = guiGridListAddColumn( gHist, "Date", 0.15 )
-			
-			
-			for _, res in pairs( info ) do
-				local row = guiGridListAddRow( gHist )
-				guiGridListSetItemText( gHist, row, colID,   res[7]  or "?", false, true )
-				guiGridListSetItemText( gHist, row, colAction, getHistoryAction(res[2]), false, false )
-				guiGridListSetItemText( gHist, row, colChar, res[6], false, false )
-				guiGridListSetItemText( gHist, row, colReason, res[3], false, false )
-				guiGridListSetItemText( gHist, row, colDuration, historyDuration( res[4], tonumber( res[2] ) ), false, false )
-				guiGridListSetItemText( gHist, row, colAdmin, res[5], false, false )
-				guiGridListSetItemText( gHist, row, colDate, res[1], false, false )
-			end
-		
-			
-			local bremove = guiCreateButton( 0, 0.93, 0.5, 0.07, "Remove", true, wHist )
-			addEventHandler( "onClientGUIClick", bremove,
-				function( button, state )
-					if exports.integration:isPlayerTrialAdmin(localPlayer) or exports.integration:isPlayerSupporter(localPlayer) then
-						local row, col = guiGridListGetSelectedItem( gHist )
-						if row ~= -1 and col ~= -1 then
-							local gridID = guiGridListGetItemText( gHist , row, col )
-							local record = getHistoryRecordFromId(info, gridID)
-							if tonumber(record[2]) == 6 then
-								return outputChatBox( "This record is not removable.", 255, 0, 0 )
-							end
-							if not exports.integration:isPlayerSeniorAdmin(localPlayer) and tonumber(record[8]) ~= getElementData(localPlayer, "account:id") then
-								return outputChatBox( "You can only remove admin history that you're the creator. Otherwise, it requires a Senior Admin or higher up.", 255, 0, 0 )
-							end
-							triggerServerEvent("admin:removehistory", getLocalPlayer(), gridID)
-							destroyElement( wHist )
-							wHist = nil
-							showCursor( false )
-						else
-							outputChatBox( "You need to pick a record.", 255, 0, 0 )
-						end
-					else
-						outputChatBox( "Please submit a ticket on Support Center to appeal and get this admin history record removed.", 255, 0, 0 )
-					end
-				end, false
-			)
-		
-			
-			bClose = guiCreateButton( 0.52, 0.93, 0.47, 0.07, "Close", true, wHist )
-			addEventHandler( "onClientGUIClick", bClose,
-				function( button, state )
-					if button == "left" and state == "up" then
-						destroyElement( wHist )
-						wHist = nil
-						
-						showCursor( false )
-					end
-				end, false
-			)
-			
-			showCursor( true )
-		end
-	end
-)
- 
+addEvent( "cshowAdminHistory", true )
+
+-- ---------------------------------------------------------------------------
+-- Admin History window - reference restyle (same skin as the Character Info
+-- panel: centered near-black rectangle, red left accent bar, (20,20,28)
+-- header with the centred title, a single active "History" tab with the red
+-- underline, column header strip, alternating table rows and the two bottom
+-- buttons).
+--
+-- Contract kept from the original block:
+--   * "cshowAdminHistory" still toggles: window open -> destroyElement +
+--     wHist = nil + showCursor(false), otherwise create + showCursor(true).
+--   * title is still "Admin History: " .. name with the same targetID == nil
+--     branch.
+--   * gHist is populated exactly as before (getHistoryAction() /
+--     historyDuration() formatting) and stays the data store - it is now
+--     HIDDEN (guiSetVisible(gHist, false)) and its cell text is read back with
+--     guiGridListGetItemText() by the dx renderer.
+--   * Remove and Close stay REAL gui buttons (dx draws over them); the Remove
+--     permission gate, its chat messages and
+--     triggerServerEvent("admin:removehistory", getLocalPlayer(), gridID) are
+--     unchanged, as are the Close and showCursor() paths.
+--   * clicking a dx row writes the selection back with
+--     guiGridListSetSelectedItem(gHist, row, colID) where colID is the ID
+--     column captured at creation, so the Remove handler always receives the
+--     record id; the selected row is highlighted in the dx list.
+--   * the mouse wheel scrolls the visible slice while the window is open
+--     (the gridlist is hidden, so the native scrollbar is gone).
+-- ---------------------------------------------------------------------------
+
+local HIST_BASE_W, HIST_BASE_H = 800, 600
+local HIST_HEADER_H = 34
+local HIST_TAB_H = 26
+local HIST_COLHEAD_Y, HIST_COLHEAD_H = 64, 22
+local HIST_TABLE_Y, HIST_ROW_H, HIST_TABLE_BOTTOM = 86, 22, 524
+local HIST_TABLE_X = 14
+local HIST_TABLE_W = HIST_BASE_W - 28
+local HIST_BTN_Y, HIST_BTN_W, HIST_BTN_H, HIST_BTN_GAP = 530, 200, 34, 16
+local HIST_VISIBLE = math.floor((HIST_TABLE_BOTTOM - HIST_TABLE_Y) / HIST_ROW_H)
+
+local histScale = 1
+local histScroll = 0
+local histSelected = nil
+local histRows = {}
+local histCols = {}
+local histRemoveBtn = nil
+local histCloseBtn = nil
+
+local histSkin = {
+	bg = tocolor(10, 10, 12, 245),
+	header = tocolor(20, 20, 28, 255),
+	red = tocolor(226, 59, 59, 255),
+	title = tocolor(255, 255, 255, 255),
+	colHead = tocolor(154, 154, 160, 255),
+	cell = tocolor(216, 216, 220, 255),
+	rowA = tocolor(16, 16, 20, 255),
+	rowB = tocolor(14, 14, 18, 255),
+	sep = tocolor(26, 26, 32, 255),
+	selected = tocolor(60, 18, 18, 255),
+	btn = tocolor(22, 22, 28, 255),
+	btnHover = tocolor(48, 48, 56, 255),
+	btnBorder = tocolor(42, 42, 50, 255),
+	dim = tocolor(120, 120, 126, 255),
+}
+
+-- the 7 gridlist columns, drawn as a dx table with the same proportions
+local histColDef = {
+	{ "ID", 0.05 },
+	{ "Action", 0.07 },
+	{ "Character", 0.20 },
+	{ "Reason", 0.25 },
+	{ "Time", 0.07 },
+	{ "Admin", 0.15 },
+	{ "Date", 0.15 },
+}
+
+local histColOff = {}
+do
+	local total = 0
+	for i = 1, #histColDef do
+		total = total + histColDef[i][2]
+	end
+	local acc = 0
+	for i = 1, #histColDef do
+		local w = histColDef[i][2] / total * HIST_TABLE_W
+		histColOff[i] = { x = acc, w = w }
+		acc = acc + w
+	end
+end
+
+local function histIsOpen()
+	return isElement(wHist) and guiGetVisible(wHist)
+end
+
+-- absolute row index (into histRows) under the cursor, or nil when the cursor
+-- is not inside the visible table slice
+local function histRowAtCursor()
+	if not histIsOpen() then return nil end
+	local cx, cy = getCursorPosition()
+	if not cx then return nil end
+	local sx, sy = guiGetScreenSize()
+	cx, cy = cx * sx, cy * sy
+
+	local ox, oy = guiGetPosition(wHist, false)
+	local sc = histScale
+	local x = ox + HIST_TABLE_X * sc
+	local y = oy + HIST_TABLE_Y * sc
+	local w = HIST_TABLE_W * sc
+	local h = HIST_VISIBLE * HIST_ROW_H * sc
+	if cx < x or cx > x + w or cy < y or cy > y + h then return nil end
+
+	local visible = math.floor((cy - y) / (HIST_ROW_H * sc))
+	if visible < 0 then visible = 0 end
+	if visible >= HIST_VISIBLE then visible = HIST_VISIBLE - 1 end
+	return histScroll + visible + 1
+end
+
+-- click on a dx row -> store the selection in the (hidden) gridlist so the
+-- Remove handler reads the ID column, and keep the row index for the highlight
+local function histSelectAtCursor()
+	if not isElement(gHist) then return end
+	if not histCols[1] then return end
+	local index = histRowAtCursor()
+	if not index then return end
+	local row = histRows[index]
+	if not row then return end
+	histSelected = row
+	guiGridListSetSelectedItem(gHist, row, histCols[1])
+end
+
+local function histMouseOver(x, y, w, h)
+	local cx, cy = getCursorPosition()
+	if not cx then return false end
+	local sx, sy = guiGetScreenSize()
+	cx, cy = cx * sx, cy * sy
+	return cx >= x and cx <= x + w and cy >= y and cy <= y + h
+end
+
+local function drawHistButton(ox, oy, sc, element)
+	if not isElement(element) then return end
+	local bx, by = guiGetPosition(element, false)
+	local bw, bh = guiGetSize(element, false)
+	bx, by = ox + bx, oy + by
+
+	local enabled = guiGetEnabled(element)
+	local hover = enabled and histMouseOver(bx, by, bw, bh)
+	local bg = histSkin.btn
+	if hover then bg = histSkin.btnHover end
+	dxDrawRectangle(bx, by, bw, bh, bg, true)
+	-- 1px border (4 thin rectangles)
+	dxDrawRectangle(bx, by, bw, sc, histSkin.btnBorder, true)
+	dxDrawRectangle(bx, by + bh - sc, bw, sc, histSkin.btnBorder, true)
+	dxDrawRectangle(bx, by, sc, bh, histSkin.btnBorder, true)
+	dxDrawRectangle(bx + bw - sc, by, sc, bh, histSkin.btnBorder, true)
+	if hover then
+		dxDrawRectangle(bx, by, 3 * sc, bh, histSkin.red, true)
+	end
+	local colour = enabled and histSkin.title or histSkin.dim
+	dxDrawText(guiGetText(element), bx + 4, by, bx + bw - 2, by + bh, colour, 0.9 * sc, "default-bold", "center", "center", true, false, true)
+end
+
+addEventHandler( "onClientRender", getRootElement(),
+
+	function()
+
+		if not histIsOpen() then
+			return
+		end
+
+		local ox, oy = guiGetPosition(wHist, false)
+		local ow, oh = guiGetSize(wHist, false)
+		local sc = histScale
+
+		-- flat near-black panel
+		dxDrawRectangle(ox, oy, ow, oh, histSkin.bg, true)
+
+		-- header strip with the centred white title (same string as the window)
+		local headerH = HIST_HEADER_H * sc
+		dxDrawRectangle(ox, oy, ow, headerH, histSkin.header, true)
+		dxDrawText(guiGetText(wHist) or "", ox + 6 * sc, oy, ox + ow, oy + headerH, histSkin.title, sc, "default-bold", "center", "center", true, false, true)
+
+		-- tab row: only the single page we have ("History"), active = white
+		-- bold + red underline
+		local tabY = oy + headerH
+		local tabH = HIST_TAB_H * sc
+		dxDrawText("History", ox, tabY, ox + ow, tabY + tabH, histSkin.title, 0.95 * sc, "default-bold", "center", "center", false, false, true)
+		local tabW = dxGetTextWidth("History", 0.95 * sc, "default-bold")
+		if tabW < 8 * sc then tabW = 8 * sc end
+		dxDrawRectangle(ox + (ow - tabW) / 2, tabY + tabH - 3 * sc, tabW, 3 * sc, histSkin.red, true)
+
+		-- red accent bar along the far left edge (over header + tab row)
+		dxDrawRectangle(ox, oy, 5 * sc, oh, histSkin.red, true)
+
+		local tx = ox + HIST_TABLE_X * sc
+		local tw = HIST_TABLE_W * sc
+		local rowH = HIST_ROW_H * sc
+		local top = oy + HIST_TABLE_Y * sc
+
+		-- column header strip
+		local colHeadY = oy + HIST_COLHEAD_Y * sc
+		local colHeadH = HIST_COLHEAD_H * sc
+		dxDrawRectangle(tx, colHeadY, tw, colHeadH, histSkin.header, true)
+		for i = 1, #histColDef do
+			local col = histColOff[i]
+			dxDrawText(histColDef[i][1], tx + (col.x + 6) * sc, colHeadY, tx + (col.x + col.w - 4) * sc, colHeadY + colHeadH, histSkin.colHead, 0.85 * sc, "default-bold", "left", "center", true, false, true)
+		end
+
+		-- visible slice of the table
+		local count = 0
+		if isElement(gHist) then
+			count = guiGridListGetItemCount(gHist)
+		end
+		local maxScroll = count - HIST_VISIBLE
+		if maxScroll < 0 then maxScroll = 0 end
+		if histScroll > maxScroll then histScroll = maxScroll end
+		if histScroll < 0 then histScroll = 0 end
+
+		for i = 1, HIST_VISIBLE do
+			local index = histScroll + i
+			if index > count then
+				break
+			end
+			local row = histRows[index]
+			local y = top + (i - 1) * rowH
+			local bg = (index % 2 == 0) and histSkin.rowA or histSkin.rowB
+			local isSelected = row ~= nil and row == histSelected
+			if isSelected then
+				bg = histSkin.selected
+			end
+			dxDrawRectangle(tx, y, tw, rowH, bg, true)
+			if isSelected then
+				dxDrawRectangle(tx, y, 3 * sc, rowH, histSkin.red, true)
+			end
+
+			if row ~= nil and isElement(gHist) then
+				for ci = 1, #histColDef do
+					local col = histColOff[ci]
+					local text = guiGridListGetItemText(gHist, row, histCols[ci])
+					if text and text ~= "" then
+						dxDrawText(text, tx + (col.x + 6) * sc, y, tx + (col.x + col.w - 4) * sc, y + rowH, histSkin.cell, 0.85 * sc, "default", "left", "center", true, false, true)
+					end
+				end
+			end
+
+			-- hairline separator
+			dxDrawRectangle(tx, y + rowH - sc, tw, sc, histSkin.sep, true)
+		end
+
+		drawHistButton(ox, oy, sc, histRemoveBtn)
+		drawHistButton(ox, oy, sc, histCloseBtn)
+
+	end
+
+)
+
+-- the gridlist is hidden, so the wheel scrolls the rows instead
+addEventHandler( "onClientMouseWheel", getRootElement(),
+
+	function( direction )
+		if not histIsOpen() then
+			return
+		end
+		local count = 0
+		if isElement(gHist) then
+			count = guiGridListGetItemCount(gHist)
+		end
+		local maxScroll = count - HIST_VISIBLE
+		if maxScroll < 0 then maxScroll = 0 end
+		if direction > 0 then
+			histScroll = histScroll - 1
+		else
+			histScroll = histScroll + 1
+		end
+		if histScroll > maxScroll then histScroll = maxScroll end
+		if histScroll < 0 then histScroll = 0 end
+	end, false )
+
+addEventHandler( "onClientClick", getRootElement(),
+
+	function( button, state )
+		if button ~= "left" or state ~= "up" then
+			return
+		end
+		histSelectAtCursor()
+	end, false )
+
+addEventHandler( "cshowAdminHistory", getRootElement(),
+
+	function( info, targetID )
+
+		if wHist then
+
+			destroyElement( wHist )
+			wHist = nil
+			showCursor( false )
+
+		else
+
+			local sx, sy = guiGetScreenSize()
+			local sc = math.min( sx / 1920, sy / 1080 )
+			if sc < 0.7 then
+				sc = 0.7
+			end
+			histScale = sc
+
+			local name
+			if targetID == nil then
+				name = getPlayerName( source )
+			else
+				name = "Account " .. tostring(targetID)
+			end
+
+			wHist = guiCreateWindow( (sx - HIST_BASE_W * sc) / 2, (sy - HIST_BASE_H * sc) / 2, HIST_BASE_W * sc, HIST_BASE_H * sc, "Admin History: ".. name, false )
+			guiWindowSetSizable( wHist, false )
+
+			-- date, action, reason, duration, a.username, c.charactername, id
+			gHist = guiCreateGridList( 0, 0.04, 1, 0.88, true, wHist )
+
+			local colID = guiGridListAddColumn( gHist, "ID", 0.05 )
+			local colAction = guiGridListAddColumn( gHist, "Action", 0.07 )
+			local colChar = guiGridListAddColumn( gHist, "Character", 0.2 )
+			local colReason = guiGridListAddColumn( gHist, "Reason", 0.25 )
+			local colDuration = guiGridListAddColumn( gHist, "Time", 0.07 )
+			local colAdmin = guiGridListAddColumn( gHist, "Admin", 0.15 )
+			local colDate = guiGridListAddColumn( gHist, "Date", 0.15 )
+
+			histCols = { colID, colAction, colChar, colReason, colDuration, colAdmin, colDate }
+			histRows = {}
+			histScroll = 0
+			histSelected = nil
+
+			for _, res in pairs( info ) do
+
+				local row = guiGridListAddRow( gHist )
+				guiGridListSetItemText( gHist, row, colID,   res[7]  or "?", false, true )
+				guiGridListSetItemText( gHist, row, colAction, getHistoryAction(res[2]), false, false )
+				guiGridListSetItemText( gHist, row, colChar, res[6], false, false )
+				guiGridListSetItemText( gHist, row, colReason, res[3], false, false )
+				guiGridListSetItemText( gHist, row, colDuration, historyDuration( res[4], tonumber( res[2] ) ), false, false )
+				guiGridListSetItemText( gHist, row, colAdmin, res[5], false, false )
+				guiGridListSetItemText( gHist, row, colDate, res[1], false, false )
+				histRows[ #histRows + 1 ] = row
+
+			end
+
+			-- the gridlist is only the data store now: the cells are drawn with dx
+			guiSetVisible( gHist, false )
+
+			local btnW = HIST_BTN_W * sc
+			local btnH = HIST_BTN_H * sc
+			local btnY = HIST_BTN_Y * sc
+			local gap = HIST_BTN_GAP * sc
+			local btnX = ( HIST_BASE_W * sc - (btnW * 2 + gap) ) / 2
+
+			histRemoveBtn = guiCreateButton( btnX, btnY, btnW, btnH, "Remove", false, wHist )
+			addEventHandler( "onClientGUIClick", histRemoveBtn,
+
+				function( button, state )
+
+					if exports.integration:isPlayerTrialAdmin(localPlayer) or exports.integration:isPlayerSupporter(localPlayer) then
+
+						local row, col = guiGridListGetSelectedItem( gHist )
+
+						if row ~= -1 and col ~= -1 then
+
+							local gridID = guiGridListGetItemText( gHist , row, col )
+
+							local record = getHistoryRecordFromId(info, gridID)
+
+							if tonumber(record[2]) == 6 then
+
+								return outputChatBox( "This record is not removable.", 255, 0, 0 )
+
+							end
+
+							if not exports.integration:isPlayerSeniorAdmin(localPlayer) and tonumber(record[8]) ~= getElementData(localPlayer, "account:id") then
+
+								return outputChatBox( "You can only remove admin history that you're the creator. Otherwise, it requires a Senior Admin or higher up.", 255, 0, 0 )
+
+							end
+
+							triggerServerEvent("admin:removehistory", getLocalPlayer(), gridID)
+
+							destroyElement( wHist )
+
+							wHist = nil
+
+							showCursor( false )
+
+						else
+
+							outputChatBox( "You need to pick a record.", 255, 0, 0 )
+
+						end
+
+					else
+
+						outputChatBox( "Please submit a ticket on Support Center to appeal and get this admin history record removed.", 255, 0, 0 )
+
+					end
+
+				end, false
+
+			)
+
+			histCloseBtn = guiCreateButton( btnX + btnW + gap, btnY, btnW, btnH, "Close", false, wHist )
+
+			addEventHandler( "onClientGUIClick", histCloseBtn,
+
+				function( button, state )
+
+					if button == "left" and state == "up" then
+
+						destroyElement( wHist )
+
+						wHist = nil
+
+						showCursor( false )
+
+					end
+
+				end, false
+
+			)
+
+			-- picking a row in the dx table (the gridlist itself is hidden)
+			addEventHandler( "onClientGUIClick", wHist,
+
+				function( button, state )
+
+					if button == "left" and state == "up" then
+						histSelectAtCursor()
+					end
+
+				end, false
+
+			)
+
+			showCursor( true )
+
+		end
+
+	end
+
+)

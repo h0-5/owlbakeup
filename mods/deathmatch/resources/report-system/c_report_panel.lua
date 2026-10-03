@@ -8,6 +8,10 @@
 --   * every row draws as
 --     [#00ff3c <id> #ffffff]  From '<name>' at <time> Handler: <name>.
 --   * empty list reads "#a9a9a9No Reports"
+--   * [Fix #167] STAFF ONLY: everything below is gated on the
+--     hud:reportsright mirror of the access.reports right (pushed by
+--     hud/s_hud.lua, re-checked server-side on every open) - no right, no
+--     panel: nothing renders and report_panel_state true is treated as closed
 -- The old panel geometry vars were lost to the decompiler - the panel sits
 -- top-right under the status HUD, sized by the row count like the old
 -- math (rows * 20 + 40, floor 50).
@@ -27,6 +31,33 @@ local panelH = 50
 local cachedLoggedin = false
 local cachedMoneyBottom = nil
 
+-- [Fix #167 - user] "لوحة ريبورتات من f4 ظاهرة للكل": this list is STAFF
+-- only. hud/s_hud.lua pushes the access.reports answer as the synced
+-- hud:reportsright mirror (1/0) and the server re-checks the right on every
+-- reports:showUnansweredReportsPanel. Cached on data change like the other
+-- per-frame inputs above, consumed by the draw gate, by reports:sync and by
+-- reports:togglePanel - a viewer without the right NEVER renders the panel,
+-- and a report_panel_state that says "open" without the right is treated as
+-- CLOSED (the local mirror is corrected below).
+local cachedReportsRight = false
+
+local function cacheReportsRight()
+        cachedReportsRight = (tonumber(getElementData(localPlayer, "hud:reportsright")) == 1)
+end
+
+-- drop everything on screen the moment the right is gone (or was never
+-- there): close the panel, tell the server to unregister this viewer and
+-- correct the client-local report_panel_state mirror
+local function closeWithoutRight()
+        if panelVisible then
+                panelVisible = false
+                triggerServerEvent("reports:onHideUnansweredReportsPanel", localPlayer)
+        end
+        if getElementData(localPlayer, "report_panel_state") then
+                setElementData(localPlayer, "report_panel_state", false, false)
+        end
+end
+
 local function recalcHeight()
         local rows = 0
         for _ in reportText:gmatch("\n") do rows = rows + 1 end
@@ -39,6 +70,12 @@ end
 
 addEvent("reports:sync", true)
 addEventHandler("reports:sync", root, function(rows)
+        -- [Fix #167] no right -> no list: ignore a feed that arrives without
+        -- the entitlement (and close anything that was on screen)
+        if not cachedReportsRight then
+                closeWithoutRight()
+                return
+        end
         if type(rows) ~= "table" then return end
         local out = ""
         for i, row in ipairs(rows) do
@@ -65,7 +102,16 @@ end)
 
 addEvent("reports:togglePanel", true)
 addEventHandler("reports:togglePanel", root, function(state)
+        -- [Fix #167] the server owns the answer: a "true" it sends (or a
+        -- local optimistic open) without the right is treated as CLOSED, and
+        -- the client-local report_panel_state mirror is written to match so
+        -- no other reader of this resource treats the list as open
+        if state and not cachedReportsRight then
+                closeWithoutRight()
+                return
+        end
         panelVisible = state and true or false
+        setElementData(localPlayer, "report_panel_state", panelVisible, false)
 end)
 
 addEvent("hud:onClientHudItemClick", false)
@@ -83,12 +129,28 @@ addEventHandler("onClientElementDataChange", localPlayer, function(key)
                 cacheLoggedin()
         elseif key == "hud:topRightBottom" then
                 cachedMoneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
+        elseif key == "hud:reportsright" then
+                -- [Fix #167] a live rights change closes the list at once
+                cacheReportsRight()
+                if not cachedReportsRight then
+                        closeWithoutRight()
+                end
+        elseif key == "report_panel_state" then
+                -- [Fix #167] report_panel_state true WITHOUT the right = closed
+                if getElementData(localPlayer, "report_panel_state")
+                        and not cachedReportsRight then
+                        closeWithoutRight()
+                end
         end
 end, false)
 
 addEventHandler("onClientResourceStart", resourceRoot, function()
         cacheLoggedin()
+        cacheReportsRight()
         cachedMoneyBottom = tonumber(getElementData(localPlayer, "hud:topRightBottom"))
+        if not cachedReportsRight then
+                closeWithoutRight()
+        end
 end)
 
 -- old client: the staff panel closes the list too when the duty tag goes off
@@ -120,6 +182,11 @@ end
 addEventHandler("onClientRender", root, function()
         if not panelVisible then return end
         if not cachedLoggedin then return end
+        -- [Fix #167] belt and braces: never paint the staff list for a viewer
+        -- without access.reports (report_panel_state true without the right
+        -- is treated as closed above, this covers a panelVisible that slipped
+        -- through anyway - the draw costs nothing but the entitlement check)
+        if not cachedReportsRight then return end
         -- height precomputed at sync time (was: gmatch row count every frame)
         local h = panelH
         -- [Fix #33 - user] "قائمة ريبورتات خليها تحت الفلوس": dock the list

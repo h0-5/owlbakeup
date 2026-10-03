@@ -117,3 +117,43 @@ function showTopRightReportBox(thePlayer)
 	if not thePlayer then return false end
 	return (exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer)) and (getElementData(thePlayer, "report_panel_mod") == "1" or getElementData(thePlayer, "report_panel_mod") == "3")
 end
+
+-- [Fix #167 - user] may THIS player use the LIVE REPORTS LIST behind the F4
+-- "Report Center" item? The entitlement is the access.reports right
+-- (staff_manager_rights.lua:134 - the very right /reports + acceptreport are
+-- already gated on in admin-system/command_gates_s.lua:770-779 - this closes
+-- every OTHER way into that panel; the command gates stay untouched).
+-- Lives here because meta.xml:17 loads this file as type="shared": ONE
+-- definition for the server handlers and for c_report_panel.lua, same shape
+-- as integration/g_staff.lua rankHoldsRight (lines 38-53):
+--   * server - the real union (rank + TEAM) through the admin-system
+--     playerHasRight export, pcall'd so admin-system being stopped answers
+--     "no right",
+--   * client - that export is server-only, so pcall fails and we fall back
+--     to the rank:rights element data, then to the hud:reportsright mirror
+--     that hud/s_hud.lua pushes from that very export.
+-- Every path fails CLOSED: no answer, no panel.
+function hasReportsPanelAccess(player)
+	if not player or not isElement(player) or getElementType(player) ~= "player" then
+		return false
+	end
+	local ok, res = pcall(function()
+		return exports["admin-system"]:playerHasRight(player, "access.reports")
+	end)
+	if ok and res ~= nil then
+		return res and true or false
+	end
+	local raw = getElementData(player, "rank:rights")
+	if type(raw) == "string" and raw ~= "" then
+		local okJSON, parsed = pcall(fromJSON, raw)
+		if okJSON and type(parsed) == "table" then
+			if type(parsed[1]) == "table" and next(parsed, 1) == nil then
+				parsed = parsed[1]
+			end
+			if type(parsed) == "table" and parsed["access.reports"] then
+				return true
+			end
+		end
+	end
+	return tonumber(getElementData(player, "hud:reportsright")) == 1
+end

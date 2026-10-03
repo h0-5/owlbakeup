@@ -538,15 +538,15 @@ local histSkin = {
 	header = tocolor(20, 20, 28, 255),
 	red = tocolor(226, 59, 59, 255),
 	title = tocolor(255, 255, 255, 255),
-	colHead = tocolor(154, 154, 160, 255),
-	cell = tocolor(216, 216, 220, 255),
+	colHead = tocolor(226, 59, 59, 255),
+	cell = tocolor(255, 255, 255, 255),
 	rowA = tocolor(16, 16, 20, 255),
 	rowB = tocolor(14, 14, 18, 255),
 	sep = tocolor(26, 26, 32, 255),
 	selected = tocolor(60, 18, 18, 255),
 	btn = tocolor(22, 22, 28, 255),
 	btnHover = tocolor(48, 48, 56, 255),
-	btnBorder = tocolor(42, 42, 50, 255),
+	btnBorder = tocolor(120, 120, 126, 255),
 	dim = tocolor(120, 120, 126, 255),
 }
 

@@ -15,9 +15,6 @@ local jobNames = {
 
 -- [Fix #160] shared "[Vehicle ID]" resolution + legacy admin gate, same style as setvehfaction
 local function getVehicleFromCommand(thePlayer, theCommand, vehicleID)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return nil
-	end
 	local id = tonumber(vehicleID)
 	if not id or id % 1 ~= 0 then
 		outputChatBox("SYNTAX: /" .. theCommand .. " [Vehicle ID]", thePlayer, 255, 194, 14)
@@ -35,9 +32,6 @@ end
 -- [Fix #160] writes the vehicles.job column, then applies the same elementData + auto
 -- respawn rules vehicle-system applies when it spawns a job vehicle.
 function setVehJob(thePlayer, theCommand, vehicleID, jobID)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 	if not vehicleID or not jobID then
 		outputChatBox("SYNTAX: /" .. theCommand .. " [Vehicle ID] [Job ID] (-1 = none)", thePlayer, 255, 194, 14)
 		outputChatBox("Job 1 = Delivery Driver, 2 = Taxi Driver, 3 = Bus Driver", thePlayer, 255, 194, 14)
@@ -73,9 +67,6 @@ addCommandHandler("setvehjob", setVehJob, false, false)
 -- [Fix #160] /respawnjobvehs - right: vehicle.respawnalljobveh
 -- [Fix #160] respawns every unoccupied vehicle with job > 0 (same unoccupied rules as /respawnciv)
 function respawnJobVehicles(thePlayer, theCommand)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 
 	local counter = 0
 	for _, theVehicle in ipairs(exports.pool:getPoolElementsByType("vehicle")) do
@@ -109,9 +100,6 @@ addCommandHandler("respawnjobvehs", respawnJobVehicles, false, false)
 -- [Fix #160] toggles the vehicles.bulletproof column + damageproof state: the same
 -- armour pattern /setbulletproof uses, but by vehicle id and without a target player.
 function setVehArmored(thePlayer, theCommand, vehicleID, state)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 	if not vehicleID then
 		outputChatBox("SYNTAX: /" .. theCommand .. " [Vehicle ID] [0/1] (no state = toggle)", thePlayer, 255, 194, 14)
 		return
@@ -146,9 +134,6 @@ addCommandHandler("setarmored", setVehArmored, false, false)
 -- [Fix #160] /setvehowner [Vehicle ID] [Character ID / Name] - right: setvehowner
 -- [Fix #160] same flow as /setvehfaction: DB update -> F1 notify -> reloadVehicle -> restore pos.
 function setVehOwner(thePlayer, theCommand, vehicleID, targetChar, ...)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 	if not vehicleID or not targetChar then
 		outputChatBox("SYNTAX: /" .. theCommand .. " [Vehicle ID] [Character ID / Name]", thePlayer, 255, 194, 14)
 		return
@@ -210,9 +195,6 @@ addCommandHandler("setvehowner", setVehOwner, false, false)
 -- [Fix #160] releases an impounded vehicle (vehicles.Impounded column): clears the impound
 -- flags and puts it back on its saved /park position the way tow-system's release does.
 function unimpoundVehCommand(thePlayer, theCommand, vehicleID)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 	if not vehicleID then
 		outputChatBox("SYNTAX: /" .. theCommand .. " [Vehicle ID]", thePlayer, 255, 194, 14)
 		return
@@ -258,9 +240,6 @@ addCommandHandler("unimpoundveh", unimpoundVehCommand, false, false)
 -- impounded. Hide = vehicles.deleted='1' + world element removed (the pattern
 -- /respawnall uses for carshop-parked cars); /restoreveh brings a hidden car back.
 function hideAllNParkVehicles(thePlayer, theCommand)
-	if not exports.integration:isPlayerTrialAdmin(thePlayer) then
-		return
-	end
 
 	local hidden = 0
 	for _, theVehicle in ipairs(exports.pool:getPoolElementsByType("vehicle")) do

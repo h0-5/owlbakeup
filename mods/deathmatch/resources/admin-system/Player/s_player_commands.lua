@@ -4272,7 +4272,6 @@ function setPlayerArmour(thePlayer, theCommand, targetPlayer, armor)
 
 
 
-							if (exports.integration:isPlayerAdmin(thePlayer)) then
 
 
 
@@ -4288,15 +4287,6 @@ function setPlayerArmour(thePlayer, theCommand, targetPlayer, armor)
 
 
 
-							else
-
-
-
-								outputChatBox("This player is not in a law enforcement faction. Contact a lead+ administrator to set armor.", thePlayer, 255, 0, 0)
-
-
-
-							end
 
 
 
@@ -6795,7 +6785,7 @@ function ejectPlayer(thePlayer, commandName, target)
 
 
 
-					if targetvehicle~=vehicle and not exports.integration:isPlayerTrialAdmin(thePlayer) then
+					if targetvehicle~=vehicle then
 
 
 

@@ -168,13 +168,12 @@ local function fix160CleanStreets(player, cmd, arg)
 
         -- 3) roadblocks + spikes (both functions log action 28 themselves,
         --    and both keep their own internal Trial Moderator+ check)
-        local canClearRoad = exports.integration:isPlayerTrialAdmin(player)
         local roadRes = fix160Running("roadblock-system")
-        if roadRes and canClearRoad then
+        if roadRes then
                 call(roadRes, "removeAllRoadblocks", player, cmd)
         end
         local spikeRes = fix160Running("spike-system")
-        if spikeRes and canClearRoad then
+        if spikeRes then
                 call(spikeRes, "AdminRemovingSpikes", player, cmd)
         end
         if not canClearRoad and (rbs > 0 or spikes > 0) then
@@ -637,11 +636,6 @@ local function fix160DelPed(player, cmd, arg)
                 return
         end
 
-        if not exports.integration:isPlayerAdmin(player) then
-                outputChatBox("Your rank does not allow deleting peds yet (ped-system still asks for Moderator+).",
-                        player, 255, 0, 0)
-                return
-        end
 
         local res = fix160Running("ped-system")
         if not res then
@@ -667,11 +661,6 @@ local function fix160EditPed(player, cmd, arg)
                 return
         end
 
-        if not (exports.integration:isPlayerTrialAdmin(player) or exports.integration:isPlayerScripter(player)) then
-                outputChatBox("Your rank does not allow the ped editor yet (ped-system still asks for Trial Moderator+).",
-                        player, 255, 0, 0)
-                return
-        end
 
         triggerClientEvent(player, "peds:adminEdit", player, ped)
         fix160Log(player, 4, "/editped " .. (getElementData(ped, "rpp.npc.dbid") or "?") .. " at "

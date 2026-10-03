@@ -471,6 +471,78 @@ local function syncBadgeToggles(player)
         end
 end
 
+-- [Fix #168 - user] "an admin must never be ON DUTY without his admin badge"
+-- (screenshot 3: red nametag, no badge, after every relog).
+-- WHY it happened: the badge row state lives in the hud:items element data,
+-- which dies with the player element on every disconnect, while duty_admin /
+-- duty_supporter come BACK from the account settings after login
+-- (f10-settings/c_f10_settings.lua applyGameSettings -> saveClientAccountSettingsOnServer
+-- -> f10-settings/s_f10_settings.lua setElementData). So pushDefaultItems
+-- recreated the rows as "off" for a player who was already restored to
+-- duty_admin=1: the nametag turned red but fix160.badgetoggles.admin stayed
+-- false and hud/c_nametags.lua (read-only) drew no badge_admin.
+-- THE RULE: the row that drives the ACTIVE duty path comes back "on" - exactly
+-- what pressing that row would have produced:
+--      duty_admin     -> badgeadmin (badgedev fallback if admin.badge not held)
+--      duty_supporter -> badgesupport (badgedev fallback)
+-- off duty -> nil, nothing is ever touched. exists(id) answers "is that row
+-- there" - the held rights at push time, the present rows for the flip repair.
+local function badgeRowIdForDuty(player, exists)
+        -- same "on" test the router and the nametags use (number 1, DB string
+        -- "1", boolean true)
+        local function on(key)
+                local v = getElementData(player, key)
+                return v == true or tonumber(v) == 1
+        end
+        local adminDuty, supDuty = on("duty_admin"), on("duty_supporter")
+        if not adminDuty and not supDuty then return nil end
+        local prefs
+        if adminDuty and supDuty then
+                prefs = { "badgeadmin", "badgesupport", "badgedev" }
+        elseif adminDuty then
+                prefs = { "badgeadmin", "badgedev" }
+        else
+                prefs = { "badgesupport", "badgedev" }
+        end
+        for _, id in ipairs(prefs) do
+                if exists(id) then return id end
+        end
+        return nil
+end
+
+-- [Fix #168] duty -> row repair: the other half of the rule, it runs when a
+-- duty flag FLIPS ON, so it also covers the login order where the rows were
+-- pushed as "off" BEFORE the account settings restored duty_admin=1 (the
+-- reverse order is covered by the default in pushDefaultItems below).
+-- Only an OFF -> ON transition repairs: duty going OFF never rewrites a row
+-- (the stored choice is kept, exactly as today). It only ever turns a row ON,
+-- and only while NO badge row is on yet: a row the player switched on himself -
+-- or a deliberate badge-off while another badge keeps him on duty - is left
+-- alone, so the F4 click flow is untouched. It never calls routeBadgeDuty, so
+-- no duty command is ever re-run (no double-toggle).
+local function syncBadgeRowToDuty(player, changedKey, oldValue)
+        if not isElement(player) or getElementType(player) ~= "player" then return end
+        local wasOn = oldValue == true or tonumber(oldValue) == 1
+        if wasOn then return end
+        local now = getElementData(player, changedKey)
+        if not (now == true or tonumber(now) == 1) then return end
+        local items = getElementData(player, "hud:items")
+        if type(items) ~= "table" then return end
+        local rowsAt, anyOn = {}, false
+        for i, row in ipairs(items) do
+                if type(row) == "table" and BADGE_ROW_KEY[row[1]] then
+                        rowsAt[row[1]] = i
+                        if row[2] == "on" then anyOn = true end
+                end
+        end
+        if anyOn then return end
+        local want = badgeRowIdForDuty(player, function(id) return rowsAt[id] ~= nil end)
+        if not want then return end
+        items[rowsAt[want]][2] = "on"
+        setProtected(player, "hud:items", items)
+        syncBadgeToggles(player)
+end
+
 --------------------------------------------------------------------------------
 -- [Fix #167 - user] STAFF-ONLY F4 ROW + RIGHTS MIRROR ("access.reports")
 --------------------------------------------------------------------------------
@@ -599,9 +671,21 @@ local function pushDefaultItems(player)
         -- nil rights = admin-system not up yet: no rows (the legacy nametag
         -- path still covers the badges above the head).
         if rights ~= nil then
+                -- [Fix #168] the ONE exception to the "off" default: a player
+                -- who is ALREADY on duty gets the row of his active duty path
+                -- created as "on" (badgeRowIdForDuty above). A row that is
+                -- already there still keeps its stored state - upsert only
+                -- ever inserts a MISSING row - so a relog while duty_admin=1
+                -- shows the badge again without touching any choice he made
+                -- in this session.
+                local dutyRow = badgeRowIdForDuty(player, function(id)
+                        local right = BADGE_ROW_RIGHT[id]
+                        return right ~= nil and rights[right] == true
+                end)
                 for _, def in ipairs(BADGE_ROW_DEFS) do
                         if rights[def.right] then
-                                upsert(def.id, "off", def.icon, def.tip1, "")
+                                upsert(def.id, (def.id == dutyRow) and "on" or "off",
+                                        def.icon, def.tip1, "")
                         end
                 end
         end
@@ -652,6 +736,11 @@ addEventHandler("onElementDataChange", root, function(key, _, newValue)
                 pushDefaultItems(source)
         elseif key == "duty_admin" or key == "duty_supporter" then
                 refreshStripDutyState(source)
+                -- [Fix #168] duty coming ON brings the badge row of that path
+                -- with it (login restore of duty_admin / /adminduty) - the row
+                -- itself lives in hud:items, which a relog wiped. `_` is the
+                -- OLD value, so only an OFF -> ON flip repairs a row.
+                syncBadgeRowToDuty(source, key, _)
         elseif key == "fix160.badgerights" and getElementType(source) == "player" then
                 -- [Fix #164] a rank/rights change must add or drop the badge
                 -- rows live. Safe loop-wise: pushDefaultItems writes hud:items

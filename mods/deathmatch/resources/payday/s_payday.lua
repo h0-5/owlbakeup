@@ -1553,7 +1553,6 @@ function adminDoPaydayAll(thePlayer)
 
 
 
-		if (exports.integration:isPlayerAdmin(thePlayer)) then
 
 
 
@@ -1565,7 +1564,6 @@ function adminDoPaydayAll(thePlayer)
 
 
 
-		end
 
 
 
@@ -1589,7 +1587,6 @@ function adminDoPaydayOne(thePlayer, commandName, targetPlayerName)
 
 
 
-	if (exports.integration:isPlayerAdmin(thePlayer)) then
 
 
 
@@ -1673,7 +1670,6 @@ function adminDoPaydayOne(thePlayer, commandName, targetPlayerName)
 
 
 
-	end
 
 
 

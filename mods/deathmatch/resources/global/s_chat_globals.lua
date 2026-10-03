@@ -20,7 +20,6 @@ function setOOCState(state)
 end
 
 function changeWarnStyle(thePlayer, commandName)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) then
 		local warnStyle = getElementData(thePlayer, "wrn:style")
 		local wrnStyleString
 		if warnStyle == 1 then
@@ -38,7 +37,6 @@ function changeWarnStyle(thePlayer, commandName)
 		else
 			outputChatBox("MYSQL-ERROR-0069, Please report on the mantis.", thePlayer, 255, 0, 0)
 		end
-	end
 end
 addCommandHandler("changewarnstyle", changeWarnStyle, false, false)
 

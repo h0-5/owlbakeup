@@ -2146,9 +2146,14 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 local color = (staff.Online and type(staff.LiveColor) == "table") and staff.LiveColor
                         or LevelColor[tostring(staff.AdminID)] or { 255, 255, 255, 255 }
                 color = normalizeRankColorC(color)
+                -- [user] the cell NEVER reads "N/A": live rank first, then the
+                -- viewer's own levels table, then the DB rank name the server
+                -- ships on the row (suppressed there for a masked row), and
+                -- finally "-" = this member holds no rank this viewer knows
                 local rankName = (staff.Online and staff.LiveRank and staff.LiveRank ~= "")
                         and tostring(staff.LiveRank)
-                        or tostring(LevelNames[tostring(staff.AdminID)] or "N/A")
+                        or tostring(LevelNames[tostring(staff.AdminID)]
+                                or staff.RankName or "-")
                 -- [Batch rule 2] a masked member (hidden rank, viewer not
                 -- entitled) shows "-" in plain white instead of the rank
                 if staff.RankMasked then

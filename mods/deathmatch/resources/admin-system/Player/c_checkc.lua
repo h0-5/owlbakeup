@@ -138,14 +138,15 @@ local checkcSkin = {
         header    = tocolor(20, 20, 28, 255),
         red       = tocolor(226, 59, 59, 255),
         title     = tocolor(255, 255, 255, 255),
-        key       = tocolor(255, 255, 255, 255),
-        value     = tocolor(216, 216, 220, 255),
+        key       = tocolor(226, 59, 59, 255),
+        value     = tocolor(255, 255, 255, 255),
         money     = tocolor(255, 92, 92, 255),
         online    = tocolor(76, 175, 80, 255),
         offline   = tocolor(154, 154, 160, 255),
         btn       = tocolor(22, 22, 28, 255),
         btnHover  = tocolor(48, 48, 56, 255),
-        btnBorder = tocolor(42, 42, 50, 255),
+        btnBorder = tocolor(120, 120, 126, 255),
+        sep       = tocolor(38, 38, 44, 255),
         dim       = tocolor(120, 120, 126, 255),
 }
 
@@ -199,7 +200,7 @@ local function drawCheckcBullet(bx, top, sc)
         end
 end
 
--- "Label: value" -> red chevron bullet + white bold label + coloured value
+-- "Label: value" -> red chevron bullet + red bold label + coloured value
 local function drawCheckcRow(ox, oy, sc, bulletX, tx, tw, y, key)
         local element = checkcLabels[key]
         if not isElement(element) then return end
@@ -315,6 +316,8 @@ addEventHandler("onClientRender", root, function()
                 else
                         drawCheckcRow(ox, oy, sc, BULLET_L, COL_LX, COL_FULLW, row.y, row.left)
                 end
+                dxDrawRectangle(ox + 14 * sc, oy + (row.y + 24) * sc,
+                        (CHECKC_BASE_W - 28) * sc, sc, checkcSkin.sep, true)
         end
 
         drawCheckcButton(ox, oy, sc, checkcClose)

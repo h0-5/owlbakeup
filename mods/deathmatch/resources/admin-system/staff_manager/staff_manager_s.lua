@@ -634,6 +634,15 @@ local function sendFullData(player)
         local allLevels = fetchLevelsRaw()
         local levels = levelsForViewer(allLevels, player)
         local ctx = hiddenRankContext(allLevels, player)
+        -- [user] the staffs grid resolves its rank cell from the VIEWER
+        -- filtered levels list, so a member row whose rank is not in that
+        -- list used to paint "N/A". The DB name rides along on every row
+        -- instead - and is dropped again for a masked row, so the hidden-rank
+        -- masking rules stay byte-identical.
+        local dbRankName = {}
+        for _, lv in ipairs(allLevels) do
+                dbRankName[tonumber(lv.ID)] = tostring(lv.LevelName)
+        end
         -- staff members with feedback + report counts (same sources the old
         -- staff manager used: accounts.adminreports + feedbacks.rating)
         local admins = {}
@@ -692,6 +701,7 @@ local function sendFullData(player)
                         LiveRank = liveRank,
                         LiveColor = liveColor,
                         RankMasked = masked or nil,
+                        RankName = (not masked) and dbRankName[tonumber(row.RoleID)] or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,
@@ -777,6 +787,13 @@ local function sendPanel(player)
         local allLevels = fetchLevelsRaw()
         local levels = levelsForViewer(allLevels, player)
         local ctx = hiddenRankContext(allLevels, player)
+        -- [user] same DB rank-name map sendFullData ships (see there): the
+        -- staffs grid must never have to guess "N/A" for a member row whose
+        -- rank is filtered out of `levels`.
+        local dbRankName = {}
+        for _, lv in ipairs(allLevels) do
+                dbRankName[tonumber(lv.ID)] = tostring(lv.LevelName)
+        end
         -- [Batch rule 2 ship] Teams block: per-viewer row array + templates
         local teamRows, teamTemplates = teamsPayload(player)
         -- reuse the same query used by sendFullData for the first paint
@@ -837,6 +854,7 @@ local function sendPanel(player)
                         LiveRank = liveRank,
                         LiveColor = liveColor,
                         RankMasked = masked or nil,
+                        RankName = (not masked) and dbRankName[tonumber(row.RoleID)] or nil,
                         ReportsCount = tonumber(row.adminreports) or 0,
                         FeedbackRating = tonumber(row.FeedbackRating) or 0,
                         FeedbackCount = tonumber(row.FeedbackCount) or 0,
@@ -993,55 +1011,11 @@ local function refresh(player)
         end, 250, 1, player)
 end
 
--- [Fix #15] rank changes are PUBLIC chat logs. Format follows the classic
--- admin-bot line: "[STAFF]: Hade promoted 'BO5' to Head Management."
--- green = promotion, red = demotion/removal, visible to everyone.
-local function actorName(actor)
-        -- [Fix #157] optional actor (command handlers, no event `client`)
-        local src = actor
-        if not (isElement(src) and getElementType(src) == "player")
-                and isElement(client) and getElementType(client) == "player" then
-                src = client
-        end
-        if isElement(src) and getElementType(src) == "player" then
-                return getElementData(src, "account:username") or getPlayerName(src) or "?"
-        end
-        return "System"
-end
-
-local function broadcastRankChange(action, target, toRank, isNegative, actor, fromRank)
--- [user rule #2] belt and braces for the PUBLIC [STAFF] line: every
--- caller broadcasts even though addChangelog already returned early.
--- fromRank is what makes the REMOVAL calls safe - they pass toRank=false,
--- and dropping the only holder of a hidden rank must publish nothing.
-if rankNameIsHidden(toRank) or rankNameIsHidden(fromRank) then return end
-        -- Fix #25 (user, image 3): colored staff log — purple [STAFF] tag,
-        -- colored actor, rank name in its panel color when known
-        local rankColor = ""
-        if toRank and mysql then
-                local q = mysql:query("SELECT Color FROM staff_roles WHERE LevelName = '"
-                        .. mysql:escape_string(tostring(toRank)) .. "' LIMIT 1")
-                if q then
-                        local row = mysql:fetch_assoc(q)
-                        if row and row.Color and tostring(row.Color) ~= "" then
-                                local c = fromJSON(tostring(row.Color)) or {}
-                                if type(c[1]) == "table" then
-                                        c = c[1]
-                                end
-                                local cr, cg, cb = tonumber(c[1]), tonumber(c[2]), tonumber(c[3])
-                                if cr and cg and cb then
-                                        rankColor = ("#%02X%02X%02X"):format(cr, cg, cb)
-                                end
-                        end
-                        mysql:free_result(q)
-                end
-        end
-        local line = "#a855f7[STAFF]#ffffff " .. actorName(actor) .. " "
-                .. (isNegative and "#ff5a5a" or "#46c85a") .. action .. "#ffffff '"
-                .. tostring(target) .. "'"
-                .. (toRank and (" to " .. rankColor .. tostring(toRank)) or "") .. "."
-        outputChatBox(line, root, 255, 255, 255, true)
-end
+-- [user] The PUBLIC [STAFF] broadcast is GONE ("uproot it"): after a
+-- promote/demote the only chat line is admin-logs' "[ADMIN]: {char} ({acct})
+-- promoted/demoted '{target}' to {rank}." which the fix160:rankchanged event
+-- above feeds (admin-logs/s_logs.lua owns that line - not this file). The DB
+-- changelog INSERT and the event fire still happen in addChangelog.
 
 -- add a staff member to a rank
 addEvent("rpadmin:addNewAdmin", true)
@@ -1091,11 +1065,9 @@ if not hasGiveRole(client) then
         -- [Batch rule 5a] account-bound change: report the target's accounts.id
         addChangelog(changeType, user.username, oldName, tostring(levelName or "-"),
                 nil, tonumber(user.id))
-        outputChatBox("Staff updated: " .. user.username .. " -> " .. tostring(levelName)
-                .. " (" .. changeType .. ")", client, 0, 255, 0)
-        -- [Fix #15] public chat log of the rank change
-        broadcastRankChange(changeType == "Demotion" and "demoted" or "promoted",
-                user.username, tostring(levelName or "-"), changeType == "Demotion")
+        -- [user] no "Staff updated" line, no public [STAFF] broadcast: the
+        -- fix160:rankchanged event above is the single chat log of this change
+        -- (admin-logs prints the one [ADMIN] line).
         refresh(client)
         -- Vortex bridge: push the new rank onto the target immediately if online
         if type(refreshPlayerRank) == "function" then
@@ -1117,16 +1089,20 @@ end)
 -- for exactly those accounts - which is why a revocation "did nothing".
 -- So a removal also zeroes the legacy columns (admin/supporter/scripter).
 --
--- Self-removal is REFUSED: it would close the actor's own panel with no way
--- back in-game (no rank -> canPlayerAccessStaffManager is false). Demoting
--- yourself is what /giverole is for.
+-- Self-removal is ALLOWED for an owner.takerole holder: the remove-rank
+-- handler must work for ANYONE holding that right, self or others. Because
+-- the legacy columns are zeroed above, the rank cannot come back on the next
+-- relog, and nothing closes the actor's panel client-side (the open panel
+-- simply repaints from the fresh payload). The pcall-guarded right check is
+-- defense in depth only - both callers (rpadmin:removeAdmin and /takerole)
+-- already gate on owner.takerole before reaching this helper.
 local function staffRemovalAllowed(actor, userID, username)
         if not isElement(actor) or not tonumber(userID) then return false end
         if tonumber(getElementData(actor, "account:id")) == tonumber(userID) then
-                outputChatBox("Self-removal blocked: your accounts columns still mark you as staff, "
-                        .. "so the rank would come straight back (and your panel would close). "
-                        .. "Use /giverole " .. tostring(username) .. " <rank> to demote instead.",
-                        actor, 255, 180, 60)
+                local ok, allowed = pcall(hasTakeRole, actor)
+                if ok and allowed then return true end
+                outputChatBox("Self-removal blocked: you need the owner.takerole right "
+                        .. "to remove your own rank.", actor, 255, 180, 60)
                 return false
         end
         return true
@@ -1192,8 +1168,6 @@ if not hasTakeRole(client) then
         -- there is no "Player" rank the changelog could name.
         addChangelog("Demotion", user.username, oldName, "-", nil, tonumber(user.id))
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
-        -- [Fix #15] public chat log of the removal
-        broadcastRankChange("removed", user.username, false, true, nil, oldName)
         refresh(client)
         -- Vortex bridge: drop the target's live rank data if online
         if type(refreshPlayerRank) == "function" then
@@ -1948,10 +1922,9 @@ local function fix157AssignRole(actor, row, levelID, levelName)
         -- [Batch rule 5a] account-bound change: report the target's accounts.id
         addChangelog(changeType, row.username, oldName or "-", tostring(levelName or "-"),
                 actor, tonumber(row.id))
-        outputChatBox("Staff updated: " .. tostring(row.username) .. " -> "
-                .. tostring(levelName) .. " (" .. changeType .. ")", actor, 0, 255, 0)
-        broadcastRankChange(changeType == "Demotion" and "demoted" or "promoted",
-                row.username, tostring(levelName or "-"), changeType == "Demotion", actor)
+        -- [user] no "Staff updated" line, no public [STAFF] broadcast: the
+        -- fix160:rankchanged event fired by addChangelog is the single chat
+        -- log of this change (admin-logs prints the one [ADMIN] line).
         refresh(actor)
         local online = fix157PlayerByAccountID(row.id)
         if online and type(refreshPlayerRank) == "function" then
@@ -1970,8 +1943,8 @@ local function fix157AssignRole(actor, row, levelID, levelName)
 end
 
 local function fix157ClearRole(actor, row)
-        -- [Fix #U1] self-removal is refused, removal of anyone else also drops
-        -- their legacy level so the rank cannot come back
+        -- [Fix #U1] self-removal is allowed for an owner.takerole holder, and
+        -- every removal also drops the legacy level so the rank cannot come back
         if not staffRemovalAllowed(actor, row.id, row.username) then return end
         local oldRoleID, oldName = fix157CurrentRoleName(row.id)
         mysql:query_free("DELETE FROM staff_role_members WHERE AccountID=" .. tonumber(row.id))
@@ -1983,7 +1956,6 @@ local function fix157ClearRole(actor, row)
                 tonumber(row.id))
         outputChatBox("Staff removed: " .. tostring(row.username)
                 .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), actor, 0, 255, 0)
-        broadcastRankChange("removed", row.username, false, true, actor, oldName)
         refresh(actor)
         local online = fix157PlayerByAccountID(row.id)
         if online and type(refreshPlayerRank) == "function" then

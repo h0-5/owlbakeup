@@ -392,10 +392,6 @@ end)
 -- /checkint <id>  -  the old client's "Check Interior" window
 -- ---------------------------------------------------------------------------
 addCommandHandler("checkint", function(player, command, id)
-	if not exports.integration:isPlayerTrialAdmin(player) then
-		outputChatBox("You are not allowed to check interiors.", player, 255, 0, 0)
-		return
-	end
 
 	id = tonumber(id)
 	if not id then

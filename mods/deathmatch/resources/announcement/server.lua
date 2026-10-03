@@ -32,15 +32,7 @@ function adminAnnouncement(thePlayer, commandName, ...)
 			local players = exports.pool:getPoolElementsByType("player")
 			local username = getPlayerName(thePlayer)
 
-			for k, arrayPlayer in ipairs(players) do
-				local logged = getElementData(arrayPlayer, "loggedin")
-				
-				if exports.integration:isPlayerTrialAdmin(thePlayer) then
-					triggerClientEvent(arrayPlayer,"announcement:post", arrayPlayer, "Admin Announcement: " .. message, 255, 194, 14, 1)
-				elseif exports.integration:isPlayerSupporter(thePlayer) then
-					triggerClientEvent(arrayPlayer,"announcement:post", arrayPlayer, "SUP Announcement: " .. message, 255, 100, 150, 1)
-				end
-			end
+			-- [Fix] one text feeds BOTH the scrolling banner and the client			-- notification toast further down, so the two can never disagree.			local annText, annR, annG, annB			if exports.integration:isPlayerTrialAdmin(thePlayer) then				annText, annR, annG, annB = "Admin Announcement: " .. message, 255, 194, 14			else				annText, annR, annG, annB = "SUP Announcement: " .. message, 255, 100, 150			end						-- [user] /ann also fires a CLIENT side toast through the notifications			-- resource; guarded + pcall so a stopped notifications resource can			-- never break the announcement itself.			local notiRes = getResourceFromName("notifications")			local notiReady = notiRes and getResourceState(notiRes) == "running"						for k, arrayPlayer in ipairs(players) do				triggerClientEvent(arrayPlayer, "announcement:post", arrayPlayer, annText, annR, annG, annB, 1)				if notiReady then					pcall(function()						exports.notifications:outputToPlayer(arrayPlayer, annText, 8000, "megaphone")					end)				end			end
 			exports.global:sendMessageToAdmins("Adm/SUPCmd: "..username.." made an announcement")
 			exports.logs:dbLog(thePlayer, 4, thePlayer, "ANN "..message)
 			--exports.text2speech:convertTextToSpeech(root, message, "en", nil, 1, 50, 1) 

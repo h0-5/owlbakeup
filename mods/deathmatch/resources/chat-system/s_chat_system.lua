@@ -82,6 +82,30 @@ local function buildStaffChatLine(thePlayer, prefix, message)
 	return "[" .. prefix .. "]: [" .. playerid .. "] " .. rankTitle .. hidden .. " " .. charName .. " (" .. accountName .. "): " .. message
 end
 
+-- [OOC line] shared formatter for /ooc (global) and /b (local): the owner wants
+-- the whole OOC line rendered in RED, shaped as [ooc] : {rank} {account} : {msg}
+--   hidden staff (element data hiddenadmin == 1 or rank:hidden == 1): the rank
+--   part is the literal "A hidden admin" and the account part is dropped, so
+--   the line reads [ooc] : A hidden admin : {msg}
+--   visible staff: [ooc] : {rank} {account} : {msg}
+--   player without any rank: [ooc] : {account} : {msg}
+local function buildOocLine(thePlayer, message)
+	local hidden = getElementData(thePlayer, "hiddenadmin")
+	local hiddenRank = getElementData(thePlayer, "rank:hidden")
+	if hidden == true or tonumber(hidden) == 1 or hiddenRank == true or tonumber(hiddenRank) == 1 then
+		return "[ooc] : A hidden admin : " .. message
+	end
+	local account = getElementData(thePlayer, "account:username")
+	if not account or account == "" then
+		account = "?" -- sender without account data: the separators stay intact
+	end
+	local rankTitle = getStaffRankTitle(thePlayer)
+	if rankTitle then
+		return "[ooc] : " .. rankTitle .. " " .. account .. " : " .. message
+	end
+	return "[ooc] : " .. account .. " : " .. message
+end
+
 function trunklateText(thePlayer, text, factor)
 	--[[if getElementData(thePlayer,"alcohollevel") and getElementData(thePlayer,"alcohollevel") > 0 then
 		local level = math.ceil( getElementData(thePlayer,"alcohollevel") * #text / ( factor or 15 ) )
@@ -868,22 +892,16 @@ function globalOOC(thePlayer, commandName, ...)
 				local playerID = getElementData(thePlayer, "playerid")
 
 				--exports.logs:logMessage("[OOC: Global Chat] " .. playerName .. ": " .. message, 1)
+				-- [OOC line] built once: rank/account depend only on the sender, so
+				-- every receiver sees the exact same RED line
+				local oocLine = buildOocLine(thePlayer, message)
 				for k, arrayPlayer in ipairs(players) do
 					local logged = tonumber(getElementData(arrayPlayer, "loggedin"))
 					local targetOOCEnabled = getElementData(arrayPlayer, "globalooc")
 
 					if (logged==1) and (targetOOCEnabled==1) then
 						table.insert(affectedElements, arrayPlayer)
-						if exports.integration:isPlayerTrialAdmin(thePlayer) then
-                            local adminTitle = exports.global:getPlayerAdminTitle(thePlayer)
-							if getElementData(thePlayer, "hiddenadmin") then
-								outputChatBox("(( "..exports.global:getPlayerFullIdentity(thePlayer)..": " .. message .. " ))", arrayPlayer, 196, 255, 255)
-							else
-								outputChatBox("(( "..exports.global:getPlayerFullIdentity(thePlayer)..": " .. message .. " ))", arrayPlayer, 196, 255, 255)
-							end
-                        else
-							outputChatBox("(( "..exports.global:getPlayerFullIdentity(thePlayer)..": " .. message .. " ))", arrayPlayer, 196, 255, 255)
-                        end
+						outputChatBox(oocLine, arrayPlayer, 255, 0, 0)
 					end
 				end
 				exports.logs:dbLog(thePlayer, 18, affectedElements, message)
@@ -1225,36 +1243,10 @@ function localOOC(thePlayer, commandName, ...)
 		elseif (muted==1) then
 			outputChatBox("You are muted from Global OOC.", thePlayer, 255, 0, 0)
 		else
-			--MAXIME
-			local r,b,g = 196, 255, 255
-			
-			if exports.integration:isPlayerScripter(thePlayer) and getElementData(thePlayer, "duty_dev") == 1  and getElementData(thePlayer, "hiddenadmin") == 0 then
-				r, b, g = 17, 0, 255
-				setElementData(thePlayer, "supervisorBchat", false)
-			elseif exports.integration:isPlayerLeadAdmin(thePlayer) and getElementData(thePlayer, "duty_admin") == 1 and getElementData(thePlayer, "hiddenadmin") == 0 then
-				r,b,g = 255, 0, 0
-				setElementData(thePlayer, "supervisorBchat", false)
-			elseif exports.integration:isPlayerTrialAdmin(thePlayer) and getElementData(thePlayer, "duty_admin") == 1 and getElementData(thePlayer, "hiddenadmin") == 0 then
-				r,b,g = 104, 43, 0
-				setElementData(thePlayer, "supervisorBchat", false)
-			elseif exports.integration:isPlayerSupporter(thePlayer) and not getElementData(thePlayer, "supervising") then
-				r,b,g = 196, 255, 255
-				setElementData(thePlayer, "supervisorBchat", false)
-			end
-
-			-- [Fix #32 - user] the b-chat color comes from the STAFF SYSTEM
-			-- rank (rank:color), not a hardcoded ladder
-			local rc = getElementData(thePlayer, "rank:color")
-			if type(rc) == "table" and tonumber(rc[1])
-				and getElementData(thePlayer, "hiddenadmin") ~= 1 then
-				r, b, g = rc[1], rc[2], rc[3]
-			end
+			-- [OOC line] /b renders the same RED [ooc] line as /ooc (owner spec)
 			local message = table.concat({...}, " ")
-			if getElementData(thePlayer, "supervisorBchat") == false or nil then -- The below locals were contained in the if, else statements. Therefore returned nil to the export db //Chaos
-				result, affectedElements = exports.global:sendLocalText(thePlayer, getPlayerName(thePlayer) .. ": (( " .. message .. " ))", r,b,g)
-			else
-				result, affectedElements = exports.global:sendLocalText(thePlayer, exports.global:getPlayerFullIdentity(thePlayer) .. ": (( " .. message .. " ))", r,b,g)
-			end
+			local oocLine = buildOocLine(thePlayer, message)
+			local result, affectedElements = exports.global:sendLocalText(thePlayer, oocLine, 255, 0, 0)
 			exports.logs:dbLog(thePlayer, 8, affectedElements, message)
 		end
 	end

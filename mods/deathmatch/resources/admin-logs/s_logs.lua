@@ -28,6 +28,12 @@
 --   [user rule #2] a HIDDEN RANK (staff_roles.hidden = 1) is logged NOWHERE:
 --   its title is stripped from the actor prefix, and a rank change whose from,
 --   to or target (rank-level events) is a hidden rank name prints no line.
+--   [user rule #3] a rank change whose ACTOR holds a hidden rank still prints
+--   (rule #2 above only ever eats the TARGET / edited rank) but it is marked:
+--   "(Hidden) " goes right after the tag, before the actor's character name,
+--   and the WHOLE line is red. An actor on a normal rank carries no marker and
+--   prints bright green. The colour follows the ACTOR, never the promote /
+--   demote direction (owner's pictures 2 and 3).
 --
 -- VISIBILITY TIERS (decided by the VIEWER, never by the actor)
 --   4 debug           -> every line
@@ -60,8 +66,13 @@ local TIER_DEBUG  = 4 -- debug
 -- documented server-side outputChatBox form everywhere in this server.
 local COLOR_ADMIN      = { 255,  64,  64 } -- admin command lines (red)
 local COLOR_DEATHMATCH = { 255,  64,  64 } -- kill alerts (red)
-local COLOR_STAFF      = { 255, 160,   0 } -- rank changes (orange)
 local COLOR_REPORT     = {  64, 220,  64 } -- report lines (green)
+-- promote / demote lines (owner's pictures 2 and 3): the colour follows the
+-- ACTOR of the rank change - bright green for an ordinary rank, red when the
+-- actor holds a hidden rank (which also earns the "(Hidden) " marker). The
+-- old orange COLOR_STAFF is gone: rank changes were its only consumer.
+local COLOR_RANK         = {  64, 220,  64 } -- normal actor (picture 2)
+local COLOR_RANK_HIDDEN  = { 255,  64,  64 } -- hidden-rank actor (picture 3)
 
 -- element data keys of this resource (server-only, see the header)
 local KEY_HIDE_LOCAL  = "adminlogs:hide_local"
@@ -197,6 +208,56 @@ local function rankNameIsHidden(name)
         end
         if not hiddenRankCache.__ready then return true end
         return hiddenRankCache[key] == true
+end
+
+-- [user rule #3] is the ACTOR of a rank change himself on a hidden rank?
+-- addChangelog fires fix160:rankchanged with `by` = the acting staff member's
+-- ACCOUNT USERNAME (staff_manager_s.lua addChangelog), never an element, so
+-- resolve him the way resolveWho does: the online player's live rank:name
+-- first, then the stored membership row (accounts -> staff_role_members ->
+-- staff_roles) when he is offline or carries no live rank. The verdict then
+-- goes through rankNameIsHidden, so it keeps the same short cache and the
+-- same fail-closed behaviour. An unresolvable actor is NOT flagged (rank-less
+-- and "System" actors are ordinary), and a line only ever reaches the emit
+-- below after rankNameIsHidden already answered for from/to - i.e. only once
+-- that cache is ready.
+local function actorRankNameOf(by)
+        if isElement(by) and getElementType(by) == "player" then
+                local live = getElementData(by, "rank:name")
+                if type(live) == "string" and live ~= "" then return live end
+        end
+        if type(by) ~= "string" then return nil end
+        local key = trim(by)
+        if key == "" or key == "System" or key == "Unknown" then return nil end
+        for _, p in ipairs(getElementsByType("player")) do
+                if tostring(getElementData(p, "account:username") or ""):lower()
+                        == key:lower() then
+                        local live = getElementData(p, "rank:name")
+                        if type(live) == "string" and live ~= "" then return live end
+                        break
+                end
+        end
+        -- offline (or no live rank pushed): the stored membership decides
+        local ok, res = pcall(function()
+                return exports.mysql:query(
+                        "SELECT r.LevelName FROM staff_role_members m "
+                        .. "INNER JOIN staff_roles r ON r.ID = m.RoleID "
+                        .. "INNER JOIN accounts a ON a.id = m.AccountID "
+                        .. "WHERE a.username = '"
+                        .. exports.mysql:escape_string(key) .. "' LIMIT 1")
+        end)
+        if not ok or not res then return nil end
+        local level
+        local okRow, row = pcall(function()
+                return exports.mysql:fetch_assoc(res)
+        end)
+        if okRow and row then level = row.LevelName end
+        pcall(function() exports.mysql:free_result(res) end)
+        return level
+end
+
+local function actorRankIsHidden(by)
+        return rankNameIsHidden(actorRankNameOf(by))
 end
 
 -- Command lines carry the actor's RANK TITLE (staff system element data) and,
@@ -980,8 +1041,21 @@ local function logRankChange(payload, ...)
 
         detail = sanitizeDetail(detail)
         if not detail then return end
-        local line = logLine(TAG_STAFF, byChar .. " (" .. byAcct .. ")", detail)
-        emitLog(COLOR_STAFF, line, TIER_STAFF)
+
+        -- [user rule #3] the ACTOR's own rank decides the marker and the
+        -- colour of the line - green + no marker for an ordinary rank
+        -- (picture 2), "(Hidden) " right after the tag and a red line when he
+        -- sits on a hidden rank (picture 3). Everything printed here has
+        -- already cleared the hidden-TARGET suppression above (line 1021), so
+        -- that filter still eats every hidden from/to/edited-rank line first -
+        -- this block only ever runs for a line that is meant to exist, and it
+        -- never re-introduces a hidden rank TITLE (the promote/demote detail
+        -- carries rank names only as the from/to ends, already filtered).
+        local actorHidden = actorRankIsHidden(by)
+        local actor = byChar .. " (" .. byAcct .. ")"
+        if actorHidden then actor = "(Hidden) " .. actor end
+        local line = logLine(TAG_STAFF, actor, detail)
+        emitLog(actorHidden and COLOR_RANK_HIDDEN or COLOR_RANK, line, TIER_STAFF)
 end
 
 addEvent("fix160:rankchanged", false)

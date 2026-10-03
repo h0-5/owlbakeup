@@ -1100,19 +1100,26 @@ local function buildMainMenuUI()
         UI.gridlist.staff = eui:uiCreateGridList(10, 50, contentW - 20, (contentH - 50) / 2,
                 tocolor(0, 0, 0, 0), UI.container.onlinestaff)
         -- Fix #30 (user): EXACT old-client staff list - one line per admin:
-        -- " -  [Rank] Name (account)    ID: x    On/Off-Duty" (3 columns)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.56)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "ID", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff, "Duty", 0.24)
+        -- " -  [Rank] Name (account)  ID: x  [Hidden Admin]  On/Off-Duty"
+        -- [user ref pic 1] the "Hidden Admin" mark is its OWN middle segment
+        -- between the ID and the Duty columns (blank for everyone else), not
+        -- a prefix glued to the duty word any more. 4 columns, widths sum 1.
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Admins Team", 0.50)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "ID", 0.14)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "", 0.16)
+        eui:uiGridListAddColumn(UI.gridlist.staff, "Duty", 0.20)
         eui:uiSetAlign(UI.gridlist.staff, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff, "color_coded", true)
         eui:uiSetProperty(UI.gridlist.staff, "row_height", 30)
 
         UI.gridlist.staff2 = eui:uiCreateGridList(10, 50 + (contentH - 50) / 2 + 10,
                 contentW - 20, (contentH - 100) / 2, tocolor(0, 0, 0, 0), UI.container.onlinestaff)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.56)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "ID", 0.2)
-        eui:uiGridListAddColumn(UI.gridlist.staff2, "Duty", 0.24)
+        -- same 4 segments as the Admins list above (the hidden-admin cell
+        -- stays blank for every support row unless he is a hidden admin)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Supports Team", 0.50)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "ID", 0.14)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "", 0.16)
+        eui:uiGridListAddColumn(UI.gridlist.staff2, "Duty", 0.20)
         eui:uiSetAlign(UI.gridlist.staff2, "left", "center")
         eui:uiSetProperty(UI.gridlist.staff2, "color_coded", true)
         eui:uiSetProperty(UI.gridlist.staff2, "row_height", 30)
@@ -1766,9 +1773,12 @@ local function buildMainMenuUI()
                         pid = pid or tostring(entry[2] or "-")
                         local name = tostring(entry[3] or "-")
                         local rank = tostring(entry[5] or "")
-                        -- [user] the old WHITE "on duty hidden admin" prefix on
-                        -- the LEFT of the row is gone - the hidden-admin mark now
-                        -- sits inside the Duty column, left of the duty word.
+                        -- [user ref pic 1] the hidden-admin mark is NOT part of
+                        -- this name line any more (the old white left prefix and
+                        -- the later "hidden admin " duty prefix are both gone):
+                        -- a hidden admin keeps rank + name + account exactly like
+                        -- everybody else - only the viewer without the hidden
+                        -- entitlement still gets the "Anonymous" mask below.
                         local line = " -  "
                         if rank ~= "" then
                                 line = line .. staffHex(entry[6], "#ffffff") .. "[" .. rank .. "] "
@@ -1789,15 +1799,24 @@ local function buildMainMenuUI()
                         local row = eui:uiGridListAddRow(grid)
                         eui:uiGridListSetItemText(grid, row, 1, line)
                         eui:uiGridListSetItemText(grid, row, 2, idHex .. "ID: " .. pid)
+                        -- [user ref pic 1] column 3 = the "Hidden Admin" MIDDLE
+                        -- segment, written ONLY for a hidden admin and read
+                        -- between "ID: x" and the duty word:
+                        --   [Senior Management] Jonathan Christopher (S05)
+                        --   ID: 410   Hidden Admin   On-Duty
+                        -- entry[10] is the server's hidden-admin label flag
+                        -- (s_main.lua: hiddenadmin row AND an admin.isAdmin
+                        -- viewer) - the entitlement rules that decide who even
+                        -- RECEIVES the row are untouched, only the label moved.
+                        -- Every other row leaves the cell blank, so nothing
+                        -- shifts and the duty column keeps its own position.
+                        eui:uiGridListSetItemText(grid, row, 3,
+                                entry[10] and "#ffffffHidden Admin" or "")
                         -- [Fix #100 #3] the Duty column always reports the real
                         -- duty state; it used to be overwritten with "Hidden",
                         -- which left no way to see whether a member was on duty.
-                        -- [user] "hidden admin" sits to the LEFT of the duty word
-                        -- in the Duty column (only admin.isAdmin viewers get the
-                        -- row at all - entry[10] is their flag)
                         local dutyText = entry[9] and "#00ff00On-Duty" or "#ff3c3cOff-Duty"
-                        if entry[10] then dutyText = "#ffffffhidden admin " .. dutyText end
-                        eui:uiGridListSetItemText(grid, row, 3, dutyText)
+                        eui:uiGridListSetItemText(grid, row, 4, dutyText)
                         if isSupport then supportCount = supportCount + 1 else adminCount = adminCount + 1 end
                 end
                 eui:uiGridListSetColumnText(UI.gridlist.staff2, 1, "Supports Team  (" .. supportCount .. ")")

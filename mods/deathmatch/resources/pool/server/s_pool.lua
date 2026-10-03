@@ -37,7 +37,7 @@ function isValidType(elementType)
 end
 
 function showsize(thePlayer)
-	if not exports.integration:isPlayerScripter(thePlayer) then
+	if not exports["admin-system"]:playerHasRight(thePlayer, "pool.manage") then
 		return false
 	end
 	local players = #poolTable["player"]

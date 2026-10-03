@@ -1,7 +1,7 @@
 local emitters = { }
 
 function createEmitter(thePlayer, commandName, type)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.emitter") then
 		
 		if not (type) or (type - 0 > 3) or (type - 0 < 1) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Emitter Type]", thePlayer, 255, 194, 14)
@@ -37,7 +37,7 @@ end
 addCommandHandler("createemitter", createEmitter, false, false)
 
 function nearbyEmitters(thePlayer)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.emitter") then
 		local count = 0
 		outputChatBox("Nearby Emitters: ", thePlayer, 255, 194, 15)
 		local px, py, pz = getElementPosition(thePlayer)
@@ -62,7 +62,7 @@ end
 addCommandHandler("nearbyemitters", nearbyEmitters)
 
 function delEmitter(thePlayer, commandName, id)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.emitter") then
 		if not (id) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Emitter ID]", thePlayer, 255, 194, 14)
 		else
@@ -80,7 +80,7 @@ end
 addCommandHandler("delemitter", delEmitter)
 
 function delEmitters(thePlayer, commandName)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.emitter") then
 		local count = 0
 		for k, v in pairs( emitters ) do
 			destroyElement( v[5] )

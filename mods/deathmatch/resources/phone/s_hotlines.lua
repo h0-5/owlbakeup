@@ -606,7 +606,7 @@ end
 function read911Log(thePlayer)
 	local theTeam = getPlayerTeam(thePlayer)
 	local factiontype = getElementData(theTeam, "type")
-	if exports.integration:isPlayerTrialAdmin(thePlayer) or exports.integration:isPlayerSupporter(thePlayer) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.show911") then
 		local logMeBuffer = getElementData(getRootElement(), "911log") or { }
 		outputChatBox("Recent 911 calls:", thePlayer)
 		for a, b in ipairs(logMeBuffer) do

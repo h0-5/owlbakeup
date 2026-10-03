@@ -293,7 +293,7 @@ function setTempCallsign(thePlayer, commandName, vehID, ...)
 	local callsign = table.concat({...}, " ")
 	local realFactionID = getElementData(theElement, "faction") or -1
 	local factionLeaderStatus = getElementData(thePlayer, "factionleader") or 0
-	if(tonumber(realFactionID) == LSIAfactionID and tonumber(factionLeaderStatus) == 1 or exports.integration:isPlayerAdmin(thePlayer) and exports.global:isAdminOnDuty(thePlayer)) then
+	if(tonumber(realFactionID) == LSIAfactionID and tonumber(factionLeaderStatus) == 1 or exports["admin-system"]:playerHasRight(thePlayer, "admin.callsign") and exports.global:isAdminOnDuty(thePlayer)) then
 		if vehID and callsign then
 			local theVehicle = exports.pool:getElement("vehicle", tonumber(vehID))
 			if theVehicle then
@@ -315,7 +315,7 @@ addCommandHandler("setcallsign", setTempCallsign)
 function removeTempCallsign(thePlayer, commandName, vehID)
 	local realFactionID = getElementData(theElement, "faction") or -1
 	local factionLeaderStatus = getElementData(thePlayer, "factionleader") or 0
-	if(tonumber(realFactionID) == LSIAfactionID and tonumber(factionLeaderStatus) == 1 or exports.integration:isPlayerAdmin(thePlayer) and exports.global:isAdminOnDuty(thePlayer)) then
+	if(tonumber(realFactionID) == LSIAfactionID and tonumber(factionLeaderStatus) == 1 or exports["admin-system"]:playerHasRight(thePlayer, "admin.callsign") and exports.global:isAdminOnDuty(thePlayer)) then
 		if vehID then
 			local theVehicle = exports.pool:getElement("vehicle", tonumber(vehID))
 			if theVehicle then

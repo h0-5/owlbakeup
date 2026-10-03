@@ -1,5 +1,5 @@
 function checkActiveRoutes(thePlayer, commandName)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		local count = 0
 		outputChatBox("All active Routes:", thePlayer)
 		for i = 1, #routes do
@@ -16,7 +16,7 @@ end
 addCommandHandler("checkactiveroutes", checkActiveRoutes, false, false)
 
 function showActualOrders(thePlayer, commandName)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		local count = 0
 		local tempRoutes = {}
 		outputChatBox("[TRUCKER] All Actual Orders:", thePlayer)
@@ -44,7 +44,7 @@ end
 addCommandHandler("showActualOrders", showActualOrders, false, false)
 
 function showAllTruckMarkers(thePlayer, commandName, ...)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		local count = 0
 		local tempRoutes = {}
 		local search = ... and table.concat({...}, ' '):lower() or nil
@@ -76,7 +76,7 @@ end
 addCommandHandler("showAllTruckMarkers", showAllTruckMarkers, false, false)
 
 function scripterFetchActualOrders(thePlayer, commandName)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		outputChatBox("Fetched "..fetchActualOrders().." actual orders from SQL.", thePlayer)
 	else
 		outputChatBox("Only Full Admins can access /"..commandName..".", thePlayer, 255,0,0)
@@ -85,7 +85,7 @@ end
 addCommandHandler("fetchActualOrders", scripterFetchActualOrders, false, false)
 
 function addactualorder(thePlayer, commandName, orderWeight, InteriorID, ...)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		if not tonumber(orderWeight) or not tonumber(InteriorID) or not (...) then
 			outputChatBox( "SYNTAX: /" .. commandName .. " [orderWeight] [InteriorID] [Location Name]", thePlayer, 255, 194, 14 )
 			return false
@@ -111,7 +111,7 @@ end
 addCommandHandler("addactualorder", addactualorder, false, false)
 
 function addOrderManually(thePlayer, commandName , ...)
-	if (exports.integration:isPlayerScripter(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "trucker.manage") then
 		if not (...) then
 			outputChatBox( "SYNTAX: /" .. commandName .. " [Location Name]", thePlayer, 255, 194, 14 )
 			return false

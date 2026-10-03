@@ -76,7 +76,7 @@ function showCKInfo(text, name)
 	ckInfoWindow = guiCreateWindow(ax, ay, 350, 200, name and ( "A corpse (( " .. name .. " )) " ) or "A corpse of a dead body.", false)
 
 	local txt1 = guiCreateMemo(0.05, 0.12, 0.89, 0.7, tostring(text), true, ckInfoWindow)
-	guiSetFont(txt1, "default-bold-small")
+	guiSetFont(txt1, "default")
 	guiMemoSetReadOnly (txt1, true)
 
 	local cbutton = guiCreateButton(0.05, 0.85, 0.87, 0.1, "Close Menu", true, ckInfoWindow)

@@ -33,7 +33,7 @@ addEvent( "sendCKRequest", true )
 addEventHandler( "sendCKRequest", getRootElement(), sendCKRequest )
 
 function approveCK(thePlayer, commandName, targetPlayer)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.ckapprove") then
 		if not (targetPlayer) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [id]", thePlayer, 255, 194, 14)
 		else
@@ -93,7 +93,7 @@ end
 addCommandHandler("cka", approveCK)
 
 function declineCK(thePlayer, commandName, targetPlayer)
-	if exports.integration:isPlayerTrialAdmin(thePlayer) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.ckapprove") then
 		if not (targetPlayer) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [id]", thePlayer, 255, 194, 14)
 		else

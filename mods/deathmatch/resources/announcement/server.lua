@@ -54,18 +54,14 @@ function adminAnnouncement(thePlayer, commandName, ...)
 			local players = exports.pool:getPoolElementsByType("player")
 			local username = getPlayerName(thePlayer)
 
-			-- [Fix batch 171] ONE text, ONE visible surface: it feeds the
-			-- top-centre card in announcement/client.lua (his picture 5).
-			-- The prefix stays SHORT (the card is compact) and follows the same
-			-- right the command gate uses, so a rank that holds admin.ann
-			-- announces as Admin even when the legacy identity check reads it
-			-- as neither admin nor support.
-			local annText, annR, annG, annB
-			if hasAnnRight(thePlayer) or exports.integration:isPlayerTrialAdmin(thePlayer) then
-				annText, annR, annG, annB = "Admin: " .. message, 255, 194, 14
-			else
-				annText, annR, annG, annB = "SUP: " .. message, 255, 100, 150
-			end						-- [Fix batch 171] the notifications pill is NOT sent anymore: the
+			-- [Fix batch 172] no word on the card: the raw message goes out as-is.
+			-- The owner does not want "Admin: " / "SUP: " prepended; the gate above
+			-- (admin.ann + legacy identity fallback) is untouched, and every other
+			-- announcement:post producer (this file's sendTopNotification export and
+			-- mysql/s_server_global_maintenance) already passes its own string, so
+			-- nothing relied on the prefix.
+			local annText, annR, annG, annB = message, 255, 194, 14
+						-- [Fix batch 171] the notifications pill is NOT sent anymore: the
 			-- card is the ONE visible surface. The pill would stack a second
 			-- copy at y 60-100 (its stackTop lives in his dirty
 			-- notifications/c_notifications.lua, so it can never be moved to

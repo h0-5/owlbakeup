@@ -122,7 +122,7 @@ local function parkVehicle(player, veh, lotID)
 	end
 
 	local owner = tonumber(getElementData(veh, "owner")) or -1
-	if owner ~= charID(player) and not exports.integration:isPlayerTrialAdmin(player) then
+	if owner ~= charID(player) and not exports["admin-system"]:playerHasRight(player, "admin.vehicleparking") then
 		notify(player, "This is not your vehicle", "هذه ليست مركبتك", "error")
 		return
 	end
@@ -176,7 +176,7 @@ local function takeVehicleOut(player, lotID, vehID)
 		notify(player, "That vehicle is not parked in this lot", "هذه المركبة ليست موقوفة في هذا الموقف", "error")
 		return
 	end
-	if tonumber(row.owner) ~= charID(player) and not exports.integration:isPlayerTrialAdmin(player) then
+	if tonumber(row.owner) ~= charID(player) and not exports["admin-system"]:playerHasRight(player, "admin.vehicleparking") then
 		notify(player, "This is not your vehicle", "هذه ليست مركبتك", "error")
 		return
 	end
@@ -225,7 +225,7 @@ addEventHandler("onMarkerHit", resourceRoot, function(hitElement, matchingDimens
 		local veh = getPedOccupiedVehicle(hitElement)
 		if getPedOccupiedVehicle(hitElement) ~= veh then return end
 		local owner = tonumber(getElementData(veh, "owner")) or -1
-		if owner ~= charID(hitElement) and not exports.integration:isPlayerTrialAdmin(hitElement) then
+		if owner ~= charID(hitElement) and not exports["admin-system"]:playerHasRight(hitElement, "admin.vehicleparking") then
 			return
 		end
 		triggerClientEvent(hitElement, PARKING.EVENTS.showParking, hitElement, tonumber(lotID))
@@ -323,7 +323,7 @@ end)
 
 -- admin helper: /parkedlists
 addCommandHandler("parkedlists", function(player)
-	if not exports.integration:isPlayerTrialAdmin(player) then return end
+	if not exports["admin-system"]:playerHasRight(player, "admin.vehicleparking") then return end
 	local rows = mysql:query_rows_assoc("SELECT * FROM `vehicle_parking` ORDER BY `lot`") or {}
 	outputChatBox("[PARKING] " .. #rows .. " vehicle(s) stored:", player, 41, 71, 204)
 	for _, row in ipairs(rows) do

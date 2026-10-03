@@ -1,5 +1,5 @@
 function doTheft(thePlayer, command, targetPlayerName, targetVehicle)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.vehtheft") then
 		if not (targetPlayerName) or not (targetVehicle) then
 			outputChatBox("SYNTAX: /" .. command .. " [Partial Player Name / ID] [Vehicle ID]", thePlayer, 255, 194, 14)
 		else

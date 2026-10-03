@@ -315,7 +315,7 @@ end)
 
 -- live, in-chat database report for admins
 addCommandHandler("staffdb", function(player)
-        if player and not (exports.integration and exports.integration:isPlayerStaff(player)) then
+        if player and not (type(playerHasRight) == "function" and playerHasRight(player, "admin.manager.editranks")) then
                 return
         end
         runSetup()

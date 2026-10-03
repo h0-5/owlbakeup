@@ -1,6 +1,6 @@
 function showStats(thePlayer, commandName, targetPlayerName)
 	local showPlayer = thePlayer
-	if exports.integration:isPlayerTrialAdmin(thePlayer) and targetPlayerName then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.viewstats") and targetPlayerName then
 		targetPlayer = exports.global:findPlayerByPartialNick(thePlayer, targetPlayerName)
 		if targetPlayer then
 			if getElementData(targetPlayer, "loggedin") == 1 then

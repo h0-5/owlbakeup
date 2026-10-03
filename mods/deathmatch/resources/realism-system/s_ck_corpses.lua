@@ -90,7 +90,7 @@ addEventHandler("onResourceStart", getResourceRootElement(), loadAllCorpses)
 function getNearbyCKs(thePlayer, commandName)
 local theTeam = getPlayerTeam(thePlayer)
 local factionType = getElementData(theTeam, "type")
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) or factionType == 4 then
+	if (exports["admin-system"]:playerHasRight(thePlayer, "admin.cknearby")) or factionType == 4 then
 		local posX, posY, posZ = getElementPosition(thePlayer)
 		outputChatBox("Nearby Character Kill Bodies:", thePlayer, 255, 126, 0)
 		local count = 0

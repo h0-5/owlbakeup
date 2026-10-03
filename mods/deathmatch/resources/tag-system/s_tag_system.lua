@@ -50,7 +50,7 @@ addEvent("createTag", true )
 addEventHandler("createTag", getRootElement(), makeTagObject)
 
 function clearNearbyTag(thePlayer)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.tagmanage") then
 		local x, y, z = getElementPosition(thePlayer)
 		local object = nil
 		local dist = 999999
@@ -79,7 +79,7 @@ end
 addCommandHandler("delnearbytag", clearNearbyTag, false, false)
 
 function showNearbyTags(thePlayer)
-	if (exports.integration:isPlayerTrialAdmin(thePlayer)) then
+	if exports["admin-system"]:playerHasRight(thePlayer, "admin.tagmanage") then
 		local x, y, z = getElementPosition(thePlayer)
 		local count = 0
 		outputChatBox("Nearby Spraytags:", thePlayer, 255, 126, 0)

@@ -33,7 +33,7 @@ function startGUI(player)
 	if (logged==1) then
 		local theTeam = getPlayerTeam(player)
 		local factionType = getElementData(theTeam, "type")
-		if factionType==2 or exports.integration:isPlayerTrialAdmin(player) then
+		if factionType==2 or exports["admin-system"]:playerHasRight(player, "admin.arrest") then
 			triggerClientEvent(player, "PrisonGUI", player, t)
 		end
 	end

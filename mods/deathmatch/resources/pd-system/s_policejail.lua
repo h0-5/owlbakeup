@@ -253,7 +253,7 @@ function jailRelease(thePlayer, commandName, targetPlayerNick)
 		local theTeam = getPlayerTeam(thePlayer)
 		local factionType = getElementData(theTeam, "type")
 		
-		if factionType == 2 and isInArrestColshape(thePlayer) or exports.integration:isPlayerTrialAdmin(thePlayer) and getElementData(thePlayer, "duty_admin") == 1 then
+		if factionType == 2 and isInArrestColshape(thePlayer) or exports["admin-system"]:playerHasRight(thePlayer, "admin.release") and getElementData(thePlayer, "duty_admin") == 1 then
 			if not (targetPlayerNick) then
 				outputChatBox("SYNTAX: /release [Player Partial Nick / ID]", thePlayer, 255, 194, 14)
 			else

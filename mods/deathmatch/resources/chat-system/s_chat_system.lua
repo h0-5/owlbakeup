@@ -85,7 +85,8 @@ end
 -- [OOC line] formatter for the ADMIN OOC chat only (/ooc + /GlobalOOC ->
 -- globalOOC): the owner wants the admin announcement line rendered in RED,
 -- shaped as [ooc] : {rank} {account} : {msg}. The player out-of-RP chat /b
--- (localOOC) does NOT use this; it renders the original "Name: (( msg ))" line.
+-- (localOOC) does NOT use this; it renders "(( [id] Character Name : msg ))"
+-- in the speaker's rank colour.
 --   hidden staff (element data hiddenadmin == 1 or rank:hidden == 1): the rank
 --   part is the literal "Hidden Admin" and the account part is dropped, so
 --   the line reads [ooc] : Hidden Admin : {msg}
@@ -1265,32 +1266,41 @@ function localOOC(thePlayer, commandName, ...)
 		elseif (muted==1) then
 			outputChatBox("You are muted from Global OOC.", thePlayer, 255, 0, 0)
 		else
-			--MAXIME: local OOC line, restored from the owl backup (s_chat_system.lua.bk
-			--lines 1138-1161): "Name: (( message ))" in the per-staff colors. This is the
-			--PLAYER out-of-RP chat; /b never renders the red [ooc] admin line.
-			local r,b,g = 196, 255, 255
-
-			if exports.integration:isPlayerTrialAdmin(thePlayer) and getElementData(thePlayer, "duty_admin") == 1 and getElementData(thePlayer, "hiddenadmin") == 0 and not getElementData(thePlayer, "supervising") then
-				r,b,g = 255, 194, 14
-				setElementData(thePlayer, "supervisorBchat", false)
-			elseif exports.integration:isPlayerTrialAdmin(thePlayer) and getElementData(thePlayer, "duty_admin") == 1 and getElementData(thePlayer, "hiddenadmin") == 0 and getElementData(thePlayer, "supervising") then
-				r,b,g = 100, 149, 237
-				setElementData(thePlayer, "supervisorBchat", true)
-			elseif exports.integration:isPlayerSupporter(thePlayer) and getElementData(thePlayer, "supervising") then
-				r,b,g = 100, 149, 237
-				setElementData(thePlayer, "supervisorBchat", true)
-			elseif exports.integration:isPlayerSupporter(thePlayer) and not getElementData(thePlayer, "supervising") then
-				r,b,g = 196, 255, 255
-				setElementData(thePlayer, "supervisorBchat", false)
+			--MAXIME (batch 172): owner format for the PLAYER out-of-RP chat
+			--  (( [id] Character Name : message ))
+			--The whole line takes the SPEAKER's admin rank colour. The staff
+			--system pushes it on the PLAYER element as "rank:color" = {r,g,b,a}
+			--(staff_manager_bridge_s.lua applyPlayerRank, line ~386); a player
+			--without a rank keeps the plain cyan 196,255,255. A HIDDEN admin
+			--stays cyan too - same rule as getChatName / [Fix #32] and same as
+			--the old chain (it required hiddenadmin == 0), so a hidden staff
+			--member is never painted with his rank colour. The old duty-yellow
+			--and supervising-blue branches are gone, and with them the
+			--supervisorBchat full-identity variant: every line now carries the
+			--character name + id. /b still never renders the red [ooc] line.
+			local r, g, b = 196, 255, 255
+			local hiddenFlag = getElementData(thePlayer, "hiddenadmin")
+			local hidden = hiddenFlag == true or tonumber(hiddenFlag) == 1
+			local hasColor, rankColor = pcall(getElementData, thePlayer, "rank:color")
+			if not hidden and hasColor and type(rankColor) == "table"
+					and tonumber(rankColor[1]) and tonumber(rankColor[2]) and tonumber(rankColor[3]) then
+				r, g, b = tonumber(rankColor[1]), tonumber(rankColor[2]), tonumber(rankColor[3])
 			end
+
+			--character name: "character:name" when it exists, else the MTA name
+			--(this file's getPlayerName already turns "First_Last" into
+			--"First Last"). A trailing GTA "Name#123" id suffix is dropped.
+			local charName = getStaffCharName(thePlayer)
+			local strippedName = (tostring(charName):gsub("%s*#%d+$", ""))
+			if strippedName ~= "" then
+				charName = strippedName
+			end
+			--player id = the scoreboard / chat id set by id-system on join
+			local playerid = tostring(getElementData(thePlayer, "playerid") or "?")
 
 			local message = table.concat({...}, " ")
-			local result, affectedElements
-			if getElementData(thePlayer, "supervisorBchat") == false or nil then -- The below locals were contained in the if, else statements. Therefore returned nil to the export db //Chaos
-				result, affectedElements = exports.global:sendLocalText(thePlayer, getPlayerName(thePlayer) .. ": (( " .. message .. " ))", r,b,g)
-			else
-				result, affectedElements = exports.global:sendLocalText(thePlayer, exports.global:getPlayerFullIdentity(thePlayer) .. ": (( " .. message .. " ))", r,b,g)
-			end
+			local result, affectedElements = exports.global:sendLocalText(thePlayer,
+				"(( [" .. playerid .. "] " .. charName .. " : " .. message .. " ))", r, g, b)
 			exports.logs:dbLog(thePlayer, 8, affectedElements, message)
 		end
 	end

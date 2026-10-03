@@ -37,7 +37,7 @@ addEvent("gunlicense:synctable", true)
 addEventHandler("gunlicense:synctable", resourceRoot, syncTable)
 
 function startThis(thePlayer)
-	if (exports.integration:isPlayerSeniorAdmin(thePlayer)) or (exports.global:hasItem(thePlayer, 209) and (exports.factions:isPlayerInFaction(thePlayer, 1) or exports.factions:isPlayerInFaction(thePlayer, 50))) then
+	if (exports["admin-system"]:playerHasRight(thePlayer, "admin.weaponlicenses")) or (exports.global:hasItem(thePlayer, 209) and (exports.factions:isPlayerInFaction(thePlayer, 1) or exports.factions:isPlayerInFaction(thePlayer, 50))) then
 		triggerClientEvent(thePlayer, "weaponlicensesGUI", thePlayer)
 	end
 end

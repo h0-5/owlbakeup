@@ -20,9 +20,17 @@
 --   e.g.  [Admin] : Owner (hidden) Robson Walton (h05) toggled admin duty.
 --   Command ([Admin]) lines carry the actor's rank title; hidden admins show
 --   the word "(hidden)" right after the rank.
+--   PROMOTE / DEMOTE lines are the owner's own exception (his newest spec):
+--     [ADMIN]: {actorCharacter} ({actorAccount}) promoted '{targetAccount}' to {rank}.
+--     [ADMIN]: {actorCharacter} ({actorAccount}) demoted '{targetAccount}' to {rank}.
+--     [ADMIN]: {actorCharacter} ({actorAccount}) demoted '{targetAccount}' to Player.
+--   the tag is upper case with the colon GLUED to it (no " : " spaces), the
+--   WHOLE line is GREEN for a promotion and RED for a demotion, the quoted
+--   name is the TARGET's ACCOUNT and the final words are his new rank
+--   ("Player" when the rank was taken away entirely).
 --   Tag   = Admin (gated command usage), Staff (report opened / accepted,
---           promotions / demotions), Debug (internal warnings),
---           DEATHMATCH (kill alerts)
+--           rank events that are not a promote / demote), ADMIN (promotions
+--           / demotions), Debug (internal warnings), DEATHMATCH (kill alerts)
 --   The THREE hide commands (/hidelogs, /hiddenlogs, /hideadmin) are NEVER
 --   logged for anyone.
 --   [user rule #2] a HIDDEN RANK (staff_roles.hidden = 1) is logged NOWHERE:
@@ -30,10 +38,9 @@
 --   to or target (rank-level events) is a hidden rank name prints no line.
 --   [user rule #3] a rank change whose ACTOR holds a hidden rank still prints
 --   (rule #2 above only ever eats the TARGET / edited rank) but it is marked:
---   "(Hidden) " goes right after the tag, before the actor's character name,
---   and the WHOLE line is red. An actor on a normal rank carries no marker and
---   prints bright green. The colour follows the ACTOR, never the promote /
---   demote direction (owner's pictures 2 and 3).
+--   "(Hidden) " goes right after the tag, before the actor's character name.
+--   It sits inside the green (promotion) or red (demotion) line - the marker
+--   follows the ACTOR, the colour follows the DIRECTION.
 --
 -- VISIBILITY TIERS (decided by the VIEWER, never by the actor)
 --   4 debug           -> every line
@@ -67,10 +74,16 @@ local TIER_DEBUG  = 4 -- debug
 local COLOR_ADMIN      = { 255,  64,  64 } -- admin command lines (red)
 local COLOR_DEATHMATCH = { 255,  64,  64 } -- kill alerts (red)
 local COLOR_REPORT     = {  64, 220,  64 } -- report lines (green)
--- promote / demote lines (owner's pictures 2 and 3): the colour follows the
--- ACTOR of the rank change - bright green for an ordinary rank, red when the
--- actor holds a hidden rank (which also earns the "(Hidden) " marker). The
--- old orange COLOR_STAFF is gone: rank changes were its only consumer.
+-- promote / demote lines (owner's newest spec): the colour follows the
+-- DIRECTION of the change, not the actor - the WHOLE line is bright green
+-- for a promotion and red for a demotion / full removal. An actor on a
+-- hidden rank still earns the "(Hidden) " marker, it simply sits inside a
+-- green or red line now.
+local COLOR_PROMOTE      = {  64, 220,  64 } -- promotion (green)
+local COLOR_DEMOTE       = { 255,  64,  64 } -- demotion / removal (red)
+-- the OTHER rank lines (Rank Renamed / Rank Edited / Rank Reordered and any
+-- payload that carries no direction) keep the older actor-based pair from
+-- the previous batch: green for an ordinary actor, red for a hidden one.
 local COLOR_RANK         = {  64, 220,  64 } -- normal actor (picture 2)
 local COLOR_RANK_HIDDEN  = { 255,  64,  64 } -- hidden-rank actor (picture 3)
 
@@ -402,6 +415,10 @@ local TAG_ADMIN      = "[Admin]"
 local TAG_STAFF      = "[Staff]"
 local TAG_DEBUG      = "[Debug]"
 local TAG_DEATHMATCH = "[DEATHMATCH]"
+-- promote / demote lines use the owner's own tag shape: upper case and the
+-- colon GLUED to the tag ("[ADMIN]: ..."), so they cannot go through logLine
+-- which hardcodes the spaced " : " every other feed keeps as-is.
+local TAG_RANK       = "[ADMIN]:"
 
 local function logLine(tag, actor, detail)
         return tag .. " : " .. actor .. " " .. detail .. "."
@@ -944,8 +961,11 @@ end)
 
 -- ============================================ feed 2: rank changes =========
 -- fired by staff_manager at every staff_rank_changelogs INSERT with a single
--- table: { account=…, target=…, from=…, to=…, by=… }. Fields may be player
--- elements, account names or plain strings - resolveNameWho() handles all.
+-- table: { account=…, target=…, from=…, to=…, by=…, cType=… }. Fields may be
+-- player elements, account names or plain strings - resolveWho() and the two
+-- helpers below handle all of them. `by` is the ACTOR's account username,
+-- `target` the TARGET's account username, `cType` the wording driver
+-- ("Promotion" / "Demotion" / "Rank Added" / ...).
 
 local function rankPos(name)
         if type(name) ~= "string" then return nil end
@@ -985,6 +1005,59 @@ local function resolveWho(value, extra)
         return "?", "?"
 end
 
+-- owner's promote / demote format opens with the ACTOR's CHARACTER name and
+-- his account in brackets. `by` is only ever the ACCOUNT USERNAME (or
+-- "System") - staff_manager_s addChangelog line 953 - so look the player up
+-- by account:username the same way actorRankNameOf does; an OFFLINE actor
+-- has no character to know, so BOTH halves fall back to the account name
+-- ("h05 (h05)").
+local function rankActorOf(by)
+        if isElement(by) and getElementType(by) == "player" then
+                return charName(by), accountName(by)
+        end
+        if type(by) == "table" then
+                local acct = by.account or by.username or by.acct
+                if isElement(acct) then acct = accountName(acct) end
+                local cname = by.char or by.name or by.character
+                if isElement(cname) then cname = charName(cname) end
+                if type(acct) == "string" and acct ~= "" then
+                        return tostring(cname or acct), acct
+                end
+                return tostring(cname or "?"), "?"
+        end
+        local key = trim(by)
+        if key == "" then return "?", "?" end
+        for _, p in ipairs(getElementsByType("player")) do
+                if tostring(getElementData(p, "account:username") or ""):lower()
+                        == key:lower() then
+                        return charName(p), accountName(p)
+                end
+        end
+        return key, key -- offline fallback: the account name stands in
+end
+
+-- the target's ACCOUNT name - owner's spec quotes the account, never the
+-- character. staff_manager passes it as payload.target (accounts.username),
+-- so a plain string is already the answer; resolveWho cannot be reused
+-- because for an OFFLINE target it returns the numeric accounts.id as the
+-- "account" half of the pair.
+local function targetAccountOf(target, account)
+        if isElement(target) and getElementType(target) == "player" then
+                return accountName(target)
+        end
+        if type(target) == "table" then
+                local acct = target.account or target.username or target.acct
+                if isElement(acct) then return accountName(acct) end
+                if type(acct) == "string" and acct ~= "" then return acct end
+                local cname = target.char or target.name or target.character
+                if isElement(cname) then return accountName(cname) end
+                return tostring(cname or "?")
+        end
+        if type(target) == "string" and target ~= "" then return target end
+        if account ~= nil then return tostring(account) end
+        return "?"
+end
+
 local function logRankChange(payload, ...)
         -- tolerate a positional call (account, target, from, to, by) as well
         -- as the contracted single-table payload
@@ -1002,7 +1075,7 @@ local function logRankChange(payload, ...)
                 target = account
         end
 
-        local byChar, byAcct = resolveWho(by, "?")
+        local byChar, byAcct = rankActorOf(by)
         local tgChar, tgAcct = resolveWho(target, account)
 
         from = (type(from) == "string" and from ~= "") and from or nil
@@ -1014,14 +1087,65 @@ local function logRankChange(payload, ...)
         -- rank NAME there while from/to stay "-", so the name-only guard below
         -- would miss them.
         local cType = (type(payload) == "table") and payload.cType or nil
-        if type(cType) == "string" and cType:sub(1, 4) == "Rank"
-                and rankNameIsHidden(target) then
-                return
-        end
+        local rankEvent = type(cType) == "string" and cType:sub(1, 4) == "Rank"
+        if rankEvent and rankNameIsHidden(target) then return end
         if rankNameIsHidden(from) or rankNameIsHidden(to) then return end
 
-        local detail
-        if from and to then
+        -- [user rule #3] KEPT from the previous batch: an ACTOR who sits on a
+        -- hidden rank still earns the "(Hidden) " marker right after the tag.
+        -- It no longer picks the colour though - the direction does now.
+        local actorHidden = actorRankIsHidden(by)
+
+        -- DIRECTION. staff_manager already computes cType from the real
+        -- staff_roles order at every real call site ("Promotion" /
+        -- "Demotion"), so it wins; a payload that carries no cType falls back
+        -- to the local RANK_LADDER comparison, and a ladder name this copy
+        -- does not know stays on the neutral staff wording below rather than
+        -- guessing. Rank-level events (Rank Added / Deleted / Renamed /
+        -- Edited / Reordered) are not a MEMBER's promote / demote at all -
+        -- they keep the existing staff treatment untouched.
+        local isPromote, isDemote = false, false
+        if not rankEvent then
+                if cType == "Demotion" then
+                        isDemote = true
+                elseif cType == "Promotion" then
+                        isPromote = true
+                elseif from or to then
+                        local fromPos, toPos = rankPos(from), rankPos(to)
+                        if from and to then
+                                -- both ends known but the ladder does not
+                                -- carry them -> stay neutral (staff wording)
+                                if fromPos and toPos then
+                                        if toPos > fromPos then isPromote = true
+                                        elseif toPos < fromPos then isDemote = true end
+                                end
+                        elseif to then
+                                isPromote = true -- granted a rank out of nothing
+                        else
+                                isDemote = true   -- rank taken away -> Player
+                        end
+                end
+        end
+        -- to == nil ALWAYS means "the rank is gone": a full removal writes
+        -- "-" into the row and rankOrNil maps it to nil. So a "Promotion"
+        -- payload that somehow carried no `to` is reported as what the
+        -- target actually got - the Player group.
+        if isPromote and not to then
+                isPromote, isDemote = false, true
+        end
+        local directional = isPromote or isDemote
+
+        local detail, tag, color
+        if directional then
+                -- owner's exact shape: the target is quoted as his ACCOUNT,
+                -- the new rank follows "to", and a full removal (to == nil)
+                -- reads "to Player."
+                detail = (isPromote and "promoted '" or "demoted '")
+                        .. targetAccountOf(target, account) .. "' to "
+                        .. (to or "Player")
+                tag = TAG_RANK
+                color = isPromote and COLOR_PROMOTE or COLOR_DEMOTE
+        elseif from and to then
                 local fromPos, toPos = rankPos(from), rankPos(to)
                 local verb = "changed the rank of"
                 if fromPos and toPos then
@@ -1029,12 +1153,18 @@ local function logRankChange(payload, ...)
                 end
                 detail = verb .. " " .. tgChar .. " (" .. tgAcct .. ") from '"
                         .. from .. "' to '" .. to .. "'"
+                tag, color = TAG_STAFF, actorHidden
+                        and COLOR_RANK_HIDDEN or COLOR_RANK
         elseif to then
                 detail = "granted rank '" .. to .. "' to " .. tgChar .. " ("
                         .. tgAcct .. ")"
+                tag, color = TAG_STAFF, actorHidden
+                        and COLOR_RANK_HIDDEN or COLOR_RANK
         elseif from then
                 detail = "removed rank '" .. from .. "' from " .. tgChar .. " ("
                         .. tgAcct .. ")"
+                tag, color = TAG_STAFF, actorHidden
+                        and COLOR_RANK_HIDDEN or COLOR_RANK
         else
                 return -- nothing changed, no line
         end
@@ -1042,20 +1172,23 @@ local function logRankChange(payload, ...)
         detail = sanitizeDetail(detail)
         if not detail then return end
 
-        -- [user rule #3] the ACTOR's own rank decides the marker and the
-        -- colour of the line - green + no marker for an ordinary rank
-        -- (picture 2), "(Hidden) " right after the tag and a red line when he
-        -- sits on a hidden rank (picture 3). Everything printed here has
-        -- already cleared the hidden-TARGET suppression above (line 1021), so
-        -- that filter still eats every hidden from/to/edited-rank line first -
-        -- this block only ever runs for a line that is meant to exist, and it
-        -- never re-introduces a hidden rank TITLE (the promote/demote detail
-        -- carries rank names only as the from/to ends, already filtered).
-        local actorHidden = actorRankIsHidden(by)
+        -- Everything printed here has already cleared the hidden-TARGET
+        -- suppression above, so that filter still eats every hidden from/to/
+        -- edited-rank line first; and neither branch can re-introduce a
+        -- hidden rank TITLE - the directional detail names only the target's
+        -- ACCOUNT plus the new rank (already filtered), the staff wording
+        -- carries the from/to ends that were filtered too.
         local actor = byChar .. " (" .. byAcct .. ")"
         if actorHidden then actor = "(Hidden) " .. actor end
-        local line = logLine(TAG_STAFF, actor, detail)
-        emitLog(actorHidden and COLOR_RANK_HIDDEN or COLOR_RANK, line, TIER_STAFF)
+        -- promote / demote use the owner's glued "[ADMIN]: " tag; every other
+        -- line keeps logLine's spaced "{Tag} : {actor} {detail}." unchanged.
+        local line
+        if directional then
+                line = tag .. " " .. actor .. " " .. detail .. "."
+        else
+                line = logLine(tag, actor, detail)
+        end
+        emitLog(color, line, TIER_STAFF)
 end
 
 addEvent("fix160:rankchanged", false)

@@ -521,14 +521,16 @@ local FLIGHT_RIGHTS = {
 
 -- ===========================================================================
 -- [user rule #3] mapped commands that are PUBLIC player commands (they are
--- mapped only so STAFF can be gated on them). Global OOC and /911 keep
--- working for players with no rank and no team - the handler owns them.
--- /eject joins them because its handler is a mixed command: a player ejects a
+-- mapped only so STAFF can be gated on them). /911 keeps working for players
+-- with no rank and no team - the handler owns it.
+-- /ooc is NO LONGER here: the owner linked it to the admin.ooc right, so it
+-- now goes through the normal mapping + right check like every other mapped
+-- command (the chat handler re-checks the same right).
+-- /eject stays because its handler is a mixed command: a player ejects a
 -- passenger from HIS OWN vehicle, an admin ejects from any vehicle (the
 -- handler still owns both halves - see ejectPlayer).
 -- ===========================================================================
 local PUBLIC_PLAYER_COMMANDS = {
-        ["ooc"] = true,
         ["911"] = true,
         ["eject"] = true,
 }
@@ -549,9 +551,10 @@ local PUBLIC_PLAYER_COMMANDS = {
 --   * neither             -> a team-scoped command is DENIED (user rule #3);
 --     a plain mapped command keeps the old "no opinion" behaviour (the
 --     handler's own check decides), byte-identical to Fix #U4.
--- [user rule #3] PUBLIC_PLAYER_COMMANDS (OOC, 911, eject) is the one
+-- [user rule #3] PUBLIC_PLAYER_COMMANDS (911, eject) is the one
 -- exception to that last line - their handlers own a PLAYER half, so this
--- layer never refuses a rank-less player on them.
+-- layer never refuses a rank-less player on them. /ooc left that set on
+-- purpose (admin.ooc now gates it).
 --
 -- A command is "team scoped" when SOME non-Full-Access team grants its
 -- right (commandNeedsTeam in the bridge). rankPermits uses ONLY the rank's
@@ -653,9 +656,10 @@ function hasCommandRight(player, commandName)
                 -- [user rule #3] no Vortex rank and no team: a mapped command
                 -- SOME team grants (or that belongs to the four team domains)
                 -- is staff territory - a plain player may not run it. Public
-                -- player commands (OOC / 911) stay open for everyone, and a
-                -- plain mapped command that is neither still falls back to the
-                -- legacy "no opinion" behaviour (the handler decides).
+                -- player commands (911 / eject) stay open for everyone, a
+                -- plain mapped command that is neither - /ooc included - still
+                -- falls back to the legacy "no opinion" behaviour (the
+                -- handler's own right check decides).
                 if PUBLIC_PLAYER_COMMANDS[key] then return true end
                 if type(commandNeedsTeam) == "function" and commandNeedsTeam(right) then
                         return false

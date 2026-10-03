@@ -85,15 +85,15 @@ end
 -- [OOC line] shared formatter for /ooc (global) and /b (local): the owner wants
 -- the whole OOC line rendered in RED, shaped as [ooc] : {rank} {account} : {msg}
 --   hidden staff (element data hiddenadmin == 1 or rank:hidden == 1): the rank
---   part is the literal "A hidden admin" and the account part is dropped, so
---   the line reads [ooc] : A hidden admin : {msg}
+--   part is the literal "Hidden Admin" and the account part is dropped, so
+--   the line reads [ooc] : Hidden Admin : {msg}
 --   visible staff: [ooc] : {rank} {account} : {msg}
 --   player without any rank: [ooc] : {account} : {msg}
 local function buildOocLine(thePlayer, message)
 	local hidden = getElementData(thePlayer, "hiddenadmin")
 	local hiddenRank = getElementData(thePlayer, "rank:hidden")
 	if hidden == true or tonumber(hidden) == 1 or hiddenRank == true or tonumber(hiddenRank) == 1 then
-		return "[ooc] : A hidden admin : " .. message
+		return "[ooc] : Hidden Admin : " .. message
 	end
 	local account = getElementData(thePlayer, "account:username")
 	if not account or account == "" then
@@ -871,7 +871,27 @@ end
 addEventHandler("onPlayerChat", getRootElement(), blockChatMessage)
 -- End of Main Chat
 
+-- [OOC right] /ooc and /GlobalOOC are LINKED to the admin.ooc right of the
+-- administration panel (staff_manager_rights -> command_gates_s maps "ooc" ->
+-- admin.ooc). The gate layer already closes the typed command for anyone the
+-- right refuses; this is the handler-side enforcement of the same right so
+-- the link holds for every entry point (the /GlobalOOC alias, a direct call)
+-- and can never open up on its own. Fail-closed on a dead export, exactly
+-- like hasHighStaffRight below.
+local function hasOocRight(thePlayer)
+	local ok, res = pcall(function()
+		return exports['admin-system']:playerHasRight(thePlayer, "admin.ooc")
+	end)
+	return ok and res and true or false
+end
+
 function globalOOC(thePlayer, commandName, ...)
+	if isElement(thePlayer) and getElementType(thePlayer) == "player"
+			and not hasOocRight(thePlayer) then
+		outputChatBox("You do not have permission to use the OOC chat.", thePlayer, 255, 0, 0)
+		return
+	end
+
 	local logged = tonumber(getElementData(thePlayer, "loggedin"))
 
 	if (logged==1) then

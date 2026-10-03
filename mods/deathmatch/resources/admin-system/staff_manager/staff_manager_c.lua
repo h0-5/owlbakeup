@@ -72,6 +72,14 @@ local rank_to_delete = nil      -- role id pending delete-confirmation
 -- (a Trial clicking where the promote/kick buttons used to be executed the
 -- action because only uiSetVisible(false) was applied).
 local canEditMembers = false
+-- [user rule #4] the two staff buttons in the الهيئة section are NOT
+-- admin.manager.editmembers: ADD is owner.giverole and REMOVE is
+-- owner.takerole. The server already re-checks each of those rights
+-- inside rpadmin:addNewAdmin / rpadmin:removeAdmin; these flags come
+-- from the same panelRights payload, so a viewer without them never
+-- sees the button and cannot dispatch it either.
+local canGiveRole = false
+local canTakeRole = false
 local canEditRanks = false
 -- [Fix #160] A5: the Resources/Mods section + its start/stop/restart buttons
 -- are one SECTION permission (admin.manager.resources); panelRights mirrors
@@ -121,6 +129,17 @@ local panelData = { changelogs = {} }
 local teamData = { teams = {}, templates = {} }
 local selectedTeamID = nil
 local teamRightsTarget = nil
+-- [user] the hidden flag the team-rights editor OPENED with - compared on
+-- Save so rpadmin:teamSetHidden fires only when the toggle really changed.
+-- The old code re-read the flag through findTeamByID, a local declared LATER
+-- in this file: "attempt to call a nil value" aborted this branch right
+-- after teamSetRights, so the window never closed and staff_teams.hidden
+-- never reached the DB (every team came back unhidden).
+local teamRightsHiddenBase = nil
+-- [user] the rank the admin is editing - kept across refreshPanel's grid
+-- refill (a cleared selection made Save silently do nothing, which is how a
+-- ticked hidden flag "never saved")
+local selectedRoleID = nil
 
 
 --[[ sidebar sections — reconstructed menu table (the decompiler collapsed
@@ -464,8 +483,10 @@ function UIKitReady()
         UI.checkbox.team_rights_select_all = eui:uiCreateCheckBox(10, 390, 200, 25,
                 "Select All", false, tocolor(255, 0, 0), UI.window.team_rights)
         eui:uiSetFontSize(UI.checkbox.team_rights_select_all, 0.8)
-        -- [Batch rule 2] hide THIS team from viewers who are not rank 20/21
-        -- or dev-team members (applied together with Save Rights)
+        -- [Batch rule 2 / 2f] hide THIS team from every viewer the server's
+        -- staffCanSeeHiddenStaff refuses (rank 20/21, hidden-rank holders,
+        -- hidden-team holders, dev-team members; everyone else)
+        -- (applied together with Save Rights)
         UI.checkbox.team_hidden = eui:uiCreateCheckBox(220, 390, 215, 25,
                 "Hidden team", false, tocolor(255, 0, 0), UI.window.team_rights)
         eui:uiSetFontSize(UI.checkbox.team_hidden, 0.8)
@@ -538,9 +559,10 @@ function UIKitReady()
         eui:uiSetFont(UI.edit.rank_name, "default-large")
         UI.rectangle.rank_color = eui:uiCreateRectangle(PANEL_W - MENU_W - 15 - 60, 65, 50, 25,
                 tocolor(255, 255, 255, 255), false, false, false, false, UI.container.ranks)
-        -- [Batch rule 2] hide the SELECTED rank (saved together with Save
-        -- Changes). Only rank 20/21 + dev-team viewers ever receive hidden
-        -- ranks, so everyone else simply has nothing to toggle here.
+        -- [Batch rule 2 / 2f] hide the SELECTED rank (saved together with Save
+        -- Changes). Only the viewers staffCanSeeHiddenStaff accepts ever
+        -- receive hidden ranks, so everyone else simply has nothing to
+        -- toggle here.
         UI.checkbox.rank_hidden = eui:uiCreateCheckBox(588, 65, 88, 25,
                 "Hidden", false, tocolor(255, 0, 0), UI.container.ranks)
         eui:uiSetFontSize(UI.checkbox.rank_hidden, 0.8)
@@ -561,6 +583,22 @@ function UIKitReady()
                 { en = "Rename Rank", ar = "إعادة تسمية" }, tocolor(6, 9, 14, 255), UI.container.ranks)
         eui:uiSetProperty(UI.button.rename_rank, "TextColor", tocolor(255, 255, 255, 255))
         eui:uiSetProperty(UI.button.rename_rank, "HoverGlow", true)
+        -- [user rule #5] REORDER a rank: the rank ID is the ladder position
+        -- everything else reads, so the Ranks section needs a control for it
+        -- (the /setroleid command is the matching chat-side shortcut).
+        -- x=490 sits after rename_rank (330..480) and before Save Changes,
+        -- which is anchored to the right edge, so nothing overlaps.
+        UI.button.reorder_rank = eui:uiCreateButton(490, PANEL_H - 10 - 45, 150, 35,
+                { en = "Reorder ID", ar = "ترتيب الآيدي" }, tocolor(6, 9, 14, 255), UI.container.ranks)
+        eui:uiSetProperty(UI.button.reorder_rank, "TextColor", tocolor(120, 200, 255, 255))
+        eui:uiSetProperty(UI.button.reorder_rank, "HoverGlow", true)
+
+        -- the ID the reorder will set - a small dedicated box, because
+        -- rank_name is bound to Add/Rename and must stay free for that
+        UI.edit.rank_new_id = eui:uiCreateEdit(645, PANEL_H - 10 - 45, 90, 35, "",
+                "New ID", tocolor(120, 200, 255, 255), UI.container.ranks)
+        eui:uiSetProperty(UI.edit.rank_new_id, "UnderLineVisible", "False")
+        eui:uiSetFont(UI.edit.rank_new_id, "default-large")
         UI.button.save_rank_changes = eui:uiCreateButton(PANEL_W - MENU_W - 15 - 160,
                 PANEL_H - 10 - 45, 150, 35, { en = "Save Changes", ar = "حفظ التغييرات" },
                 tocolor(6, 9, 14, 255), UI.container.ranks)
@@ -705,6 +743,8 @@ function UIKitReady()
         regHit(UI.button.delete_rank, "button", 10, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.add_rank, "button", 170, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.button.rename_rank, "button", 330, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.button.reorder_rank, "button", 490, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
+        regHit(UI.edit.rank_new_id, "edit", 645, PANEL_H - 10 - 45, 90, 35, UI.container.ranks)
         regHit(UI.button.save_rank_changes, "button", PANEL_W - MENU_W - 15 - 160, PANEL_H - 10 - 45, 150, 35, UI.container.ranks)
         regHit(UI.gridlist.daily_staff_report, "grid", 10, 60, CONTENT_W - 20, PANEL_H - 10 - 120, UI.container.daily_staff_report)
         -- [Fix #160] A5: resources section + its editor window
@@ -816,8 +856,7 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         end
         eui:uiSetVisible(UI.window.admin_panel, not eui:uiGetVisible(UI.window.admin_panel))
         showCursor(eui:uiGetVisible(UI.window.admin_panel))
-        eui:uiSetVisible(UI.button.delete_admin, hasEditMembers and true or false)
-        eui:uiSetVisible(UI.button.add_admin, hasEditMembers and true or false)
+        -- [user rule #4] add_admin = owner.giverole, delete_admin = owner.takerole
         -- [Fix #15] remember the server-issued flags for the raw click layer
         canEditMembers = hasEditMembers and true or false
         canEditRanks = hasEditRanks and true or false
@@ -828,6 +867,15 @@ addEventHandler("rpadmin:showPanel", root, function(hasEditMembers, hasEditRanks
         -- labels, action row, rights editor) needs admin.manager.editmembers;
         -- without it only the left roster grid stays on screen
         setTeamManageVisible(canEditMembers)
+
+        canGiveRole = panelRights and panelRights.giverole and true or false
+        canTakeRole = panelRights and panelRights.takerole and true or false
+        eui:uiSetVisible(UI.button.delete_admin, canTakeRole)
+        eui:uiSetVisible(UI.button.add_admin, canGiveRole)
+        -- [user rule #5] the reorder control belongs to the rank-management half,
+        -- so it follows admin.manager.editranks exactly like the other rank tools
+        eui:uiSetVisible(UI.button.reorder_rank, canEditRanks)
+        eui:uiSetVisible(UI.edit.rank_new_id, canEditRanks)
         eui:uiSetVisible(UI.button.res_start, canManageResources)
         eui:uiSetVisible(UI.button.res_stop, canManageResources)
         eui:uiSetVisible(UI.button.res_restart, canManageResources)
@@ -872,8 +920,17 @@ addEventHandler("rpadmin:refreshRights", root, function(hasEditMembers, hasEditR
         canEditRanks = hasEditRanks and true or false
         canManageResources = hasResources and true or false
         panelRights = (type(rights) == "table") and rights or {}
-        eui:uiSetVisible(UI.button.delete_admin, canEditMembers)
-        eui:uiSetVisible(UI.button.add_admin, canEditMembers)
+        -- [user rule #4] the two staff buttons follow owner.giverole /
+        -- owner.takerole here too, so a right revoked while the panel is
+        -- OPEN takes them away instead of leaving a dead control on screen
+        canGiveRole = panelRights and panelRights.giverole and true or false
+        canTakeRole = panelRights and panelRights.takerole and true or false
+        eui:uiSetVisible(UI.button.delete_admin, canTakeRole)
+        eui:uiSetVisible(UI.button.add_admin, canGiveRole)
+        -- [user rule #5] same for the refresh path: a revoked rank right must
+        -- take the reorder control away from an OPEN panel too
+        eui:uiSetVisible(UI.button.reorder_rank, canEditRanks)
+        eui:uiSetVisible(UI.edit.rank_new_id, canEditRanks)
         setTeamManageVisible(canEditMembers)
         eui:uiSetVisible(UI.button.res_start, canManageResources)
         eui:uiSetVisible(UI.button.res_stop, canManageResources)
@@ -937,8 +994,10 @@ addEventHandler("onClientUIDialogButtonClick", root, function(button)
         if source == UI.dialog.delete_staff then
                 if button == "left" then
                         -- [Fix #15] client-side gate (the server rejects anyway)
-                        if not canEditMembers then
-                                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+                        -- [user rule #4] confirming the delete-staff dialog is the
+                        -- takerole action -> owner.takerole
+                        if not canTakeRole then
+                                outputChatBox("You don't have permission to remove staff (owner.takerole).", 255, 80, 80)
                                 return
                         end
                         triggerServerEvent("rpadmin:removeAdmin", localPlayer,
@@ -1010,12 +1069,18 @@ local function dispatchPanelAction(el)
 
         -- [Fix #15] backend-first permission gates (the server re-checks every
         -- mutation; this makes the CLIENT refuse too so nothing "appears")
-        if not canEditMembers and (el == UI.button.delete_admin or el == UI.button.add_admin) then
-                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+        -- [user rule #4] each button is gated by ITS OWN right
+        if not canTakeRole and el == UI.button.delete_admin then
+                outputChatBox("You don't have permission to remove staff (owner.takerole).", 255, 80, 80)
+                return
+        end
+        if not canGiveRole and el == UI.button.add_admin then
+                outputChatBox("You don't have permission to promote staff (owner.giverole).", 255, 80, 80)
                 return
         end
         if not canEditRanks and (el == UI.button.delete_rank or el == UI.button.add_rank
                 or el == UI.button.rename_rank or el == UI.button.save_rank_changes
+                or el == UI.button.reorder_rank
                 or el == UI.checkbox.permissions_select_all
                 or el == UI.checkbox.rank_hidden) then
                 outputChatBox("You don't have permission to edit ranks.", 255, 80, 80)
@@ -1039,10 +1104,11 @@ local function dispatchPanelAction(el)
                 outputChatBox("You don't have permission to manage resources.", 255, 80, 80)
                 return
         end
-        -- [Fix #160] A5: member add button inside the floating add-staff
-        -- window needs admin.manager.editmembers exactly like the two above
-        if not canEditMembers and el == UI.button.add_staff then
-                outputChatBox("You don't have permission to edit staff members.", 255, 80, 80)
+        -- [user rule #4] confirming the add-staff window IS the giverole
+        -- action, so it follows owner.giverole (not admin.manager.editmembers,
+        -- which is the TEAMS half of this section per rule #6)
+        if not canGiveRole and el == UI.button.add_staff then
+                outputChatBox("You don't have permission to promote staff (owner.giverole).", 255, 80, 80)
                 return
         end
         -- [TEAMS] every control of the management half (grids, inputs, the
@@ -1087,6 +1153,9 @@ local function dispatchPanelAction(el)
                         local cleanName = LevelNames[tostring(roleID)] or rowText
                         eui:uiSetText(UI.edit.rank_name, cleanName or "")
                         eui:uiSetText(UI.label.rank_id, "#" .. tostring(roleID))
+                        -- [user] remember what is being edited so a later grid
+                        -- refill (refreshPanel) can put the selection back
+                        selectedRoleID = tonumber(roleID) or roleID
                         -- [Batch rule 2] reflect the rank's hidden state
                         if UI.checkbox.rank_hidden and isElement(UI.checkbox.rank_hidden) then
                                 eui:uiCheckBoxSetSelected(UI.checkbox.rank_hidden,
@@ -1172,6 +1241,30 @@ local function dispatchPanelAction(el)
                         eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1), newName)
                 eui:uiSetText(UI.edit.rank_name, "")
 
+        -- [user rule #5] reorder the SELECTED rank onto a new ID. The
+        -- collision rules live on the server (the wanted ID must be free,
+        -- never a silent overwrite), so the client only refuses the
+        -- obviously-wrong input and then asks.
+        elseif el == UI.button.reorder_rank then
+                local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
+                if sel == -1 then
+                        outputChatBox("Select a rank from the list first.", 255, 80, 80)
+                        return
+                end
+                local wanted = eui:uiGetText(UI.edit.rank_new_id)
+                if not wanted or not wanted:match("^%d+$") or tonumber(wanted) < 1 then
+                        outputChatBox("Type the new rank ID as a number first.", 255, 80, 80)
+                        return
+                end
+                local currentID = eui:uiGridListGetItemData(UI.gridlist.ranks, sel, 1)
+                if tonumber(wanted) == tonumber(currentID) then
+                        outputChatBox("That rank already has this ID.", 255, 194, 14)
+                        return
+                end
+                triggerServerEvent("rpadmin:reorderRankID", localPlayer,
+                        currentID, tonumber(wanted))
+                eui:uiSetText(UI.edit.rank_new_id, "")
+
         elseif el == UI.button.save_rank_changes then
                 local sel = eui:uiGridListGetSelectedItem(UI.gridlist.ranks)
                 if sel ~= -1 then
@@ -1201,6 +1294,11 @@ local function dispatchPanelAction(el)
                         if newName ~= "" then
                                 eui:uiSetText(UI.edit.rank_name, "")
                         end
+                else
+                        -- [user] LOUD instead of the old silent no-op: with no
+                        -- rank selected Save did NOTHING at all, so a ticked
+                        -- hidden flag looked like it never persisted
+                        outputChatBox("Select a rank from the list first.", 255, 80, 80)
                 end
 
         elseif el == UI.button.delete_admin then
@@ -1402,13 +1500,18 @@ local function dispatchPanelAction(el)
                 end
                 triggerServerEvent("rpadmin:teamSetRights", localPlayer, teamRightsTarget, rights)
                 -- [Batch rule 2] keep the team's hidden flag in sync with the
-                -- toggle (only fire when it actually changed)
+                -- toggle (only fire when it actually changed).
+                -- [user] the flag is compared against the state captured when
+                -- the editor OPENED: findTeamByID is a local declared further
+                -- down this file, so calling it here threw "attempt to call a
+                -- nil value" and killed this whole branch AFTER teamSetRights
+                -- (window stayed open, hidden never saved).
                 if UI.checkbox.team_hidden and isElement(UI.checkbox.team_hidden) then
                         local wantHidden = eui:uiCheckBoxGetSelected(UI.checkbox.team_hidden) and true or false
-                        local team = findTeamByID(teamRightsTarget)
-                        if team and ((team.hidden and true or false) ~= wantHidden) then
+                        if teamRightsHiddenBase ~= nil and teamRightsHiddenBase ~= wantHidden then
                                 triggerServerEvent("rpadmin:teamSetHidden", localPlayer,
                                         teamRightsTarget, wantHidden)
+                                teamRightsHiddenBase = wantHidden
                         end
                 end
                 eui:uiSetVisible(UI.window.team_rights, false)
@@ -1926,6 +2029,8 @@ function openTeamRightsWindow()
                 return
         end
         teamRightsTarget = tonumber(team.id)
+        -- [user] remember the stored hidden flag for the Save-time diff below
+        teamRightsHiddenBase = team.hidden and true or false
         if UI.label.team_rights_name and isElement(UI.label.team_rights_name) then
                 eui:uiSetText(UI.label.team_rights_name,
                         tostring(team.name) .. " (#" .. tostring(team.id) .. ")")
@@ -2109,6 +2214,20 @@ function refreshPanel(levels, admins, changelogs, resources, roleMembers, staffR
                 eui:uiGridListSetItemData(UI.gridlist.add_staff_ranks, arow, 1, level.ID)
                 eui:uiGridListSetItemColor(UI.gridlist.add_staff_ranks, arow, 1,
                         tocolor(color[1], color[2], color[3], color[4]))
+        end
+
+        -- [user] the refill drops the grid selection: put the admin back on
+        -- the rank he was editing (a Save with sel == -1 silently did nothing)
+        if selectedRoleID then
+                for row = 0, eui:uiGridListGetRowCount(UI.gridlist.ranks) - 1 do
+                        if eui:uiGridListGetItemData(UI.gridlist.ranks, row, 1) == selectedRoleID then
+                                pcall(eui.uiGridListSetSelectedItem, eui, UI.gridlist.ranks, row)
+                                rawRankRoleID = selectedRoleID
+                                panelDispatchTick[UI.gridlist.ranks] = nil
+                                dispatchPanelAction(UI.gridlist.ranks)
+                                break
+                        end
+                end
         end
 
         eui:uiCheckBoxSetSelected(UI.checkbox.permissions_select_all, false)

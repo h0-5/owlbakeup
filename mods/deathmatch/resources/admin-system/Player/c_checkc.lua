@@ -59,9 +59,12 @@ local function buildCheckcWindow()
                 local def = checkcLabelDefs[i]
                 local label = guiCreateLabel(14 * sc, (66 + (i - 1) * 24) * sc,
                         (CHECKC_BASE_W - 30) * sc, 22 * sc, def[2], false, checkcWindow)
-                -- invisible data store: the dx panel is drawn with alpha 245, so
-                -- paint the label text in the panel colour to avoid ghosting
+                -- invisible data store: the dx panel only covers it with alpha
+                -- 245, so the native label bleeds through as misaligned ghost
+                -- text (native rows sit at 66+24*i, the dx rows at 72+30*i).
+                -- Hide it outright - guiGetText still reads it.
                 guiLabelSetColor(label, 10, 10, 12)
+                guiSetVisible(label, false)
                 checkcLabels[def[1]] = label
         end
 
@@ -177,6 +180,25 @@ local function checkcMouseOver(x, y, w, h)
         return cx >= x and cx <= x + w and cy >= y and cy <= y + h
 end
 
+-- "▸" (U+25B8) is in no font dxDrawText can resolve here - Arial, Arial Bold,
+-- Tahoma, Verdana, Microsoft Sans Serif and MTA's own cgui/sans.ttf all lack
+-- it, so the character drew as nothing and the panel lost its bullet column.
+-- The chevron is drawn as geometry instead: a small filled right triangle.
+local function drawCheckcBullet(bx, top, sc)
+        local w, h = 6 * sc, 10 * sc
+        local y0 = top + 3 * sc
+        local steps = 11
+        local rowH = h / steps
+        for i = 0, steps - 1 do
+                local t = (i + 0.5) / steps
+                local segW = (1 - math.abs(t - 0.5) * 2) * w
+                if segW > 0 then
+                        dxDrawRectangle(bx, y0 + i * rowH, segW, rowH + 1,
+                                checkcSkin.red, true)
+                end
+        end
+end
+
 -- "Label: value" -> red chevron bullet + white bold label + coloured value
 local function drawCheckcRow(ox, oy, sc, bulletX, tx, tw, y, key)
         local element = checkcLabels[key]
@@ -189,8 +211,7 @@ local function drawCheckcRow(ox, oy, sc, bulletX, tx, tw, y, key)
         local x = ox + tx * sc
         local right = ox + (tx + tw) * sc
 
-        dxDrawText("▸", ox + bulletX * sc, top, x - 2 * sc, bottom,
-                checkcSkin.red, 0.9 * sc, "default-bold", "left", "top", false, false, true)
+        drawCheckcBullet(ox + bulletX * sc + sc, top, sc)
 
         local label, value = string.match(text, "^(.-):%s*(.*)$")
         if not label or label == "" then
@@ -270,7 +291,7 @@ addEventHandler("onClientRender", root, function()
         -- header strip with the centred white title
         local headerH = CHECKC_HEADER_H * sc
         dxDrawRectangle(ox, oy, ow, headerH, checkcSkin.header, true)
-        dxDrawText("Character Info", ox + 5 * sc, oy, ox + ow, oy + headerH,
+        dxDrawText("Character Info", ox, oy, ox + ow, oy + headerH,
                 checkcSkin.title, sc, "default-bold", "center", "center", true, false, true)
 
         -- tab row: only the single page we have ("Info"), active = white bold

@@ -138,6 +138,11 @@ local COMMAND_RIGHTS = {
         ["delnearbyvehs"] = "delveh",
         ["delnearbyvehicles"] = "delveh",
         ["makeveh"]      = "makeveh",
+        -- [user] the vehicle-library engine toggles were UNMAPPED (layer 2
+        -- saw them as "no opinion" and the handlers checked nothing) - gate
+        -- them like every other vehicle edit command
+        ["setenginetype"] = "editvehicle",
+        ["getenginetype"] = "editvehicle",
         ["editvehicle"]  = "editvehicle",
         ["editveh"]      = "editvehicle",
         ["edithandling"] = "editvehicle",
@@ -367,10 +372,72 @@ local gateHeartbeat = { fired = 0, lastCommand = "-" }
 --          mapped commands with { } (typed commands carry no argument list).
 -- Unmapped commands (pure player/RP commands, /hidelogs) never fire it.
 -- ===========================================================================
+-- [Batch rule 5b / user] the admin-logs feed follows STAFF/ADMIN actors only
+-- (admin.isStaff / admin.isAdmin right) - a random player's command is not an
+-- administrative log line.
+local function actorIsStaffAdmin(player)
+        if type(playerHasRight) ~= "function" then return false end
+        local ok1, r1 = pcall(playerHasRight, player, "admin.isStaff")
+        if ok1 and r1 then return true end
+        local ok2, r2 = pcall(playerHasRight, player, "admin.isAdmin")
+        return (ok2 and r2) and true or false
+end
+
+-- denial-coloured chat ("You don't have permission...", "...blocked..."):
+-- red-dominant. A single tocolor()-packed first argument is unpacked the way
+-- MTA packs it (0xRRGGBB).
+local function chatColorIsDenial(r, g, b)
+        if type(r) ~= "number" then return false end
+        if type(g) ~= "number" or type(b) ~= "number" then
+                local packed = r
+                r = math.floor(packed / 65536) % 256
+                g = math.floor(packed / 256) % 256
+                b = packed % 256
+        end
+        return r >= 170 and g <= 110 and b <= 110
+end
+
 local function fireFix160CmdOk(player, cmdName, args)
         if not (isElement(player) and getElementType(player) == "player") then return end
+        -- [user] only staff/admin actions belong in the admin-logs feed
+        if not actorIsStaffAdmin(player) then return end
         triggerEvent("fix160:cmdok", resourceRoot, player, cmdName,
                 type(args) == "table" and args or {})
+end
+
+-- [user] LAYER 2 (typed commands of OTHER resources) cannot judge the
+-- outcome synchronously - those handlers may run after this gate inside the
+-- same event pass. Queue the fire, watch THIS tick's chat for a denial
+-- colour, then publish (or drop) on the next tick.
+local cmdLogFrame = nil
+local function queueCmdOk(player, key)
+        local frame = cmdLogFrame
+        -- the entry has to be queued BEFORE the watcher is scheduled: a
+        -- setTimer(fn, 0, 1) may run before this function returns (it does on
+        -- every synchronous timer implementation, and the publish loop only
+        -- reads frame.pending), which would drop the command on the floor.
+        if frame then
+                frame.pending[#frame.pending + 1] = { player = player, key = key, args = {} }
+                return
+        end
+        frame = { pending = { { player = player, key = key, args = {} } },
+                  sawDenial = false, origOut = _G.outputChatBox }
+        local origOut = frame.origOut
+        _G.outputChatBox = function(text, to, r, g, b, ...)
+                if chatColorIsDenial(r, g, b) then frame.sawDenial = true end
+                return origOut(text, to, r, g, b, ...)
+        end
+        cmdLogFrame = frame
+        setTimer(function()
+                _G.outputChatBox = frame.origOut
+                if cmdLogFrame == frame then cmdLogFrame = nil end
+                -- a denial-coloured line in this tick = the handler said
+                -- no (or the gate did) -> nothing to log
+                if frame.sawDenial then return end
+                for _, p in ipairs(frame.pending) do
+                        fireFix160CmdOk(p.player, p.key, p.args)
+                end
+        end, 0, 1)
 end
 
 -- command names THIS resource registers (filled by the wrapper below, which
@@ -398,13 +465,33 @@ _G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, res
                                         player, 255, 0, 0)
                                 return
                         end
-                        -- [Batch rule 5b] the gate ALLOWED a mapped
-                        -- admin-system command -> publish it with its args
-                        -- (the handler below may still deny inside; the gate
-                        -- is what the contract calls the choke point)
-                        if COMMAND_RIGHTS[key] then
-                                fireFix160CmdOk(player, key, { ... })
+                        -- [Batch rule 5b / user] the gate ALLOWED a mapped
+                        -- admin-system command -> run the handler, watch its
+                        -- chat output and publish cmdok ONLY when it did NOT
+                        -- answer with a denial colour (the gate is the choke
+                        -- point, but the HANDLER knows whether the command
+                        -- really ran). fireFix160CmdOk additionally binds the
+                        -- line to a staff/admin actor.
+                        local args = { ... }
+                        local publish = COMMAND_RIGHTS[key] ~= nil
+                        local sawDenial, origOut = false, _G.outputChatBox
+                        if publish then
+                                _G.outputChatBox = function(text, to, r, g, b, ...)
+                                        if chatColorIsDenial(r, g, b) then sawDenial = true end
+                                        return origOut(text, to, r, g, b, ...)
+                                end
                         end
+                        local results = { pcall(handlerFunction, player, cmdName, ...) }
+                        if publish then _G.outputChatBox = origOut end
+                        if not results[1] then
+                                -- same visibility as calling the handler directly,
+                                -- but a crash is never logged as a success
+                                error(results[2], 0)
+                        end
+                        if publish and not sawDenial then
+                                fireFix160CmdOk(player, key, args)
+                        end
+                        return (unpack or table.unpack)(results, 2)
                 end
                 return handlerFunction(player, cmdName, ...)
         end
@@ -432,27 +519,53 @@ local FLIGHT_RIGHTS = {
         ["admin.freecam"]  = true,
 }
 
+-- ===========================================================================
+-- [user rule #3] mapped commands that are PUBLIC player commands (they are
+-- mapped only so STAFF can be gated on them). Global OOC and /911 keep
+-- working for players with no rank and no team - the handler owns them.
+-- /eject joins them because its handler is a mixed command: a player ejects a
+-- passenger from HIS OWN vehicle, an admin ejects from any vehicle (the
+-- handler still owns both halves - see ejectPlayer).
+-- ===========================================================================
+local PUBLIC_PLAYER_COMMANDS = {
+        ["ooc"] = true,
+        ["911"] = true,
+        ["eject"] = true,
+}
+
 -- the exported gate. Returns true when the command is ALLOWED.
 --
 -- ===========================================================================
 -- [Batch rule 1] COMMAND AUTHORIZATION MODEL (teams + ranks + Full Access):
 --
 --   allowed = rankPermits(command)
---             AND ( command has NO team requirement
---                   OR viewer rank index >= 18 (the top four)
+--             AND ( command has NO team requirement (commandNeedsTeam)
 --                   OR viewer holds a team granting the command's right
 --                   OR viewer holds the Full Access team )
 --
 -- with the rank-less special cases the owner spelled out:
 --   * Full Access member  -> allowed, EVEN WITHOUT any admin rank,
 --   * member of a normal team -> ONLY that team's commands are allowed,
---   * neither             -> the legacy ladder keeps its old "no opinion"
---     behaviour (the handler's own check decides), byte-identical to Fix #U4.
+--   * neither             -> a team-scoped command is DENIED (user rule #3);
+--     a plain mapped command keeps the old "no opinion" behaviour (the
+--     handler's own check decides), byte-identical to Fix #U4.
+-- [user rule #3] PUBLIC_PLAYER_COMMANDS (OOC, 911, eject) is the one
+-- exception to that last line - their handlers own a PLAYER half, so this
+-- layer never refuses a rank-less player on them.
 --
 -- A command is "team scoped" when SOME non-Full-Access team grants its
 -- right (commandNeedsTeam in the bridge). rankPermits uses ONLY the rank's
 -- own stored rights - a command the rank forbids stays forbidden even with
 -- the team ("rank restrictions always win").
+--
+-- REPLACED: the four-domain vocabulary (rightInTeamDomain / TEAM_DOMAIN_RULES,
+-- houses + vehicles + web + factions) and the rank >= 18 substitute. The
+-- domain rule said "these four domains are the only team-scoped ones", which
+-- both ways broke: a domain right NO team owns (property.*, web.*, makeveh...)
+-- could not be won by anyone below rank 18 - only Full Access ran it - while
+-- player-facing domain rights (places.access = /gate, /rbs, /nearbygates)
+-- were refused to rank-less players who have always used them.
+-- ===========================================================================
 --
 -- [Admin flight] ONE EXCEPTION to the pipeline: the rights admin.superman /
 -- admin.freecam do not use it - they are authorised by the rights API
@@ -466,7 +579,8 @@ local FLIGHT_RIGHTS = {
 -- ===========================================================================
 function hasCommandRight(player, commandName)
         if not isElement(player) or getElementType(player) ~= "player" then return false end
-        local right = COMMAND_RIGHTS[tostring(commandName):lower()]
+        local key = tostring(commandName):lower()
+        local right = COMMAND_RIGHTS[key]
         -- an unmapped command is not restricted by this layer (the handler's
         -- own legacy check still applies); returning true means "no opinion".
         if not right then return true end
@@ -536,6 +650,16 @@ function hasCommandRight(player, commandName)
                                 return gateAllows(player, right)
                         end
                 end
+                -- [user rule #3] no Vortex rank and no team: a mapped command
+                -- SOME team grants (or that belongs to the four team domains)
+                -- is staff territory - a plain player may not run it. Public
+                -- player commands (OOC / 911) stay open for everyone, and a
+                -- plain mapped command that is neither still falls back to the
+                -- legacy "no opinion" behaviour (the handler decides).
+                if PUBLIC_PLAYER_COMMANDS[key] then return true end
+                if type(commandNeedsTeam) == "function" and commandNeedsTeam(right) then
+                        return false
+                end
                 -- no Vortex rank: the legacy ladder decides (unchanged behaviour)
                 return true
         end
@@ -549,17 +673,20 @@ function hasCommandRight(player, commandName)
                 return gateAllows(player, right)
         end
         if not staffRankPermits(player, right) then return false end
-        -- 2) a command no team on the server grants has NO team requirement
+        -- 2) the TEAM half: only a command SOME team on the server claims is
+        --    team scoped (commandNeedsTeam in the bridge). A command no team
+        --    grants is decided by the rank's own rights alone - which is why
+        --    the old four-domain vocabulary and the rank>=18 substitute are
+        --    both gone (a domain right no team owns used to be unwinnable
+        --    below rank 18, and only Full Access could still run it).
         if type(commandNeedsTeam) ~= "function" then return true end
         if not commandNeedsTeam(right) then return true end
-        -- 3) the top four ranks (18..21) may use it WITHOUT holding a team
-        if rankIdx >= 18 then return true end
-        -- 4) Full Access is exempt from the team requirement...
+        -- 3) Full Access is exempt from the team requirement...
         if type(playerTeamInFullAccess) == "function"
                 and playerTeamInFullAccess(player) then
                 return true
         end
-        -- 5) ...or he simply holds a team that grants the command's right
+        -- 4) ...or he simply holds a team that grants the command's right
         if type(playerTeamsGrantRight) == "function"
                 and playerTeamsGrantRight(player, right) then
                 return true
@@ -669,7 +796,13 @@ local GATES_V4_EXTENSION = {
         ["setx"] = "admin.setpos", ["sety"] = "admin.setpos", ["setz"] = "admin.setpos",
         ["setxy"] = "admin.setpos", ["setxz"] = "admin.setpos", ["setyz"] = "admin.setpos", ["setxyz"] = "admin.setpos",
         ["fetchnews"] = "admin.getsettings",
-        ["showfeedbacks"] = "admin.check", ["staffs"] = "admin.check",
+        ["showfeedbacks"] = "admin.check",
+                -- [user rule #4] /staffs OPENS the staff panel and nothing else, so it
+                -- is gated by admin.manager.panel - the right that means exactly "may
+                -- see the panel". It used to borrow admin.check, which made a rank
+                -- that may inspect players unable to open the panel and an
+                -- admin.check holder able to open it without the panel right.
+                ["staffs"] = "admin.manager.panel",
         ["gunchart"] = "weapons.search", ["gunids"] = "weapons.search",
         ["gunlist"] = "weapons.search", ["weaponchart"] = "weapons.search",
         ["cleardebugscript"] = "debug",
@@ -1000,6 +1133,10 @@ addEventHandler("onPlayerCommand", root, function(commandName)
         -- argument list here, so this fire always ships { }.
         local key = tostring(commandName):lower()
         if COMMAND_RIGHTS[key] and not adminSystemCommands[key] then
-                fireFix160CmdOk(source, key, {})
+                -- [user] layered fire: the other resource's handler answers
+                -- DURING this event pass (possibly after this gate ran), so the
+                -- decision - and the staff/admin binding - happen on the next
+                -- tick inside queueCmdOk
+                queueCmdOk(source, key)
         end
 end)

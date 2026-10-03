@@ -583,7 +583,13 @@ function enforceStaffDutyRights(player)
                 player, 255, 80, 80)
         local name = getPlayerName(player)
         pcall(function()
-                exports.global:sendMessageToAdmins("AdmDuty: " .. name .. " went off duty.")
+                -- [round-2 T2] RESTORED: this notification was commented out in
+                -- the owner's uncommitted edit and the forced off-duty then told
+                -- nobody - the admin team has to know a player was pulled off
+                -- duty automatically. Ask me to re-silence it if admin-logs
+                -- really does cover duty.
+                exports.global:sendMessageToAdmins("AdmDuty: "
+                        .. tostring(name) .. " went off duty.")
         end)
         outputDebugString("[Vortex Staff] duty_admin forced OFF for " .. tostring(name)
                 .. " (rank no longer holds duty.adminduty)")
@@ -652,6 +658,11 @@ end
 
 local teamBundleByAccount = {}    -- [accountID] = bundle (see above)
 local teamScopedRightsCache       -- { [right] = true } or nil (not built yet)
+-- [2f] normalized names of the teams flagged staff_teams.hidden = 1 - the
+-- membership side of "hidden-team holder may see hidden". Cached together
+-- with the team bundle and dropped by staffTeamsInvalidateRights, so a
+-- teamCreate/teamSetHidden/teamRename is reflected on the next read.
+local hiddenTeamNameSet           -- { [normalized name] = true } or nil
 
 local function loadTeamBundle(accountID)
         local bundle = { rights = {}, names = {}, fullAccess = false,
@@ -820,6 +831,7 @@ function staffTeamsInvalidateRights(accountID)
         if accountID == nil then
                 teamBundleByAccount = {}
                 teamScopedRightsCache = nil
+                hiddenTeamNameSet = nil
         else
                 teamBundleByAccount[tonumber(accountID)] = nil
         end
@@ -841,21 +853,55 @@ function teamBadgeRightsValue(player)
         return table.concat(held, ",")
 end
 
--- [Batch rule 2] WHO may see hidden ranks/teams: rank 20 (Diverloper),
--- rank 21 (Owner) or a member of a team whose normalized name CONTAINS
--- "dev". Uniform everywhere (panel payload filter, F1 list, TAB, /checkid).
+-- [2f] the set of hidden team names, read once and cached until a team
+-- mutation invalidates it. pcall-guarded: staff_manager_teams_s.lua only
+-- adds the staff_teams.hidden column at ITS onResourceStart (which runs
+-- after this resource's own), so a read that races that must degrade to
+-- "no hidden team entitlement" instead of erroring the whole query chain.
+local function hiddenTeamNames()
+        if hiddenTeamNameSet == nil then
+                hiddenTeamNameSet = {}
+                local ok, rows = pcall(function()
+                        return mysql:query("SELECT name, hidden FROM staff_teams")
+                end)
+                if ok and rows then
+                        while true do
+                                local row = mysql:fetch_assoc(rows)
+                                if not row then break end
+                                if tonumber(row.hidden) == 1 then
+                                        hiddenTeamNameSet[staffNormalizedTeamName(row.name)] = true
+                                end
+                        end
+                        mysql:free_result(rows)
+                end
+        end
+        return hiddenTeamNameSet
+end
+
+-- [Batch rule 2 / 2f] WHO may see hidden ranks/teams: rank 21 (Owner),
+-- rank 20 (Dev), a member of a team whose normalized name CONTAINS "dev"
+-- (the owner's own rule - kept), the holder of a hidden rank (staff_roles
+-- hidden = 1, synced as rank:hidden) and the holder of a hidden team
+-- (staff_teams hidden = 1). Uniform everywhere (panel payload filter, F1
+-- list, TAB, /checkid). Everyone else is refused - see memberRankMasked,
+-- fetchTeamsPayload and hiddenRankContext for the refusal side.
 function staffCanSeeHiddenStaff(player)
         if not isElement(player) or getElementType(player) ~= "player" then
                 return false
         end
         local idx = tonumber(getElementData(player, "rank:index"))
         if idx == 20 or idx == 21 then return true end
+        -- [2f] holders of a hidden rank see the hidden set
+        if tonumber(getElementData(player, "rank:hidden")) == 1 then return true end
         local bundle = playerTeamBundle(player)
         if bundle then
+                local hidden = hiddenTeamNames()
                 for _, name in ipairs(bundle.names) do
-                        if staffNormalizedTeamName(name):find("dev", 1, true) then
-                                return true
-                        end
+                        local n = staffNormalizedTeamName(name)
+                        -- [2f] holders of a hidden team see the hidden set
+                        if hidden[n] then return true end
+                        -- the owner's dev-team rule (kept as-is)
+                        if n:find("dev", 1, true) then return true end
                 end
         end
         return false

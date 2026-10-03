@@ -453,7 +453,7 @@ addCommandHandler("pkickall", function(player, cmd, ...)
                         if hidden == 0 then
                                 kickPlayer(target, player, reason)
                         else
-                                kickPlayer(target, getRootElement(), reason)
+                                kickPlayer(target, "Console", reason)
                         end
                         kicked = kicked + 1
                         outputDebugString("[Fix #160] pkickall: " .. tostring(targetName) .. " - " .. reason)

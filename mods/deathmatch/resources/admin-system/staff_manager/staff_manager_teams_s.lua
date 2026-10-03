@@ -431,16 +431,29 @@ local function canEditTeams(player)
         if not (isElement(player) and getElementType(player) == "player") then
                 return false
         end
+        -- [user] re-checked against the permission spec: admin.manager.panel is
+        -- the PANEL-VISIBILITY right only (it gates /staffs + the panel open
+        -- path, nothing else), so it must NOT also unlock the add/remove +
+        -- team controls here - that would hand team-edit power to a right that
+        -- only means "may look at the panel". admin.manager.editmembers stays
+        -- the single right for this half of أعضاء الصلاحيات (rule #6).
+        -- Note on spelling: the owner says it as "admin.manager.panal" /
+        -- "admin.manage.panal" (a comment-only typo from earlier batches); the
+        -- real string in the catalog, in his saved rank and in every gate is
+        -- admin.manager.panel, so that is what is checked here.
+        local function holdsMemberEdit(p)
+                if type(playerHasRight) ~= "function" then return false end
+                return playerHasRight(p, "admin.manager.editmembers") and true or false
+        end
         if getElementData(player, "rank:index") then
                 if type(playerHasRight) == "function" then
-                        return playerHasRight(player, "admin.manager.editmembers") and true or false
+                        return holdsMemberEdit(player)
                 end
                 return false
         end
         -- no Vortex rank: playerHasRight still answers through the TEAM union
         -- (and the legacy admin>=4 fallback), then the panel's own ladder
-        if type(playerHasRight) == "function"
-                and playerHasRight(player, "admin.manager.editmembers") then
+        if holdsMemberEdit(player) then
                 return true
         end
         return exports.integration:isPlayerSeniorAdmin(player) and true or false
@@ -454,8 +467,9 @@ end
 -- panel payload
 -- ============================================================================
 
--- [Batch rule 2] the payload is built PER VIEWER: a hidden team (hidden=1)
--- is dropped entirely for everyone except rank 20/21 and dev-team members;
+-- [Batch rule 2 / 2f] the payload is built PER VIEWER: a hidden team
+-- (hidden=1) is dropped entirely for everyone except staffCanSeeHiddenStaff
+-- (rank 20/21, hidden-rank holder, hidden-team holder, "dev" team member);
 -- those entitled viewers receive the row with hidden=true so the panel can
 -- tag it "(hidden)". viewer == nil (internal callers that never render the
 -- list) is treated as NOT entitled - hidden rows never leak by accident.
@@ -553,7 +567,8 @@ local function afterTeamMutation()
         --   staff:hasTeam    - the player belongs to some team (rank-less team
         --                      members are invisible as staff),
         --   staff:seehhidden  - the viewer may see hidden ranks/teams (rank
-        --                      20/21 or a "dev" team member).
+        --                      20/21, a hidden-rank holder, a hidden-team
+        --                      member or a "dev" team member).
         -- Re-push them for EVERYONE - the hidden flag of a team can flip for
         -- all viewers at once.
         if type(staffPushStaffMeta) == "function" then
@@ -740,9 +755,9 @@ addEventHandler("rpadmin:teamSetRights", root, function(teamID, rights)
         afterTeamMutation()
 end)
 
--- [Batch rule 2] toggle a team's hidden flag (the team editor checkbox).
--- Hidden teams are invisible to every panel viewer except rank 20/21 and
--- "dev" team members - see fetchTeamsPayload above.
+-- [Batch rule 2 / 2f] toggle a team's hidden flag (the team editor checkbox).
+-- Hidden teams are invisible to every viewer staffCanSeeHiddenStaff refuses -
+-- see fetchTeamsPayload above.
 addEvent("rpadmin:teamSetHidden", true)
 addEventHandler("rpadmin:teamSetHidden", root, function(teamID, hidden)
         local player = client

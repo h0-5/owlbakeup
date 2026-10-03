@@ -695,7 +695,7 @@ addEventHandler( "onClientRender", getRootElement(),
 		-- visible slice of the table
 		local count = 0
 		if isElement(gHist) then
-			count = guiGridListGetItemCount(gHist)
+			count = guiGridListGetRowCount(gHist)
 		end
 		local maxScroll = count - HIST_VISIBLE
 		if maxScroll < 0 then maxScroll = 0 end
@@ -749,7 +749,7 @@ addEventHandler( "onClientMouseWheel", getRootElement(),
 		end
 		local count = 0
 		if isElement(gHist) then
-			count = guiGridListGetItemCount(gHist)
+			count = guiGridListGetRowCount(gHist)
 		end
 		local maxScroll = count - HIST_VISIBLE
 		if maxScroll < 0 then maxScroll = 0 end

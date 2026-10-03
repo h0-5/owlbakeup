@@ -16,13 +16,18 @@
 --   not fire the fix160:* events yet - they activate the moment it does.
 --
 -- LINE FORMAT (owner's screenshots - ONE shape for every feed)
---   [{Tag}] : {Character} ({account}) {detail}.
---   e.g.  [Admin] : Robson Walton (h05) revived Hamdi DJawfer.
+--   [{Tag}] : {Rank} [({hidden})] {Character} ({account}) {detail}.
+--   e.g.  [Admin] : Owner (hidden) Robson Walton (h05) toggled admin duty.
+--   Command ([Admin]) lines carry the actor's rank title; hidden admins show
+--   the word "(hidden)" right after the rank.
 --   Tag   = Admin (gated command usage), Staff (report opened / accepted,
 --           promotions / demotions), Debug (internal warnings),
 --           DEATHMATCH (kill alerts)
 --   The THREE hide commands (/hidelogs, /hiddenlogs, /hideadmin) are NEVER
 --   logged for anyone.
+--   [user rule #2] a HIDDEN RANK (staff_roles.hidden = 1) is logged NOWHERE:
+--   its title is stripped from the actor prefix, and a rank change whose from,
+--   to or target (rank-level events) is a hidden rank name prints no line.
 --
 -- VISIBILITY TIERS (decided by the VIEWER, never by the actor)
 --   4 debug           -> every line
@@ -152,6 +157,61 @@ end
 -- "Omar O.Keeler (OmarLotfi)" - the actor prefix of every admin command line
 local function who(p)
         return charName(p) .. " (" .. accountName(p) .. ")"
+end
+
+-- [user rule #2] a HIDDEN rank appears in NO log line of this feed - neither
+-- the title of the actor nor either end of a rank change. The test is NAME
+-- based and viewer independent (staff_roles.hidden), the same rule
+-- staff_manager applies at the emission point; this is the consumption-side
+-- belt for the rank-level events that still carry the name in another field
+-- ("Rank Deleted" / "Rank Edited" put it in `target`, not in from/to).
+-- The set is cached briefly so one line never costs a query, and it is
+-- FAIL CLOSED: while it cannot be read (mysql not reachable, query error)
+-- every name counts as hidden - one missing rank title beats one leaked one.
+local HIDDEN_RANK_TTL = 10000
+local hiddenRankCache, hiddenRankAt = nil, 0
+
+local function rankNameIsHidden(name)
+        if name == nil or name == false then return false end
+        local key = tostring(name)
+        if key == "" or key == "-" or key == "nil" or key == "false" then return false end
+        local now = getTickCount()
+        if hiddenRankCache == nil or now < hiddenRankAt
+                or (now - hiddenRankAt) >= HIDDEN_RANK_TTL then
+                hiddenRankCache, hiddenRankAt = {}, now
+                local ok, res = pcall(function()
+                        return exports.mysql:query(
+                                "SELECT LevelName FROM staff_roles WHERE hidden = 1")
+                end)
+                if ok and res then
+                        while true do
+                                local okRow, row = pcall(function()
+                                        return exports.mysql:fetch_assoc(res)
+                                end)
+                                if not okRow or not row then break end
+                                hiddenRankCache[tostring(row.LevelName or "")] = true
+                        end
+                        pcall(function() exports.mysql:free_result(res) end)
+                        hiddenRankCache.__ready = true
+                end
+        end
+        if not hiddenRankCache.__ready then return true end
+        return hiddenRankCache[key] == true
+end
+
+-- Command lines carry the actor's RANK TITLE (staff system element data) and,
+-- for a hidden admin, the word "(hidden)" right after it. Owner's format:
+--   [Admin] : Owner (hidden) Robson Walton (h05) toggled admin duty.
+-- Falls back to the plain actor when the player holds no staff rank.
+local function whoRanked(p)
+        local label = who(p)
+        local rank = getElementData(p, "rank:name")
+        if type(rank) == "string" and rank ~= "" and not rankNameIsHidden(rank) then
+                local hidden = tonumber(getElementData(p, "hiddenadmin")) == 1
+                        or tonumber(getElementData(p, "admin:hideadmin")) == 1
+                label = rank .. (hidden and " (hidden)" or "") .. " " .. label
+        end
+        return label
 end
 
 -- the id inside "(54088)" of the kill line: account id first (that is the
@@ -301,8 +361,13 @@ end
 
 -- ======================================================= formatters ========
 -- Per-command detail builders: (actor, args) -> "detail" WITHOUT the trailing
--- period (logLine adds it). Returning nil falls back to the generic
--- "used /cmd <args>" line built from the cmdok args.
+-- period (logLine adds it). A command with a formatter is announced in the
+-- owner's revive shape ("[Admin] : Robson Walton (h05) revived Hamdi.").
+--
+-- There is NO generic "used /cmd <args>" fallback any more (owner's request):
+-- a gated command without a builder - panel openers such as /staffs, /apps,
+-- /tv, /vehicles ... - simply produces NO chat line. Only commands that
+-- actually did something are announced.
 
 local function a(args, i)
         return trim(args and args[i])
@@ -316,6 +381,67 @@ local function rest(args, i)
                 parts[#parts + 1] = tostring(args[k])
         end
         return trim(table.concat(parts, " "))
+end
+
+-- "<verb> <target player>" builders sharing one body - e.g. "froze Hamdi".
+local function fmtTarget(verb)
+        return function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return verb .. " " .. resolveName(a(args, 1))
+        end
+end
+
+-- "<verb> with <duration/reason>" for the mute family (verb + optional 2nd arg)
+local function fmtTargetReason(verb)
+        return function(actor, args)
+                if a(args, 1) == "" then return nil end
+                local line = verb .. " " .. resolveName(a(args, 1))
+                if a(args, 2) ~= "" then line = line .. " for " .. a(args, 2) end
+                return line
+        end
+end
+
+-- "banned the <kind> '<value>' (<reason>)" for the ip / serial / account bans
+local function fmtBanKind(kind)
+        return function(actor, args)
+                if a(args, 1) == "" then return nil end
+                local line = "banned the " .. kind .. " '" .. a(args, 1) .. "'"
+                local reason = rest(args, 2)
+                if reason ~= "" then line = line .. " (" .. reason .. ")" end
+                return line
+        end
+end
+
+-- "set his position to (x, y, z)" for the /setpos family
+local function fmtSetPosition(actor, args)
+        local pos = rest(args, 1)
+        if pos == "" then return nil end
+        return "set his position to (" .. pos .. ")"
+end
+
+-- "set <what> to (value)" for weather / time / gravity style commands
+local function fmtSetWorld(what)
+        return function(actor, args)
+                local value = rest(args, 1)
+                if value == "" then return nil end
+                return "set " .. what .. " to (" .. value .. ")"
+        end
+end
+
+-- "<verb> resource '<name>'" for the resource controls
+local function fmtResource(verb)
+        return function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return verb .. " resource '" .. a(args, 1) .. "'"
+        end
+end
+
+-- "<verb> vehicle #<id>"
+local function fmtVehicle(verb)
+        return function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return verb .. " vehicle #" .. a(args, 1)
+        end
 end
 
 -- /ban <player> <hours> [reason] - shared by the whole ban family
@@ -551,6 +677,137 @@ local FORMATTERS = {
                 if msg == "" then return nil end
                 return "announced '" .. msg .. "'"
         end,
+        ------------------------------------------------ moderation extras ---
+        -- "froze <name>", "unfroze <name>", "muted <name> for <n>", ...
+        ["freeze"]        = fmtTarget("froze"),
+        ["unfreeze"]      = fmtTarget("unfroze"),
+        ["mute"]          = fmtTargetReason("muted"),
+        ["pmute"]         = fmtTargetReason("muted"),
+        ["unmute"]        = fmtTarget("unmuted"),
+        ["disarm"]        = fmtTarget("disarmed"),
+        ["slap"]          = fmtTarget("slapped"),
+        ["auncuff"]       = fmtTarget("uncuffed"),
+        ["ck"]            = fmtTarget("character-killed"),
+        ["unck"]          = fmtTarget("removed the CK flag from"),
+        ["bury"]          = fmtTarget("buried"),
+        ["unblindfold"]   = fmtTarget("removed the blindfold from"),
+        ["aunblindfold"]  = fmtTarget("removed the blindfold from"),
+        ["unmask"]        = fmtTarget("removed the mask from"),
+        ["aunmask"]       = fmtTarget("removed the mask from"),
+        ["cleanstreets"]  = function(actor, args)
+                return "cleaned the streets of dropped items"
+        end,
+        ["clearchatforall"] = function(actor, args)
+                return "cleared the chat for everyone"
+        end,
+        ["changewarnstyle"] = function(actor, args)
+                return "changed the warn style"
+        end,
+        ------------------------------------------------------------- bans ----
+        ["banip"]      = fmtBanKind("IP"),
+        ["ipban"]      = fmtBanKind("IP"),
+        ["banserial"]  = fmtBanKind("serial"),
+        ["serialban"]  = fmtBanKind("serial"),
+        ["banaccount"] = fmtBanKind("account"),
+        ["accountban"] = fmtBanKind("account"),
+        ["unban"]      = fmtTarget("unbanned"),
+        ["unbanip"]    = fmtTarget("unbanned"),
+        ["unbanserial"] = fmtTarget("unbanned"),
+        ["showban"]    = function(actor, args) return "checked the ban list" end,
+        ["showbans"]   = function(actor, args) return "checked the ban list" end,
+        ["findban"]    = function(actor, args) return "checked the ban list" end,
+        ------------------------------------------------------------ duty -----
+        ["adminduty"] = function(actor, args) return "toggled admin duty" end,
+        ["aduty"]     = function(actor, args) return "toggled admin duty" end,
+        -------------------------------------------------------- position -----
+        ["setpos"] = fmtSetPosition, ["setxyz"] = fmtSetPosition,
+        ["setx"] = fmtSetPosition, ["sety"] = fmtSetPosition,
+        ["setz"] = fmtSetPosition, ["setxy"] = fmtSetPosition,
+        ["setxz"] = fmtSetPosition, ["setyz"] = fmtSetPosition,
+        ["xyz"] = fmtSetPosition, ["x"] = fmtSetPosition,
+        ["y"] = fmtSetPosition, ["z"] = fmtSetPosition,
+        ------------------------------------------------ world / weather -----
+        ["setweather"] = fmtSetWorld("the weather"),
+        ["sw"] = fmtSetWorld("the weather"), ["swb"] = fmtSetWorld("the weather"),
+        ["swh"] = fmtSetWorld("the weather"), ["swl"] = fmtSetWorld("the weather"),
+        ["swr"] = fmtSetWorld("the weather"), ["swv"] = fmtSetWorld("the weather"),
+        ["sf"] = fmtSetWorld("the weather"), ["shh"] = fmtSetWorld("the weather"),
+        ["srl"] = fmtSetWorld("the weather"),
+        ["settime"] = fmtSetWorld("the time"),
+        ["setsnowlevel"] = fmtSetWorld("the snow level"),
+        --------------------------------------------------------- resources ---
+        ["startres"]   = fmtResource("started"),
+        ["stopres"]    = fmtResource("stopped"),
+        ["restartres"] = fmtResource("restarted"),
+        ["debugres"]   = fmtResource("debugged"),
+        ["debugresource"] = fmtResource("debugged"),
+        ---------------------------------------------------------- vehicles ---
+        ["blowveh"]       = fmtVehicle("destroyed"),
+        ["deletevehicle"] = fmtVehicle("deleted"),
+        ["fixveh"]        = fmtVehicle("fixed"),
+        ["fuelveh"]       = fmtVehicle("refuelled"),
+        ["veh"]        = fmtVehicle("checked"),
+        ["vehicles"]   = fmtVehicle("checked"),
+        ["vehs"]       = fmtVehicle("checked"),
+        ["checkveh"]   = fmtVehicle("checked"),
+        ["checkvehc"]  = fmtVehicle("checked"),
+        ["checkvehicle"] = fmtVehicle("checked"),
+        ["thiscar"]    = fmtVehicle("checked"),
+        ["unlockcivcars"] = function(actor, args)
+                return "unlocked the civilian vehicles"
+        end,
+        ---------------------------------------------------------- accounts ---
+        ["changeid"]              = fmtTarget("changed the ID of"),
+        ["changeserial"]          = fmtTarget("changed the serial of"),
+        ["changeemail"]           = fmtTarget("changed the email of"),
+        ["changeaccountname"]     = fmtTarget("changed the account name of"),
+        ["changepass"]            = fmtTarget("changed the password of"),
+        ["changeaccountpassword"] = fmtTarget("changed the password of"),
+        ["checkserial"]  = fmtTarget("checked the serial of"),
+        ["checkemail"]   = fmtTarget("checked the email of"),
+        ["checkaccount"] = fmtTarget("checked the account of"),
+        ["checkid"]      = fmtTarget("checked the ID of"),
+        ["findserial"]   = fmtTarget("looked up the serial of"),
+        ["findip"]       = fmtTarget("looked up the IP of"),
+        ["giverole"]     = fmtTarget("granted a role to"),
+        ["takerole"]     = fmtTarget("removed a role from"),
+        ["setroleid"]    = fmtTarget("changed the role id of"),
+        ---------------------------------------------------------- factions ---
+        ["delfaction"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "deleted the faction '" .. a(args, 1) .. "'"
+        end,
+        ["setwelfare"] = fmtSetWorld("the faction welfare"),
+        ["settax"]     = fmtSetWorld("the faction tax"),
+        ["setinttomyfaction"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "assigned interior #" .. a(args, 1) .. " to his faction"
+        end,
+        --------------------------------------------------------- properties ---
+        ["setintowner"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                local line = "transferred ownership of interior #" .. a(args, 1)
+                if a(args, 2) ~= "" then
+                        line = line .. " to '" .. resolveName(a(args, 2)) .. "'"
+                end
+                return line
+        end,
+        ["removeintowner"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "removed the owner of interior #" .. a(args, 1)
+        end,
+        ["forcesell"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "force-sold interior #" .. a(args, 1)
+        end,
+        ["fsell"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "force-sold interior #" .. a(args, 1)
+        end,
+        ["tempsell"] = function(actor, args)
+                if a(args, 1) == "" then return nil end
+                return "temporarily sold interior #" .. a(args, 1)
+        end,
 }
 
 -- detail must stay one short line: collapse whitespace, drop a trailing dot
@@ -586,16 +843,16 @@ local function logCommandUsage(player, cmd, args)
                 local ok, built = pcall(formatter, player, args)
                 if ok then detail = built end
         end
-        if not detail then
-                -- generic fallback built from the cmdok args: used /cmd a b c
-                detail = "used /" .. cmd
-                local tail = rest(args, 1)
-                if tail ~= "" then detail = detail .. " " .. tail end
-        end
+        -- No generic "used /cmd <args>" fallback any more (owner's request):
+        -- a gated command with no descriptive builder - panel openers such as
+        -- /staffs, /apps, /tv, /staffdb, /vehicles ... - produces NO chat line
+        -- at all. Only commands that actually did something are announced, and
+        -- always in the revive shape: [Admin] : Rob Walton (h05) revived X.
+        if not detail then return end
         detail = sanitizeDetail(detail)
         if not detail then return end
 
-        local line = logLine(TAG_ADMIN, who(player), detail)
+        local line = logLine(TAG_ADMIN, whoRanked(player), detail)
         local tier = TIER_ADMIN
         if SENSITIVE_COMMANDS[cmd] then
                 tier = TIER_DEBUG
@@ -689,6 +946,18 @@ local function logRankChange(payload, ...)
 
         from = (type(from) == "string" and from ~= "") and from or nil
         to = (type(to) == "string" and to ~= "") and to or nil
+
+        -- [user rule #2] a hidden rank produces no line at all. Either end of
+        -- a move is enough, and the rank-level events ("Rank Added/Deleted/
+        -- Edited/Renamed") are checked on `target` too: staff_manager puts the
+        -- rank NAME there while from/to stay "-", so the name-only guard below
+        -- would miss them.
+        local cType = (type(payload) == "table") and payload.cType or nil
+        if type(cType) == "string" and cType:sub(1, 4) == "Rank"
+                and rankNameIsHidden(target) then
+                return
+        end
+        if rankNameIsHidden(from) or rankNameIsHidden(to) then return end
 
         local detail
         if from and to then

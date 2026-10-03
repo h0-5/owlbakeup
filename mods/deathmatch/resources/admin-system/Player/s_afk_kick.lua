@@ -6,7 +6,7 @@ function checkAFK()
 			if exports.integration:isPlayerTrialAdmin(thePlayer) then
 				if getElementData(thePlayer, "duty_admin") == 1 then
 					exports.anticheat:changeProtectedElementDataEx(thePlayer, "duty_admin", 0)
-					exports.global:sendMessageToAdmins("AdmDuty: " .. getPlayerName(thePlayer):gsub("_", " ") .. " went off duty (AFK).")
+					-- exports.global:sendMessageToAdmins("AdmDuty: ... went off duty (AFK).") -- [user] legacy AdmDuty broadcast removed (admin-logs covers duty)
 					exports.global:updateNametagColor(thePlayer)
 				end
 			else

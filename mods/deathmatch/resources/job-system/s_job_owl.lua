@@ -459,3 +459,80 @@ end)
 addEventHandler("onResourceStart", resourceRoot, function()
         ensureTable()
 end)
+
+-- ===========================================================================
+-- Legacy /setjob contract - MISSING EXPORTS
+--
+-- job-system used to export only the four CLIENT functions in meta.xml.
+-- Three SERVER callers still call into this resource and every one of them
+-- died with `call: failed to call 'job-system:getJobTitleFromID'`:
+--   * admin-system/Player/s_checkc.lua:35      (/checkc job line)
+--   * hud/s_overlay_basic_info.lua:401         (Career line of /stats overlay,
+--                                               called WITHOUT pcall -> live error)
+--   * job-system-trucker/s_trucker_job_admin_cmds.lua:9  (/setjob, /setjoblevel)
+-- and a fourth one calls the sibling below:
+--   * job-system-trucker/s_trucker_job_admin_cmds.lua:141/501 (/setjob, /deljob)
+-- ===========================================================================
+
+-- The authoritative legacy job ids are the ones printSetJobSyntax() in
+-- job-system-trucker/s_trucker_job_admin_cmds.lua prints (ID#1 .. ID#7), which
+-- is also the table /setjob writes into characters.job.
+local LEGACY_JOB_TITLES = {
+        [0] = "Unemployed",
+        [1] = "Delivery Driver",
+        [2] = "Taxi Driver",
+        [3] = "Bus Driver",
+        [4] = "City Maintenance",
+        [5] = "Mechanic",
+        [6] = "Locksmith",
+        [7] = "Long Haul Truck Driver",
+}
+
+-- jobID may be: a legacy numeric id (characters.job), the numeric id as a
+-- string, or a plain job NAME - the ported job system stores the NAME in the
+-- "job" element data, so the HUD overlay hands a string here once a player
+-- took a ported job. Anything unrecognised degrades to a readable label
+-- instead of throwing.
+function getJobTitleFromID(jobID)
+        if type(jobID) == "string" then
+                local s = jobID:gsub("^%s+", ""):gsub("%s+$", "")
+                if s == "" or s == "0" then return "Unemployed" end
+                local numeric = tonumber(s)
+                if numeric then
+                        if numeric % 1 ~= 0 then numeric = math.floor(numeric) end
+                        return LEGACY_JOB_TITLES[numeric] or ("Job ID " .. numeric)
+                end
+                return s
+        end
+
+        local id = tonumber(jobID)
+        if not id or id <= 0 then return "Unemployed" end
+        if id % 1 ~= 0 then id = math.floor(id) end
+        return LEGACY_JOB_TITLES[id] or ("Job ID " .. id)
+end
+
+-- Re-publish the job element data from the LEGACY characters.job column.
+-- This is exactly what /setjob and /deljob expect: they UPDATE characters.job
+-- and then call this so the target's "job" element data (and therefore the
+-- HUD Career line, F1 and /checkc) reflects the new value immediately.
+-- The ported character_jobs system keeps its own login restore above; this
+-- function only answers the legacy contract its two callers ask for.
+function fetchJobInfoForOnePlayer(player)
+        if not (isElement(player) and getElementType(player) == "player") then
+                return nil
+        end
+        local dbid = tonumber(getElementData(player, "dbid"))
+        if not dbid then return nil end
+
+        local row = mysql:query_fetch_assoc("SELECT `job` FROM characters WHERE id = " .. dbid)
+        local title = getJobTitleFromID(row and row["job"])
+
+        if title == "Unemployed" then
+                -- same removal style the ported quitJob path uses
+                removeElementData(player, "job")
+                return nil
+        end
+
+        exports.anticheat:changeProtectedElementDataEx(player, "job", title, true)
+        return title
+end

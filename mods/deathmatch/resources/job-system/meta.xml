@@ -67,6 +67,13 @@
         <export function="showTakeJob" type="client" />
         <export function="takeJob" type="client" />
 
+        <!-- [user] the two SERVER exports the legacy /setjob, /deljob,
+             /setjoblevel, /checkc and the HUD Career overlay call into
+             (s_job_owl.lua) - without them every one of those call sites
+             raised "call: failed to call 'job-system:getJobTitleFromID'" -->
+        <export function="getJobTitleFromID" type="server" />
+        <export function="fetchJobInfoForOnePlayer" type="server" />
+
         <!-- ===================== LEGACY SUB-JOBS (dormant) ==================
              fishing / photographer / mechanic / locksmith / bus come from the
              UG base and stay loadable; taking them is no longer possible

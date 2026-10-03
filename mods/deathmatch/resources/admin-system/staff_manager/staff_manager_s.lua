@@ -237,6 +237,9 @@ local function seedRanks()
                         .. mysql:escape_string(rank.name) .. "', '"
                         .. rightsToJSON(rightsMap) .. "', '"
                         .. mysql:escape_string(toJSON(rank.color)) .. "')")
+                -- [user rule #2] a rank row changed: the hidden-name snapshot is
+                -- stale now (a rename INTO hidden must stop logging immediately)
+                staffInvalidateHiddenRankCache()
         end
         outputDebugString("[Vortex Staff] seeded " .. #RANK_SEED .. " ranks.")
 end
@@ -279,6 +282,9 @@ local function migrateRightsFix160()
         for _, p in ipairs(pending) do
                 mysql:query_free("UPDATE staff_roles SET Rights='" .. rightsToJSON(p.rights)
                         .. "' WHERE ID=" .. p.id)
+                -- [user rule #2] a rank row changed: the hidden-name snapshot is
+                -- stale now (a rename INTO hidden must stop logging immediately)
+                staffInvalidateHiddenRankCache()
         end
         if #pending > 0 then
                 outputDebugString("[Vortex Staff] Fix #160: migrated rights on " .. #pending .. " rank(s).")
@@ -312,7 +318,31 @@ local function stripStatusPrefix(raw)
         return s
 end
 
-local function hasEditMembers(player)        -- Fix #25: same backend-first rule as hasEditRanks
+-- [user rule #4] the two STAFF buttons in the الهيئة section are split:
+--   owner.giverole -> the ADD button    (promote somebody into a rank)
+--   owner.takerole -> the REMOVE button (strip the rank, back to plain player)
+-- admin.manager.editmembers alone no longer opens them - it is the right for
+-- the TEAMS half of "أعضاء الصلاحيات" (rule #6), so holding it must not also
+-- hand out staff promotion. owner.giverole / owner.takerole are the exact
+-- powers the two buttons perform, which is why they are the rights to check.
+local function hasGiveRole(player)
+        if type(playerHasRight) ~= "function" then return false end
+        return playerHasRight(player, "owner.giverole") and true or false
+end
+
+local function hasTakeRole(player)
+        if type(playerHasRight) ~= "function" then return false end
+        return playerHasRight(player, "owner.takerole") and true or false
+end
+
+-- ---------------------------------------------------------------------------
+-- [user rule #6] admin.manager.editmembers is the SECTION right for
+-- "أعضاء الصلاحيات" (the teams half): without it a viewer still sees the
+-- section and its read-only roster, but the team grids, the inputs and the
+-- whole action row stay hidden. The old admin.manager.panel fallback is gone -
+-- that right now means only "may open the panel at all" (see /staffs in
+-- command_gates_s.lua) and must not imply any management power.
+local function hasEditMembers(player)
         if getElementData(player, "rank:index") then
                 if type(playerHasRight) == "function" then
                         return playerHasRight(player, "admin.manager.editmembers") and true or false
@@ -366,6 +396,11 @@ local function panelRights(player)
                 startres = has("admin.startres"),
                 stopres = has("admin.stopres"),
                 restartres = has("admin.restartres"),
+                -- [user rule #4] the two الهيئة staff buttons are separate rights
+                -- (owner.giverole / owner.takerole), so the client can show
+                -- exactly the one this viewer is allowed to press
+                giverole = hasGiveRole(player),
+                takerole = hasTakeRole(player),
         }
 end
 
@@ -404,8 +439,9 @@ end
 -- data assembly
 -- ============================================================================
 
--- [Batch rule 2] may THIS panel viewer see hidden ranks/teams? Rank 20/21
--- or a "dev" team member (staffCanSeeHiddenStaff lives in the bridge, which
+-- [Batch rule 2 / 2f] may THIS panel viewer see hidden ranks/teams? Rank
+-- 20/21, the holder of a hidden rank, the member of a hidden team or a
+-- "dev" team member (staffCanSeeHiddenStaff lives in the bridge, which
 -- loads after this file - the call is a runtime global lookup, so the order
 -- is fine; pcall because a panel payload must never die on it).
 local function canSeeHiddenStaff(viewer)
@@ -444,10 +480,61 @@ local function fetchLevelsRaw()
         return levels
 end
 
--- [Batch rule 2] a hidden rank row is DROPPED for everyone except rank
--- 20/21 + dev-team members; those viewers receive it with hidden=true so
--- the client can tag it "(hidden)". viewer == nil is an INTERNAL lookup
--- (old-name resolution for changelogs) - it always sees every row.
+-- [user rule #2] a HIDDEN rank is INVISIBLE in the logs - always. Not to the
+-- public, not to staff, and not even to the 20/21 + dev viewers who may SEE the
+-- rank itself: once a hidden rank name reaches staff_rank_changelogs (or the
+-- public [STAFF] chat line, or the fix160:rankchanged event), every later
+-- reader of the Logs section publishes the very name the owner wanted gone.
+-- So the test is name based and viewer independent - it deliberately takes NO
+-- entitlement argument: promotion INTO a hidden rank, demotion OUT of it, an
+-- edit/rename of it and a removal of its holder all vanish identically, and
+-- from every reader's point of view the holder simply stopped being staff.
+local hiddenRankNameCache = nil
+
+local function staffInvalidateHiddenRankCacheInternal()
+        hiddenRankNameCache = nil
+end
+
+function staffInvalidateHiddenRankCache()
+        staffInvalidateHiddenRankCacheInternal()
+end
+
+-- [round-2 T1] FAIL CLOSED, the same semantics admin-logs/s_logs.lua uses
+-- (that file is owned by the other agent - we mirror it, we do not call it):
+-- while the hidden set cannot be read (mysql down, query error) EVERY name
+-- counts as hidden, and the failed read is NOT cached so the next caller
+-- retries. One missing rank title beats one leaked one.
+local function rankNameIsHidden(name)
+        if name == nil or name == false then return false end
+        local key = tostring(name)
+        if key == "" or key == "-" or key == "nil" or key == "false" then return false end
+        if hiddenRankNameCache == nil then
+                local ok, q = pcall(function()
+                        return mysql:query("SELECT LevelName FROM staff_roles WHERE hidden = 1")
+                end)
+                if not ok or not q then
+                        return true
+                end
+                local cache = {}
+                while true do
+                        local okRow, row = pcall(function() return mysql:fetch_assoc(q) end)
+                        if not okRow or not row then break end
+                        cache[tostring(row.LevelName or "")] = true
+                end
+                pcall(function() mysql:free_result(q) end)
+                cache.__ready = true
+                hiddenRankNameCache = cache
+        end
+        if not hiddenRankNameCache.__ready then return true end
+        return hiddenRankNameCache[key] == true
+end
+
+-- [Batch rule 2 / 2f] a hidden rank row is DROPPED for every viewer
+-- staffCanSeeHiddenStaff refuses (rank 20/21, hidden-rank holders,
+-- hidden-team members, dev-team members are the kept ones); those viewers
+-- receive it with hidden=true so the client can tag it "(hidden)". viewer
+-- == nil is an INTERNAL lookup (old-name resolution for changelogs) - it
+-- always sees every row.
 local function levelsForViewer(all, viewer)
         if viewer == nil then return all end
         if canSeeHiddenStaff(viewer) then return all end
@@ -635,10 +722,15 @@ local function sendFullData(player)
         -- [Batch rule 2] a hidden rank name must not appear in the viewer's
         -- changelog history either: From/To collapse to "-" for anyone who
         -- is not entitled to see hidden ranks.
+        -- [round-2 T1c] Username too: a "Rank Deleted"/"Rank Edited" row used
+        -- to carry the RANK NAME in the Username column. T1a stops new rows
+        -- from being written at all; this is the belt for rows written by an
+        -- older build.
         if not ctx.canSee then
                 for _, cl in ipairs(changelogs) do
                         if ctx.names[tostring(cl.FromR)] then cl.FromR = "-" end
                         if ctx.names[tostring(cl.ToR)] then cl.ToR = "-" end
+                        if ctx.names[tostring(cl.Username)] then cl.Username = "-" end
                 end
         end
 
@@ -769,10 +861,12 @@ local function sendPanel(player)
         mysql:free_result(cq)
 
         -- [Batch rule 2] hide hidden-rank names from the changelog history
+        -- [round-2 T1c] Username as well (see the sendFullData twin above)
         if not ctx.canSee then
                 for _, cl in ipairs(changelogs) do
                         if ctx.names[tostring(cl.FromR)] then cl.FromR = "-" end
                         if ctx.names[tostring(cl.ToR)] then cl.ToR = "-" end
+                        if ctx.names[tostring(cl.Username)] then cl.Username = "-" end
                 end
         end
 
@@ -833,6 +927,20 @@ end, false, false)
 --   cType   = extra (adaptation the contract allows): "Promotion",
 --             "Demotion", "Rank Added", ... so the feed can word it.
 local function addChangelog(cType, username, fromRank, toRank, actor, targetAccount)
+-- [user rule #2] a hidden rank produces NOTHING: either end of the move is
+-- enough to drop it - no staff_rank_changelogs row, no public [STAFF] line,
+-- no fix160:rankchanged event.
+-- [round-2 T1a] AND the USERNAME field too: "Rank Deleted" (s:~1250) and
+-- "Rank Edited" (s:~1335) pass the RANK NAME as `username`, so from/to are
+-- both "-" and the old guard let the hidden name through into the DB row
+-- (and from there into the panel Logs Username column). The same name based,
+-- viewer independent lookup covers it - and because the row is never
+-- written, no payload masking can be needed for these rows afterwards.
+if rankNameIsHidden(fromRank) or rankNameIsHidden(toRank)
+        or rankNameIsHidden(username) then
+        staffInvalidateHiddenRankCache()
+        return
+end
         -- [Fix #157] optional actor: command handlers have no event `client`,
         -- so /giverole and friends pass themselves; event callers stay as-is
         local src = actor
@@ -901,7 +1009,12 @@ local function actorName(actor)
         return "System"
 end
 
-local function broadcastRankChange(action, target, toRank, isNegative, actor)
+local function broadcastRankChange(action, target, toRank, isNegative, actor, fromRank)
+-- [user rule #2] belt and braces for the PUBLIC [STAFF] line: every
+-- caller broadcasts even though addChangelog already returned early.
+-- fromRank is what makes the REMOVAL calls safe - they pass toRank=false,
+-- and dropping the only holder of a hidden rank must publish nothing.
+if rankNameIsHidden(toRank) or rankNameIsHidden(fromRank) then return end
         -- Fix #25 (user, image 3): colored staff log — purple [STAFF] tag,
         -- colored actor, rank name in its panel color when known
         local rankColor = ""
@@ -933,8 +1046,10 @@ end
 -- add a staff member to a rank
 addEvent("rpadmin:addNewAdmin", true)
 addEventHandler("rpadmin:addNewAdmin", root, function(account, levelID, levelName)
-        if not hasEditMembers(client) then
-                outputChatBox("You don't have permission to edit staff members.", client, 255, 80, 80)
+-- [user rule #4] this button's own right, not the teams one:
+-- ADD = owner.giverole, REMOVE = owner.takerole
+if not hasGiveRole(client) then
+                outputChatBox("You don't have permission to promote staff (owner.giverole).", client, 255, 80, 80)
                 return
         end
         if not account or not tonumber(levelID) then return end
@@ -1027,8 +1142,10 @@ end
 -- remove a staff member (by username)
 addEvent("rpadmin:removeAdmin", true)
 addEventHandler("rpadmin:removeAdmin", root, function(account)
-        if not hasEditMembers(client) then
-                outputChatBox("You don't have permission to edit staff members.", client, 255, 80, 80)
+-- [user rule #4] this button's own right, not the teams one:
+-- ADD = owner.giverole, REMOVE = owner.takerole
+if not hasTakeRole(client) then
+                outputChatBox("You don't have permission to demote staff (owner.takerole).", client, 255, 80, 80)
                 return
         end
         -- [Fix #51] never let the decorated grid text reach the account lookup
@@ -1076,7 +1193,7 @@ addEventHandler("rpadmin:removeAdmin", root, function(account)
         addChangelog("Demotion", user.username, oldName, "-", nil, tonumber(user.id))
         outputChatBox("Staff removed: " .. user.username, client, 0, 255, 0)
         -- [Fix #15] public chat log of the removal
-        broadcastRankChange("removed", user.username, false, true)
+        broadcastRankChange("removed", user.username, false, true, nil, oldName)
         refresh(client)
         -- Vortex bridge: drop the target's live rank data if online
         if type(refreshPlayerRank) == "function" then
@@ -1106,6 +1223,9 @@ addEventHandler("rpadmin:addAdminLevel", root, function(rankName)
         mysql:query_free("INSERT INTO staff_roles (LevelName, Rights, Color) VALUES ('"
                 .. mysql:escape_string(tostring(rankName)) .. "', '{}', '"
                 .. mysql:escape_string(toJSON({ 255, 255, 255, 255 })) .. "')")
+        -- [user rule #2] a rank row changed: the hidden-name snapshot is
+        -- stale now (a rename INTO hidden must stop logging immediately)
+        staffInvalidateHiddenRankCache()
         addChangelog("Rank Added", tostring(rankName), "-", "-")
         refresh(client)
 end)
@@ -1122,6 +1242,9 @@ addEventHandler("rpadmin:removeAdminLevel", root, function(levelID)
         local row = mysql:query_fetch_assoc("SELECT LevelName FROM staff_roles WHERE ID=" .. levelID)
         if not row then return end
         mysql:query_free("DELETE FROM staff_roles WHERE ID=" .. levelID)
+        -- [user rule #2] a rank row changed: the hidden-name snapshot is
+        -- stale now (a rename INTO hidden must stop logging immediately)
+        staffInvalidateHiddenRankCache()
         mysql:query_free("DELETE FROM staff_role_members WHERE RoleID=" .. levelID)
         addChangelog("Rank Deleted", row.LevelName, "-", "-")
         refresh(client)
@@ -1144,6 +1267,9 @@ addEventHandler("rpadmin:changeAdminLevelName", root, function(levelID, newName)
         if not row then return end
         mysql:query_free("UPDATE staff_roles SET LevelName='"
                 .. mysql:escape_string(tostring(newName)) .. "' WHERE ID=" .. tonumber(levelID))
+        -- [user rule #2] a rank row changed: the hidden-name snapshot is
+        -- stale now (a rename INTO hidden must stop logging immediately)
+        staffInvalidateHiddenRankCache()
         addChangelog("Rank Renamed", row.LevelName, row.LevelName, tostring(newName))
         refresh(client)
 end)
@@ -1200,6 +1326,9 @@ local function updateRoleImpl(sender, levelID, rights, color, hidden)
                 .. rightsToJSON(rights) .. "', Color='"
                 .. mysql:escape_string(colorJSON) .. "'" .. hiddenSQL
                 .. " WHERE ID=" .. levelID)
+        -- [user rule #2] a rank row changed: the hidden-name snapshot is
+        -- stale now (a rename INTO hidden must stop logging immediately)
+        staffInvalidateHiddenRankCache()
         addChangelog("Rank Edited", row.LevelName, "-",
                 ("#%02X%02X%02X"):format(color[1], color[2], color[3]))
         -- [Fix #30] LOUD proof the backend fired: what was saved + that
@@ -1226,6 +1355,9 @@ addEventHandler("rpadmin:updateRole", root, function(levelID, name, rights, colo
                 if row then
                         mysql:query_free("UPDATE staff_roles SET LevelName='"
                                 .. mysql:escape_string(name) .. "' WHERE ID=" .. tonumber(levelID))
+                        -- [user rule #2] a rank row changed: the hidden-name snapshot is
+                        -- stale now (a rename INTO hidden must stop logging immediately)
+                        staffInvalidateHiddenRankCache()
                         addChangelog("Rank Renamed", row.LevelName, row.LevelName, name)
                         outputChatBox("Rank renamed: " .. tostring(row.LevelName) .. " -> " .. name,
                                 client, 0, 255, 0)
@@ -1825,8 +1957,16 @@ local function fix157AssignRole(actor, row, levelID, levelName)
         if online and type(refreshPlayerRank) == "function" then
                 refreshPlayerRank(online)
         end
-        fix157Log(actor, "GIVEROLE " .. tostring(row.username) .. " -> " .. tostring(levelName)
-                .. " (" .. changeType .. ")", "account#" .. tostring(row.id))
+        -- [round-2 T1b] a hidden rank produces NO admin-logs line either.
+        -- addChangelog already dropped the DB row + [STAFF] line + event; this
+        -- closes the third sink. Gated on BOTH ends: the target rank when the
+        -- move goes INTO a rank, the old rank when a holder is demoted OUT of
+        -- a hidden one - the user's rule is "no log at all" for both cases,
+        -- even though this line only prints the new rank name.
+        if not (rankNameIsHidden(levelName) or rankNameIsHidden(oldName)) then
+                fix157Log(actor, "GIVEROLE " .. tostring(row.username) .. " -> " .. tostring(levelName)
+                        .. " (" .. changeType .. ")", "account#" .. tostring(row.id))
+        end
 end
 
 local function fix157ClearRole(actor, row)
@@ -1843,14 +1983,18 @@ local function fix157ClearRole(actor, row)
                 tonumber(row.id))
         outputChatBox("Staff removed: " .. tostring(row.username)
                 .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), actor, 0, 255, 0)
-        broadcastRankChange("removed", row.username, false, true, actor)
+        broadcastRankChange("removed", row.username, false, true, actor, oldName)
         refresh(actor)
         local online = fix157PlayerByAccountID(row.id)
         if online and type(refreshPlayerRank) == "function" then
                 refreshPlayerRank(online)
         end
-        fix157Log(actor, "TAKEROLE " .. tostring(row.username)
-                .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), "account#" .. tostring(row.id))
+        -- [round-2 T1b] removal of a hidden rank's holder logs nothing: the
+        -- line embeds the OLD rank name in "(was: <rank>)".
+        if not (oldRoleID and rankNameIsHidden(oldName)) then
+                fix157Log(actor, "TAKEROLE " .. tostring(row.username)
+                        .. (oldRoleID and (" (was: " .. oldName .. ")") or ""), "account#" .. tostring(row.id))
+        end
 end
 
 -- [Fix #157] owner.giverole — by rank ID or rank name
@@ -1874,31 +2018,136 @@ addCommandHandler("giverole", function(player, cmd, account, roleArg)
         fix157AssignRole(player, row, levelID, levelName)
 end, false, false)
 
--- [Fix #157] owner.setroleid — same, but the argument must be a rank ID
-addCommandHandler("setroleid", function(player, cmd, account, roleID)
+-- [user rule #5] owner.setroleid - it REORDERS the ladder by editing a rank's
+-- OWN ID, it does not assign a rank to an account (that is /giverole). The
+-- rank ID is the ladder position every other rule reads: staff_manager_c.lua
+-- sorts by it, the bridge derives the legacy admin_level bands from it, and a
+-- hidden/visible rank is identified by it, so a clean renumber is how the
+-- owner fixes a ladder whose IDs drifted out of order.
+--
+--   /setroleid [Rank ID now] [Rank ID wanted]
+--
+-- COLLISION RULES (both checked BEFORE anything is written, and both are hard
+-- errors - never a silent overwrite):
+--   1) the wanted ID must not already belong to ANOTHER rank;
+--   2) it must also not be the ID of the rank being moved (a no-op is refused
+--      rather than reported as a success);
+--   3) the wanted ID must be a positive integer inside the ladder.
+-- staff_role_members.RoleID has NO foreign key, so every member of the moved
+-- rank is repointed in the same pass; without that they would all silently
+-- fall back to being plain players.
+-- [user rule #5] the REORDER core, shared by /setroleid and the Ranks
+-- section button (rpadmin:reorderRankID) so the collision rules can
+-- never drift between the two entry points.
+-- Returns ok, message - the caller only has to print the message.
+local function staffReorderRankID(actor, currentArg, wantedArg)
+        currentArg = fix157Trim(currentArg or "")
+        wantedArg = fix157Trim(wantedArg or "")
+        if currentArg == "" or wantedArg == "" then
+                return false, "[Current Rank ID] [Wanted Rank ID]"
+        end
+        if not currentArg:match("^%d+$") or not wantedArg:match("^%d+$") then
+                return false, "Both arguments must be numbers (see the ID column in the panel)."
+        end
+        local currentID = tonumber(currentArg)
+        local wantedID = tonumber(wantedArg)
+        if currentID < 1 or wantedID < 1 then
+                return false, "Rank IDs start at 1."
+        end
+        -- rule 2: a rank onto its own ID is a no-op, not a success
+        if currentID == wantedID then
+                return false, "Rank " .. wantedID .. " already has that ID - nothing to reorder."
+        end
+        local current = mysql:query_fetch_assoc("SELECT ID, LevelName FROM staff_roles WHERE ID="
+                .. currentID .. " LIMIT 1")
+        if not current then
+                return false, "Rank not found: ID " .. currentArg
+        end
+        -- rule 1: the wanted ID must be FREE - never take a slot silently
+        local occupant = mysql:query_fetch_assoc("SELECT ID, LevelName FROM staff_roles WHERE ID="
+                .. wantedID .. " LIMIT 1")
+        if occupant then
+                return false, "ID " .. wantedArg .. " is already taken by '"
+                        .. tostring(occupant.LevelName) .. "' - reorder that rank first, or pick a free ID."
+        end
+        local rankName = tostring(current.LevelName or "")
+        mysql:query_free("UPDATE staff_roles SET ID=" .. wantedID .. " WHERE ID=" .. currentID)
+        -- staff_role_members has no FK, so the members are repointed by
+        -- hand: without this every holder would silently be demoted to a
+        -- plain player by the next rank refresh
+        mysql:query_free("UPDATE staff_role_members SET RoleID=" .. wantedID
+                .. " WHERE RoleID=" .. currentID)
+        -- [user rule #2] a hidden rank is never logged, like every other change
+        -- [user rule #2] the ID strings below are NOT rank names, so they
+        -- would never trip rankNameIsHidden() - pass the real name on BOTH
+        -- ends instead, and keep the human-readable IDs in the message only.
+        addChangelog("Rank Reordered", rankName, rankName, rankName, actor)
+        -- every live player must be re-pushed: rank:index IS the ladder
+        -- position and the legacy admin_level band is derived from it
+        if type(refreshAllPlayerRanks) == "function" then
+                refreshAllPlayerRanks()
+        end
+        if type(refreshStaffPanelRightsAll) == "function" then
+                refreshStaffPanelRightsAll()
+        end
+        -- the panel payload (levels + member rows) is cached per viewer, so
+        -- every ranked viewer needs a fresh push - refresh() is the debounced
+        -- wrapper around sendFullData and coalesces the burst into one push
+        for _, p in ipairs(getElementsByType("player")) do
+                if getElementData(p, "rank:index") then refresh(p) end
+        end
+        -- [round-2 T1b] third return value = the name of the rank that moved.
+        -- Both callers gate their admin-logs line on it instead of parsing the
+        -- human message (free text + two IDs, not reliably parseable).
+        return true, "Rank reordered: " .. rankName .. " - ID " .. currentID
+                .. " -> " .. wantedID, rankName
+end
+
+addCommandHandler("setroleid", function(player, cmd, currentArg, wantedArg)
         if not fix157Check(player, "owner.setroleid") then return end
-        if not account or not roleID then
-                fix157Syntax(player, cmd, "[Account Username / Player] [Rank ID]")
+        -- the collision rules live in staffReorderRankID (shared with the panel
+        -- button) so /setroleid and the Ranks section can never disagree
+        local ok, message, movedName = staffReorderRankID(player, currentArg, wantedArg)
+        if not ok then
+                -- a "[X] [Y]" reply is the syntax line, everything else is an error
+                if fix157Trim(message):match("^%[%u%S+%s%]%s*%[%u%S+%s%]$") then
+                        fix157Syntax(player, cmd, message)
+                else
+                        outputChatBox(message, player, 255, 0, 0)
+                end
                 return
         end
-        roleID = fix157Trim(roleID)
-        if not roleID:match("^%d+$") then
-                outputChatBox("Rank ID must be a number (see the ID column in the panel).",
-                        player, 255, 0, 0)
-                return
+        outputChatBox(message, player, 0, 255, 0)
+        -- [round-2 T1b] reordering a HIDDEN rank writes no admin-logs line
+        -- (the DB changelog side is already dropped by addChangelog).
+        if not rankNameIsHidden(movedName) then
+                fix157Log(player, "SETROLEID " .. message, "staff_roles")
         end
-        local row = fix157Account(account)
-        if not row then
-                outputChatBox("Account not found: " .. tostring(account), player, 255, 0, 0)
-                return
-        end
-        local levelID, levelName = fix157FindRoleByArg(roleID)
-        if not levelID then
-                outputChatBox("Rank not found: ID " .. roleID, player, 255, 0, 0)
-                return
-        end
-        fix157AssignRole(player, row, levelID, levelName)
 end, false, false)
+
+-- [user rule #5] the Ranks section "apply new ID" BUTTON - the panel twin of
+-- /setroleid. The client fires rpadmin:reorderRankID with the rank's CURRENT id
+-- and the wanted one; it must be gated by hasEditRanks (it edits the LADDER,
+-- which is the Ranks section's business, not a member's rank) and must reuse
+-- staffReorderRankID so the collision rules can never drift between the two
+-- entry points. Without this handler the button silently did nothing.
+addEvent("rpadmin:reorderRankID", true)
+addEventHandler("rpadmin:reorderRankID", root, function(currentID, wantedID)
+        if not hasEditRanks(client) then
+                outputChatBox("You don't have permission to reorder ranks.", client, 255, 80, 80)
+                return
+        end
+        local ok, message, movedName = staffReorderRankID(client, currentID, wantedID)
+        outputChatBox(message, client, ok and 0 or 255, ok and 255 or 0, ok and 0 or 0)
+        if ok then
+                refresh(client)
+                -- [round-2 T1b] same gate as the /setroleid twin
+                if not rankNameIsHidden(movedName) then
+                        fix157Log(client, "SETROLEID " .. tostring(message), "staff_roles")
+                end
+        end
+end)
+
 
 -- [Fix #157] owner.takerole — drop the staff role (same as the panel button)
 addCommandHandler("takerole", function(player, cmd, account)

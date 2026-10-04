@@ -511,7 +511,18 @@ _G.addCommandHandler = function(commandName, handlerFunction, caseSensitive, res
                                 -- but a crash is never logged as a success
                                 error(results[2], 0)
                         end
-                        if publish and not sawDenial then
+                        -- [user] the HANDLER owns the verdict. It can answer
+                        --   false -> the command aborted (validation failed /
+                        --            nothing was performed): NO usage line;
+                        --   true  -> the action ran: publish even if the
+                        --            handler printed red output of its own
+                        --            (its public success broadcast / notice);
+                        --   (nil) -> no opinion, keep the legacy colour rule
+                        --            (a denial-coloured line means "no").
+                        local verdict = results[2]
+                        local allowed = verdict == true
+                                or (verdict ~= false and not sawDenial)
+                        if publish and allowed then
                                 fireFix160CmdOk(player, key, args)
                         end
                         return (unpack or table.unpack)(results, 2)

@@ -446,6 +446,15 @@ for _, def in ipairs(BADGE_ROW_DEFS) do
         BADGE_ROW_RIGHT[def.id] = def.right
 end
 
+-- [Batch 173] the same three rights in the exact order the staff bridge
+-- concatenates them (staff_manager_bridge_s.lua FIX160_BADGE_RIGHTS), so a
+-- RANK holder's already-correct value compares equal and is never rewritten.
+local BADGE_HEAL_RIGHTS = {
+        "admin.badge",
+        "admin.badge.developer",
+        "admin.badge.support",
+}
+
 -- [Fix #164] fix160.badgetoggles = the synced mirror of the three badge strip
 -- toggles, { admin = bool, support = bool, dev = bool }, read by the nametags.
 -- Recomputed from hud:items (row present -> its state, row missing -> true),
@@ -633,6 +642,46 @@ local function pushDefaultItems(player)
                         for token in string.gmatch(rawRights, "[^,]+") do
                                 rights[token:match("^%s*(.-)%s*$")] = true
                         end
+                end
+        end
+        -- [Batch 173] RANK-LESS TEAM MEMBERS: the staff bridge answers "" for
+        -- fix160.badgerights on purpose (teamBadgeRightsValue: "teams only
+        -- decorate RANKED staff"), so the F4 badge rows of a player sitting in
+        -- the Full Access team WITHOUT a rank were always pruned and
+        -- hud/c_nametags.lua (read-only) drew no badge over his head - even
+        -- though his team's payload holds admin.badge / admin.badge.support /
+        -- admin.badge.developer. The rows and the badge must follow the RIGHTS,
+        -- not the rank: ask the rights API (rank OR team union, the very call
+        -- hasReportsRight above makes) for the three badge rights and repair
+        -- BOTH the local set and the synced key whenever he holds at least one.
+        -- Deliberately fail-safe:
+        --   * the answer is "" (or the API is unreachable) -> NO action at all,
+        --     today's nil/"" behaviour and the "admin-system not up yet"
+        --     fail-closed path stay byte identical;
+        --   * a non-empty answer is written only when it really differs, so the
+        --     onElementDataChange hook below re-enters pushDefaultItems exactly
+        --     once and then computes the same string - the loop terminates.
+        local okHeal, held = pcall(function()
+                local list = {}
+                for _, right in ipairs(BADGE_HEAL_RIGHTS) do
+                        local ok, res = pcall(function()
+                                return exports["admin-system"]:playerHasRight(player, right)
+                        end)
+                        if not ok then return nil end -- API down -> fail closed
+                        if res == true then list[#list + 1] = right end
+                end
+                return table.concat(list, ",")
+        end)
+        if okHeal and type(held) == "string" and held ~= "" then
+                if rawRights ~= held then
+                        pcall(function()
+                                setElementData(player, "fix160.badgerights", held, true)
+                        end)
+                        rawRights = held
+                end
+                rights = {}
+                for token in string.gmatch(held, "[^,]+") do
+                        rights[token:match("^%s*(.-)%s*$")] = true
                 end
         end
         -- [Fix #32 - user] rows removed from the strip must be actively

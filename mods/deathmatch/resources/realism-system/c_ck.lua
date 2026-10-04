@@ -21,6 +21,7 @@ addEventHandler( "showCKList", getLocalPlayer(),
 			end
 			
 			bClose = guiCreateButton( 0.03, 0.93, 0.94, 0.07, "Close", true, wCK )
+		guiSetFont( bClose, "default-bold" )
 			addEventHandler( "onClientGUIClick", bClose,
 				function( button, state )
 					if button == "left" and state == "up" then
@@ -80,6 +81,7 @@ function showCKInfo(text, name)
 	guiMemoSetReadOnly (txt1, true)
 
 	local cbutton = guiCreateButton(0.05, 0.85, 0.87, 0.1, "Close Menu", true, ckInfoWindow)
+	guiSetFont(cbutton, "default-bold")
 	addEventHandler("onClientGUIClick", cbutton, hideCKInfo, false)
 	
 	ckGUIState = 1

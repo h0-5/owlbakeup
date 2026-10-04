@@ -89,7 +89,7 @@ function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
 					end
 				else
 					outputChatBox(" This player is a higher level admin than you.", thePlayer, 255, 0, 0)
-					outputChatBox(playerName .. " attempted to execute the ban command on you.", targetPlayer, 255, 0 ,0)
+					outputChatBox(tostring(getPlayerName(thePlayer) or "unknown") .. " attempted to execute the ban command on you.", targetPlayer, 255, 0 ,0)
 				end
 			end
 		end

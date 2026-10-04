@@ -20,6 +20,7 @@ function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
 				local thePlayerPower = exports.global:getPlayerAdminLevel(thePlayer)
 				local targetPlayerPower = exports.global:getPlayerAdminLevel(targetPlayer)
 				reason = table.concat({...}, " ")
+				local publicReason = reason
 
 				if (targetPlayerPower <= thePlayerPower) then -- Check the admin isn't banning someone higher rank them him
 					local hiddenAdmin = getElementData(thePlayer, "hiddenadmin")
@@ -89,11 +90,17 @@ function banAPlayer(thePlayer, commandName, targetPlayer, hours, ...)
 					else
 						outputChatBox("[BAN] " .. adminTitle .. " banned " .. targetPlayerName .. ". (" .. hours .. ")", root, 255,0,0)
 						outputChatBox("[BAN] Reason: " .. reason .. ".", root, 255,0,0)
+						local actorText = "Hidden admin"
+						if hiddenAdmin ~= 1 then
+							actorText = (tostring(playerName or "?"):gsub("_", " ")) .. " (" .. tostring(adminUsername or "?") .. ")"
+						end
+						local targetText = (tostring(targetPlayerName or "?"):gsub("_", " ")) .. " (" .. tostring(username or "?") .. ")"
+						outputChatBox("[ADMIN]: " .. actorText .. " banned " .. targetText .. " for " .. tostring(hours) .. " and the Reason is : " .. (publicReason ~= "" and publicReason or "-"), root, 255, 0, 0)
 					end
 					exports.global:sendMessageToAdmins("/showban for details.")
 				else
 					outputChatBox(" This player is a higher level admin than you.", thePlayer, 255, 0, 0)
-					outputChatBox(playerName .. " attempted to execute the ban command on you.", targetPlayer, 255, 0 ,0)
+					outputChatBox(tostring(getPlayerName(thePlayer) or "unknown") .. " attempted to execute the ban command on you.", targetPlayer, 255, 0 ,0)
 				end
 			end
 		end
@@ -320,9 +327,10 @@ function banPlayerAccount(thePlayer, commandName, account, ...)
 		if not account or not (...) then
 			outputChatBox("SYNTAX: /" .. commandName .. " [Username] [Reason]", thePlayer, 255, 194, 14)
 		else
+			local accountName = tostring(account)
 			local account = exports.mysql:query_fetch_assoc("SELECT id, username from accounts WHERE username='"..exports.mysql:escape_string(account).."' LIMIT 1")
 			if not account or account.id == nil then
-				outputChatBox("Account '"..account.."' does not existed.", thePlayer, 255, 0, 0)
+				outputChatBox("Account '"..accountName.."' does not existed.", thePlayer, 255, 0, 0)
 				return false
 			end
 			local reason = table.concat({...}, " ")
@@ -344,6 +352,12 @@ function banPlayerAccount(thePlayer, commandName, account, ...)
 						end
 					end
 					exports.global:sendMessageToAdmins("[BAN] "..exports.global:getPlayerFullIdentity(thePlayer).." has banned account '"..(account.username).."' permanently for '"..reason.."'. /showban for details.")
+					local actorText = "Hidden admin"
+					if getElementData(thePlayer, "hiddenadmin") ~= 1 then
+						actorText = (tostring(getPlayerName(thePlayer) or "?"):gsub("_", " ")) .. " (" .. tostring(getElementData(thePlayer, "account:username") or "?") .. ")"
+					end
+					local targetText = "the account " .. tostring(account.username)
+					outputChatBox("[ADMIN]: " .. actorText .. " banned " .. targetText .. " permanently and the Reason is : " .. (tostring(reason or "") ~= "" and reason or "-"), root, 255, 0, 0)
 				end
 			end
 		end

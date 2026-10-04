@@ -7,12 +7,16 @@ addCommandHandler("check", enterCommand, false, false)
 -- close: we never hide a cursor that another panel is using)
 local checkCursorOwned = false
 
+local checkScale = 1
+
 function CreateCheckWindow()
-	local width, height = guiGetScreenSize()	
+	local width, height = guiGetScreenSize()
+	checkScale = math.max(0.7, math.min(width / 1920, height / 1080))
+	local s = checkScale
 	Button = {}
-	Window = guiCreateWindow(width-400,0,400,385,"Player Check",false)
+	Window = guiCreateWindow(width - 400 * s, 0, 400 * s, 420 * s, "Player Check", false)
 	guiWindowSetSizable(Window, false)
-	Button[3] = guiCreateButton(338,336,52,35,"Close",false,Window)
+	Button[3] = guiCreateButton(338 * s, 371 * s, 52 * s, 35 * s, "Close", false, Window)
 	addEventHandler( "onClientGUIClick", Button[3], CloseCheck )
 	Label = {
 		guiCreateLabel(0.03,0.06,0.95,0.0887,"Name: N/A",true,Window),
@@ -39,7 +43,7 @@ function CreateCheckWindow()
 	}
 	
 	-- player notes
-	memo = guiCreateMemo(16, 240, 314, 131, "", false, Window)
+	memo = guiCreateMemo(16 * s, 275 * s, 314 * s, 131 * s, "", false, Window)
 	addEventHandler( "onClientGUIClick", Window,
 		function( button, state )
 			if button == "left" and state == "up" then
@@ -51,14 +55,14 @@ function CreateCheckWindow()
 			end
 		end
 	)
-	Button[4] = guiCreateButton(338,240,52,52,"Save\nNote",false,Window)
+	Button[4] = guiCreateButton(338 * s, 275 * s, 52 * s, 52 * s, "Save\nNote", false, Window)
 	
 	addEventHandler( "onClientGUIClick", Button[4], SaveNote, false )
 	
-	Button[5] = guiCreateButton(16,206,314,30,"History: N/A",false,Window)
+	Button[5] = guiCreateButton(16 * s, 241 * s, 314 * s, 30 * s, "History: N/A", false, Window)
 	addEventHandler( "onClientGUIClick", Button[5], ShowHistory, false )
 	
-	Button[6] = guiCreateButton(338,296,52,36,"Inv.",false,Window)
+	Button[6] = guiCreateButton(338 * s, 331 * s, 52 * s, 36 * s, "Inv.", false, Window)
 	addEventHandler( "onClientGUIClick", Button[6], showInventory, false )
 
 	guiSetVisible(Window, false)
@@ -263,11 +267,11 @@ local checkSkin = {
 
 	title = tocolor(255, 255, 255, 255),
 
-	key = tocolor(255, 255, 255, 255),
+	key = tocolor(226, 59, 59, 255),
 
-	value = tocolor(200, 200, 206, 255),
+	value = tocolor(255, 255, 255, 255),
 
-	accent = tocolor(255, 92, 92, 255),
+	accent = tocolor(226, 59, 59, 255),
 
 	btn = tocolor(24, 24, 28, 255),
 
@@ -275,15 +279,17 @@ local checkSkin = {
 
 	btnOff = tocolor(17, 17, 20, 255),
 
+	btnBorder = tocolor(120, 120, 126, 255),
+
 	dim = tocolor(120, 120, 126, 255),
 
 }
 
 
--- two column row grid (y positions inside the 400x385 window)
+-- two column row grid (y positions inside the 400x420 window)
 -- left: Name, IP, Admin Level, Weapon, Money, Warns, Faction, Hours, Vehicle, Location
 -- right: X, Y, Z, Interior, Dimension, Health, Armour, Skin, GameCoins, Ping
-local checkRows = { 36, 53, 70, 87, 104, 121, 138, 155, 172, 189 }
+local checkRows = { 34, 53, 72, 91, 110, 129, 148, 167, 186, 205 }
 
 local checkLeft = { 1, 2, 18, 7, 3, 11, 8, 19, 10, 12 }
 
@@ -313,7 +319,7 @@ end
 
 
 
-local function drawCheckRow(ox, oy, bx, tx, tw, y, index)
+local function drawCheckRow(ox, oy, sc, bx, tx, tw, y, index)
 
 	local element = Label and Label[index]
 
@@ -331,19 +337,19 @@ local function drawCheckRow(ox, oy, bx, tx, tw, y, index)
 
 	end
 
-	dxDrawRectangle(ox + bx, oy + y + 5, 6, 2, checkSkin.red, true)
+	dxDrawRectangle(ox + bx * sc, oy + (y + 5) * sc, 6 * sc, 2 * sc, checkSkin.red, true)
 
 	local key, value = string.match(text, "^(.-):%s*(.*)$")
 
 	if not key or key == "" then
 
-		dxDrawText(text, ox + tx, oy + y, ox + tx + tw, oy + y + 15, checkSkin.key, 0.9, "default", "left", "top", true, false, true)
+		dxDrawText(text, ox + tx * sc, oy + y * sc, ox + (tx + tw) * sc, oy + (y + 15) * sc, checkSkin.key, 0.9 * sc, "default", "left", "top", true, false, true)
 
 		return
 
 	end
 
-	dxDrawText(key .. ":", ox + tx, oy + y, ox + tx + tw, oy + y + 15, checkSkin.key, 0.9, "default-bold", "left", "top", true, false, true)
+	dxDrawText(key .. ":", ox + tx * sc, oy + y * sc, ox + (tx + tw) * sc, oy + (y + 15) * sc, checkSkin.key, 0.9 * sc, "default-bold", "left", "top", true, false, true)
 
 	if value ~= "" then
 
@@ -351,9 +357,9 @@ local function drawCheckRow(ox, oy, bx, tx, tw, y, index)
 
 		local colour = checkAccent[index] and checkSkin.accent or checkSkin.value
 
-		local kw = dxGetTextWidth(key .. ": ", 0.9, "default-bold")
+		local kw = dxGetTextWidth(key .. ": ", 0.9 * sc, "default-bold")
 
-		dxDrawText(value, ox + tx + kw, oy + y, ox + tx + tw, oy + y + 15, colour, 0.9, "default", "left", "top", true, false, true)
+		dxDrawText(value, ox + tx * sc + kw, oy + y * sc, ox + (tx + tw) * sc, oy + (y + 15) * sc, colour, 0.9 * sc, "default", "left", "top", true, false, true)
 
 	end
 
@@ -361,7 +367,7 @@ end
 
 
 
-local function drawCheckButton(ox, oy, element)
+local function drawCheckButton(ox, oy, sc, element)
 
 	if not isElement(element) then
 
@@ -393,15 +399,23 @@ local function drawCheckButton(ox, oy, element)
 
 	dxDrawRectangle(bx, by, bw, bh, bg, true)
 
+	dxDrawRectangle(bx, by, bw, sc, checkSkin.btnBorder, true)
+
+	dxDrawRectangle(bx, by + bh - sc, bw, sc, checkSkin.btnBorder, true)
+
+	dxDrawRectangle(bx, by, sc, bh, checkSkin.btnBorder, true)
+
+	dxDrawRectangle(bx + bw - sc, by, sc, bh, checkSkin.btnBorder, true)
+
 	if hover then
 
-		dxDrawRectangle(bx, by, 2, bh, checkSkin.red, true)
+		dxDrawRectangle(bx, by, 3 * sc, bh, checkSkin.red, true)
 
 	end
 
 	local colour = enabled and checkSkin.title or checkSkin.dim
 
-	dxDrawText(guiGetText(element), bx + 4, by, bx + bw - 2, by + bh, colour, 0.9, "default-bold", "center", "center", true, false, true)
+	dxDrawText(guiGetText(element), bx + 4 * sc, by, bx + bw - 2 * sc, by + bh, colour, 0.9 * sc, "default-bold", "center", "center", true, false, true)
 
 end
 
@@ -425,6 +439,8 @@ addEventHandler("onClientRender", getRootElement(),
 
 		local ow, oh = guiGetSize(Window, false)
 
+		local sc = checkScale
+
 		if isElement(memo) then
 
 			local mx, my = guiGetPosition(memo, false)
@@ -441,13 +457,13 @@ addEventHandler("onClientRender", getRootElement(),
 
 			dxDrawRectangle(ox, oy + my + mh, ow, oh - my - mh, checkSkin.bg, true)
 
-			dxDrawRectangle(ox + mx - 1, oy + my - 1, mw + 2, 1, checkSkin.line, true)
+			dxDrawRectangle(ox + mx - sc, oy + my - sc, mw + 2 * sc, sc, checkSkin.line, true)
 
-			dxDrawRectangle(ox + mx - 1, oy + my + mh, mw + 2, 1, checkSkin.line, true)
+			dxDrawRectangle(ox + mx - sc, oy + my + mh, mw + 2 * sc, sc, checkSkin.line, true)
 
-			dxDrawRectangle(ox + mx - 1, oy + my, 1, mh, checkSkin.line, true)
+			dxDrawRectangle(ox + mx - sc, oy + my, sc, mh, checkSkin.line, true)
 
-			dxDrawRectangle(ox + mx + mw, oy + my, 1, mh, checkSkin.line, true)
+			dxDrawRectangle(ox + mx + mw, oy + my, sc, mh, checkSkin.line, true)
 
 		else
 
@@ -456,31 +472,25 @@ addEventHandler("onClientRender", getRootElement(),
 		end
 
 		-- red accent bar along the far left edge + centred white title
-
-		dxDrawRectangle(ox, oy, 4, oh, checkSkin.red, true)
-
-		dxDrawText("Player Check", ox + 4, oy + 4, ox + ow, oy + 28, checkSkin.title, 1, "default-bold", "center", "center", false, false, true)
-
-		dxDrawRectangle(ox + 16, oy + 31, ow - 32, 1, checkSkin.line, true)
+		dxDrawRectangle(ox, oy, 5 * sc, oh, checkSkin.red, true)
+		dxDrawText("Player Check", ox, oy, ox + ow, oy + 30 * sc, checkSkin.title, sc, "default-bold", "center", "center", false, false, true)
+		dxDrawRectangle(ox + 16 * sc, oy + 30 * sc, ow - 32 * sc, sc, checkSkin.line, true)
 
 		for i = 1, #checkRows do
-
-			drawCheckRow(ox, oy, 16, 26, 232, checkRows[i], checkLeft[i])
-
-			drawCheckRow(ox, oy, 262, 272, 118, checkRows[i], checkRight[i])
-
+			drawCheckRow(ox, oy, sc, 16, 28, 222, checkRows[i], checkLeft[i])
+			drawCheckRow(ox, oy, sc, 262, 274, 112, checkRows[i], checkRight[i])
+			dxDrawRectangle(ox + 16 * sc, oy + (checkRows[i] + 17) * sc, ow - 32 * sc, sc, checkSkin.line, true)
 		end
 
-		drawCheckButton(ox, oy, Button and Button[5])
+		drawCheckButton(ox, oy, sc, Button and Button[5])
 
-		drawCheckButton(ox, oy, Button and Button[4])
+		drawCheckButton(ox, oy, sc, Button and Button[4])
 
-		drawCheckButton(ox, oy, Button and Button[6])
+		drawCheckButton(ox, oy, sc, Button and Button[6])
 
-		drawCheckButton(ox, oy, Button and Button[3])
+		drawCheckButton(ox, oy, sc, Button and Button[3])
 
-	end
-
+end
 )
 
 
@@ -674,6 +684,7 @@ addEventHandler( "onClientRender", getRootElement(),
 		local tabW = dxGetTextWidth("History", 0.95 * sc, "default-bold")
 		if tabW < 8 * sc then tabW = 8 * sc end
 		dxDrawRectangle(ox + (ow - tabW) / 2, tabY + tabH - 3 * sc, tabW, 3 * sc, histSkin.red, true)
+		dxDrawRectangle(ox, tabY + tabH, ow, sc, histSkin.sep, true)
 
 		-- red accent bar along the far left edge (over header + tab row)
 		dxDrawRectangle(ox, oy, 5 * sc, oh, histSkin.red, true)
@@ -689,8 +700,9 @@ addEventHandler( "onClientRender", getRootElement(),
 		dxDrawRectangle(tx, colHeadY, tw, colHeadH, histSkin.header, true)
 		for i = 1, #histColDef do
 			local col = histColOff[i]
-			dxDrawText(histColDef[i][1], tx + (col.x + 6) * sc, colHeadY, tx + (col.x + col.w - 4) * sc, colHeadY + colHeadH, histSkin.colHead, 0.85 * sc, "default-bold", "left", "center", true, false, true)
+			dxDrawText(histColDef[i][1], tx + (col.x + 6) * sc, colHeadY, tx + (col.x + col.w - 4) * sc, colHeadY + colHeadH, histSkin.colHead, 0.9 * sc, "default-bold", "left", "center", true, false, true)
 		end
+		dxDrawRectangle(tx, colHeadY + colHeadH - sc, tw, sc, histSkin.red, true)
 
 		-- visible slice of the table
 		local count = 0
@@ -724,7 +736,7 @@ addEventHandler( "onClientRender", getRootElement(),
 					local col = histColOff[ci]
 					local text = guiGridListGetItemText(gHist, row, histCols[ci])
 					if text and text ~= "" then
-						dxDrawText(text, tx + (col.x + 6) * sc, y, tx + (col.x + col.w - 4) * sc, y + rowH, histSkin.cell, 0.85 * sc, "default", "left", "center", true, false, true)
+						dxDrawText(text, tx + (col.x + 6) * sc, y, tx + (col.x + col.w - 4) * sc, y + rowH, histSkin.cell, 0.9 * sc, "default", "left", "center", true, false, true)
 					end
 				end
 			end

@@ -335,6 +335,24 @@ local function hasTakeRole(player)
         return playerHasRight(player, "owner.takerole") and true or false
 end
 
+-- [Batch 173] TEAM membership in the legacy fallbacks below. Every helper in
+-- this file answers through playerHasRight (rank OR team union) as soon as a
+-- Vortex rank is on the player; WITHOUT a rank they used to drop straight to
+-- the legacy integration ladder, which only reads accounts.admin / supporter /
+-- scripter. A rank-LESS member of the Full Access team (rank:index nil,
+-- staff:hasTeam = 1, all three legacy columns 0) therefore failed all of them
+-- and was told "You don't have permission" by /giverole /takerole /setroleid
+-- and the whole fix157 family, although command_gates_s had ALREADY allowed
+-- the command through. The team's stored payload is the truth the owner
+-- configured: playerTeamsGrantRight is the union of every team's rights (same
+-- Lua state, no rank, no accounts column involved) and it fails CLOSED for a
+-- player with no team, so everyone else keeps the legacy answer byte for byte.
+local function teamGrants(player, right)
+        if type(playerTeamsGrantRight) ~= "function" then return false end
+        local ok, res = pcall(playerTeamsGrantRight, player, right)
+        return ok and res == true
+end
+
 -- ---------------------------------------------------------------------------
 -- [user rule #6] admin.manager.editmembers is the SECTION right for
 -- "أعضاء الصلاحيات" (the teams half): without it a viewer still sees the
@@ -349,6 +367,8 @@ local function hasEditMembers(player)
                 end
                 return false
         end
+        -- [Batch 173] the team's payload answers before the legacy ladder
+        if teamGrants(player, "admin.manager.editmembers") then return true end
         return exports.integration:isPlayerSeniorAdmin(player) and true or false
 end
 
@@ -362,6 +382,8 @@ local function hasEditRanks(player)
                 end
                 return false
         end
+        -- [Batch 173] the team's payload answers before the legacy ladder
+        if teamGrants(player, "admin.manager.editranks") then return true end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
 end
 
@@ -376,6 +398,8 @@ local function hasManageResources(player)
                 end
                 return false
         end
+        -- [Batch 173] the team's payload answers before the legacy ladder
+        if teamGrants(player, "admin.manager.resources") then return true end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
 end
 
@@ -920,7 +944,8 @@ addCommandHandler("managepanel", function(player, cmd)
                         outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
                         return
                 end
-        elseif not exports.integration:isPlayerLeadAdmin(player) then
+        elseif not (teamGrants(player, "admin.manager.panel")
+                or exports.integration:isPlayerLeadAdmin(player)) then
                 outputChatBox("You don't have permission to use this command.", player, 255, 0, 0)
                 return
         end
@@ -1375,6 +1400,14 @@ local function fix157HasRight(player, right)
                 end
                 return false
         end
+        -- [Batch 173] no rank -> the TEAMS decide first. This is the exact
+        -- lockout the owner reported: /giverole /takerole /setroleid reach
+        -- here through fix157Check with owner./accounts. rights, the legacy
+        -- ladder below only reads accounts.admin (= 0 for him) and refused a
+        -- rank-less member of the Full Access team whose payload holds every
+        -- right. playerTeamsGrantRight is rank-free and fails closed for a
+        -- player with no team, so the legacy ladder still decides everyone else.
+        if teamGrants(player, right) then return true end
         local prefix = tostring(right):match("^([%w]+)%.") or ""
         if prefix == "owner" or prefix == "accounts" then
                 return exports.integration:isPlayerLeadAdmin(player) and true or false
@@ -2414,6 +2447,8 @@ local function resourceRightHas(player, right)
                 end
                 return false
         end
+        -- [Batch 173] the team's payload answers before the legacy ladder
+        if teamGrants(player, right) then return true end
         return exports.integration:isPlayerLeadAdmin(player) and true or false
 end
 

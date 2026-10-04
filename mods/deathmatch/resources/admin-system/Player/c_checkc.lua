@@ -207,7 +207,7 @@ local function drawCheckcRow(ox, oy, sc, bulletX, tx, tw, y, key)
         local text = guiGetText(element)
         if not text or text == "" then return end
 
-        local top = oy + y * sc
+        local top = oy + (y + 4) * sc
         local bottom = top + 17 * sc
         local x = ox + tx * sc
         local right = ox + (tx + tw) * sc
@@ -304,6 +304,7 @@ addEventHandler("onClientRender", root, function()
         local tabW = dxGetTextWidth("Info", 0.95 * sc, "default-bold")
         if tabW < 8 * sc then tabW = 8 * sc end
         dxDrawRectangle(ox + (ow - tabW) / 2, tabY + tabH - 3 * sc, tabW, 3 * sc, checkcSkin.red, true)
+        dxDrawRectangle(ox, tabY + tabH, ow, sc, checkcSkin.sep, true)
 
         -- red accent bar along the far left edge (over the header + tab row)
         dxDrawRectangle(ox, oy, 5 * sc, oh, checkcSkin.red, true)

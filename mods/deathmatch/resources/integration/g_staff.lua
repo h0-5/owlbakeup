@@ -14,6 +14,11 @@
 --   3. Legacy elementData fallback (accounts.admin/supporter/scripter
 --      columns) for accounts that have no Vortex rank assigned yet - this
 --      path is untouched by Fix #163.
+--   4. [Batch 173] only when there is no rank AND no legacy column at all:
+--      the player's TEAMS (staff_teams rights) supply admin.isAdmin /
+--      admin.isStaff, so a rank-less member of the Full Access team is not
+--      read as "not staff" by the legacy gates (/makeped, the F1 /staff
+--      overlay, ...). Never fires for an account that still has a column.
 
 local function isPlayerElement(player)
 	return player and isElement(player) and getElementType(player) == "player"
@@ -52,6 +57,28 @@ local function rankHoldsRight(player, right)
 	return type(parsed) == "table" and parsed[right] == true or false
 end
 
+-- [Batch 173] TEAM-only identity for the LEGACY ladder (step 3 above).
+-- Everything above still answers for a player WITH a Vortex rank or WITH a
+-- legacy accounts column, so this helper deliberately fires for neither: it
+-- only lifts the ONE player shape the owner reported - no rank, and all three
+-- legacy columns 0 (staff:hasTeam = 1, accounts.admin/supporter/scripter = 0).
+-- For him the rights API has no rank record and no column to derive one from,
+-- so the answer can only come from his TEAMS - ask it: a team granting
+-- admin.isAdmin makes him an admin, one granting admin.isStaff makes him
+-- support. Anyone with a rank or a legacy column is left to the byte-identical
+-- number test below, so no existing account changes rank tier.
+-- This is why /makeped (ped-system, read-only here) printed NOTHING for him:
+-- its handler gates on isPlayerTrialAdmin with no else branch, and a player
+-- with no rank and admin_level 0 read as "not staff".
+local function teamOnlyHolds(player, right)
+	if not isPlayerElement(player) then return false end
+	if getRankIndex(player) then return false end
+	if (tonumber(getElementData(player, "admin_level")) or 0) > 0 then return false end
+	if (tonumber(getElementData(player, "supporter_level")) or 0) > 0 then return false end
+	if (tonumber(getElementData(player, "scripter_level")) or 0) > 0 then return false end
+	return rankHoldsRight(player, right)
+end
+
 function isPlayerLeadAdmin(player)
 	if not isPlayerElement(player) then
 		return false
@@ -60,6 +87,7 @@ function isPlayerLeadAdmin(player)
 	if idx then
 		return idx >= 11 and rankHoldsRight(player, "admin.isAdmin") -- Lead Administrator+
 	end
+	if teamOnlyHolds(player, "admin.isAdmin") then return true end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 4)
 end
@@ -72,6 +100,7 @@ function isPlayerSeniorAdmin(player)
 	if idx then
 		return idx >= 9 and rankHoldsRight(player, "admin.isAdmin") -- Senior Administrator+
 	end
+	if teamOnlyHolds(player, "admin.isAdmin") then return true end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 3)
 end
@@ -84,6 +113,7 @@ function isPlayerAdmin(player)
 	if idx then
 		return idx >= 5 and rankHoldsRight(player, "admin.isAdmin") -- Moderator+
 	end
+	if teamOnlyHolds(player, "admin.isAdmin") then return true end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 2)
 end
@@ -96,6 +126,7 @@ function isPlayerTrialAdmin(player)
 	if idx then
 		return idx >= 4 and rankHoldsRight(player, "admin.isAdmin") -- Trial Moderator+
 	end
+	if teamOnlyHolds(player, "admin.isAdmin") then return true end
 	local adminLevel = getElementData(player, "admin_level") or 0
 	return (adminLevel >= 1)
 end
@@ -108,6 +139,7 @@ function isPlayerSupporter(player)
 	if idx then
 		return idx >= 2 and rankHoldsRight(player, "admin.isStaff") -- Trial Support+
 	end
+	if teamOnlyHolds(player, "admin.isStaff") then return true end
 	local supporter_level = getElementData(player, "supporter_level") or 0
 	return (supporter_level >= 1)
 end
@@ -120,6 +152,7 @@ function isPlayerSupportManager(player)
 	if idx then
 		return idx >= 3 and rankHoldsRight(player, "admin.isStaff") -- Support+
 	end
+	if teamOnlyHolds(player, "admin.isStaff") then return true end
 	local supporter_level = getElementData(player, "supporter_level") or 0
 	return (supporter_level >= 2)
 end

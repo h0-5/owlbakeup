@@ -826,6 +826,10 @@ function mutePlayer(thePlayer, commandName, targetPlayer)
 
 
 
+			return false
+
+
+
 		else
 
 
@@ -870,6 +874,14 @@ function mutePlayer(thePlayer, commandName, targetPlayer)
 
 
 
+					local actorText = "Hidden admin"
+					if hiddenAdmin ~= 1 then
+						actorText = (tostring(getPlayerName(thePlayer) or "?"):gsub("_", " ")) .. " (" .. tostring(getElementData(thePlayer, "account:username") or "?") .. ")"
+					end
+					local targetText = (tostring(targetPlayerName or "?"):gsub("_", " ")) .. " (" .. tostring(getElementData(targetPlayer, "account:username") or "?") .. ")"
+
+
+
 					if muted == 0 then
 
 
@@ -879,6 +891,10 @@ function mutePlayer(thePlayer, commandName, targetPlayer)
 
 
 						outputChatBox(targetPlayerName .. " is now muted from OOC.", thePlayer, 255, 0, 0)
+
+
+
+						outputChatBox("[ADMIN]: " .. actorText .. " muted " .. targetText .. ".", root, 255, 0, 0)
 
 
 
@@ -918,6 +934,10 @@ function mutePlayer(thePlayer, commandName, targetPlayer)
 
 
 
+						outputChatBox("[ADMIN]: " .. actorText .. " unmuted " .. targetText .. ".", root, 255, 0, 0)
+
+
+
 
 
 
@@ -951,6 +971,10 @@ function mutePlayer(thePlayer, commandName, targetPlayer)
 
 
 					mysql:query_free("UPDATE accounts SET muted=" .. mysql:escape_string(getElementData(targetPlayer, "muted")) .. " WHERE id = " .. mysql:escape_string(getElementData(targetPlayer, "account:id")) )
+
+
+
+					return true
 
 
 

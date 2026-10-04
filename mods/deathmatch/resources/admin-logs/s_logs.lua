@@ -79,8 +79,8 @@ local COLOR_REPORT     = {  64, 220,  64 } -- report lines (green)
 -- for a promotion and red for a demotion / full removal. An actor on a
 -- hidden rank still earns the "(Hidden) " marker, it simply sits inside a
 -- green or red line now.
-local COLOR_PROMOTE      = {  64, 220,  64 } -- promotion (green)
-local COLOR_DEMOTE       = { 255,  64,  64 } -- demotion / removal (red)
+local COLOR_PROMOTE      = {   0, 255,   0 } -- promotion (pure green)
+local COLOR_DEMOTE       = { 255,   0,   0 } -- demotion / removal (pure red)
 -- the OTHER rank lines (Rank Renamed / Rank Edited / Rank Reordered and any
 -- payload that carries no direction) keep the older actor-based pair from
 -- the previous batch: green for an ordinary actor, red for a hidden one.

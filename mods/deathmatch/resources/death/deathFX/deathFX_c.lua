@@ -32,12 +32,13 @@ function showCkWindow()
 		gui.window = guiCreateStaticImage(0, 0, 350, 300, ":resources/window_body.png", false)
 		exports.global:centerWindow(gui.window)
 
-		gui.label = guiCreateLabel(0.05, 0.05, 0.9, 0.7, string.gsub(getPlayerName(localPlayer), "_", " ").." has just been CK-ed!\n\nCK (Character killing) is the most uncommon way a character is killed in game and is used only in situations where it's needed. \n\nWhen you are killed from a CK, it's permanent and the only way to get the assests that are owned by this character back is from a stat transfer perk in Premium Features (F10).\n\nYou are now redirected to character selection screen as it was the only option you had.", true, gui.window)
+		gui.label = guiCreateLabel(0.05, 0.06, 0.9, 0.70, string.gsub(getPlayerName(localPlayer), "_", " ").." has just been CK-ed!\n\nCK (Character killing) is the most uncommon way a character is killed in game and is used only in situations where it's needed. \n\nWhen you are killed from a CK, it's permanent and the only way to get the assests that are owned by this character back is from a stat transfer perk in Premium Features (F10).\n\nYou are now redirected to character selection screen as it was the only option you had.", true, gui.window)
 		guiSetFont(gui.label, "default")
 		guiLabelSetHorizontalAlign(gui.label, "left", true)
-		guiLabelSetVerticalAlign(gui.label, "center", true)
+		guiLabelSetVerticalAlign(gui.label, "top", true)
 
 		gui.bClose = guiCreateButton(0.05, 0.8, 0.9, 0.15, "OK", true, gui.window)
+		guiSetFont(gui.bClose, "default-bold")
 		addEventHandler("onClientGUIClick", gui.bClose,
 		function ()
 			if source == gui.bClose then

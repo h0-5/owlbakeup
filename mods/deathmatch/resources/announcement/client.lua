@@ -1,33 +1,49 @@
 --MAXIME
 
 -- ============================================================================
--- [Fix batch 172] /ann surface = the TOP-CENTER CARD from his picture 5.
+-- [Reference rebuild] /ann surface = the BRIGHT-RED TOP-CENTER PILL from the
+-- owner's reference picture (owner: "match EXACTLY").
 --
--- Owner feedback (3 problems), all addressed here:
---   1) LAG  - ALL layout (dxGetTextWidth, UTF-8 ellipsis, box w/h, text right
---              edge) runs in postAnn -> layoutCard, i.e. ONCE per
---              announcement. onClientRender never measures text and never
---              builds a string. The ellipsis is a binary search (O(log n)
---              measurements) instead of one measurement per removed character,
---              so a long announcement can no longer stall the frame it pops
---              on. Per frame: one boolean test when there is no card; while a
---              card is up, a FLAT box (2 x dxDrawRectangle) replaces the old
---              4 x dxDrawCircle + 2 x dxDrawRectangle, and the sniper-scope
---              test is throttled to 60 ms instead of running every frame. The
---              lifecycle bookkeeping was moved IN FRONT of that test - the old
---              code returned before it, so aiming with weapon 43 kept the card
---              active forever (per-frame block never ended, annHeight never
---              reset). No timers exist on this path: the 8s hold is tick based
---              (card.hideAt) and the sound element is tracked and destroyed on
---              the next announcement, so nothing piles up.
---   2) RED  - background is dark red (94,20,28,245) with a brighter red
---              hairline (168,44,54,255); it was near-black (18,18,22,235).
---   3) WORD - the "Admin: "/"SUP: " prefix is gone (announcement/server.lua
---              sends the raw message), the card draws the text as-is.
+-- Geometry / colour, measured off the reference and expressed as fractions of
+-- the screen so it is identical at every resolution:
+--   * fill        rgb(222,42,42) - mid-point of the sampled band
+--                  rgb(214,38,38)..rgb(230,45,45): a vivid classic red, NOT
+--                  the old near-black (94,20,28) and not orange/grey.
+--                  Solid (alpha 255), only the enter/exit fade modulates it.
+--   * hairline    rgb(194,36,36), BORDER px (1 px at 1080p) - the very
+--                  slightly darker edge the reference shows.
+--   * size        width 48% of the screen (reference: 45-50%), height 5.5%
+--                  of the screen, horizontally centred, top margin 2% of the
+--                  screen - there is nothing above it.
+--   * corners     radius 25% of the pill height (= 10 px at 720p).
+--   * icon        megaphone.png (256x256 flat white silhouette, tilted 30
+--                  degrees up-right, 2 sound arcs, baked anti-aliasing),
+--                  LEFT inside, ICON_PAD from the left edge (12 px at 720p),
+--                  vertically centred, ink height = 55% of the pill height.
+--   * text        white default-bold, single line, CENTRED in the space right
+--                  of the icon, UTF-8 ellipsis on overflow. No colour, no
+--                  "Admin:"/"SUP:" prefix (server.lua sends the raw message).
 --
--- Card: centred x, top y = 14*scale -> 14..60 at 1920x1080, megaphone icon
--- left, WHITE default-bold text, 8s life, slide+fade in (280ms) / fade out
--- (350ms), dx only - the card never captures the mouse (no cursor, no gui).
+-- [batch 172 kept - this is a restyle, not a rewrite] ALL layout
+-- (dxGetTextWidth, UTF-8 ellipsis, box w/h, text edges) runs in postAnn ->
+-- layoutCard, i.e. ONCE per announcement. onClientRender never measures text
+-- and never builds a string: the ellipsis stays a binary search
+-- (O(log n) measurements), the early-out at the top of drawCard is
+-- unchanged, the sniper-scope test is still throttled to 60 ms and the
+-- lifecycle bookkeeping still runs BEFORE that test (so weapon 43 can never
+-- leave the card active). No timers exist on this path: the 8 s hold is tick
+-- based (card.hideAt) and the sound element is tracked and destroyed on the
+-- next announcement, so nothing piles up.
+--
+-- The rounded corners are the only thing that used to cost 4 x dxDrawCircle
+-- per frame. They are now BAKED, once, into a 2x-supersampled render target
+-- (buildPill, guarded by pcall - if the target cannot be created the card
+-- falls back to the flat 2-rectangle box and still shows), so the per-frame
+-- cost of the background is a single dxDrawImage.
+--
+-- Unchanged: slide-in 280 ms, hold 8 s, fade-out 350 ms, weapon-43 hide,
+-- click-to-copy URL, the pcall-guarded right check in server.lua and the
+-- announcement:post / sendTopNotification event contract.
 -- ============================================================================
 
 local sx, sy = guiGetScreenSize()
@@ -36,27 +52,31 @@ local scale = sy / 1080
 
 local localPlayer = getLocalPlayer()
 
-local FONT       = "default-bold"
-local CARD_TOP   = 14
-local CARD_H     = 46
-local ICON_SIZE  = 26
-local ICON_PAD   = 12
-local TEXT_GAP   = 12
-local TEXT_PAD   = 16
-local MIN_W      = 240
-local MAX_W_FRAC = 0.85
-local LIFETIME   = 8000
-local IN_MS      = 280
-local OUT_MS     = 350
-local BG_A       = 245
-local SNIPER_MS  = 60
-local TEXT_X     = (ICON_PAD + ICON_SIZE + TEXT_GAP) * scale
-local CHROME_W   = (ICON_PAD + ICON_SIZE + TEXT_GAP + TEXT_PAD) * scale
-local BORDER     = math.max(1, math.floor(scale))
+local FONT = "default-bold"
 
--- [Fix batch 172] the card must read as RED, not near-black.
-local BG_R, BG_G, BG_B       = 94, 20, 28
-local EDGE_R, EDGE_G, EDGE_B = 168, 44, 54
+-- reference geometry -------------------------------------------------------
+local CARD_TOP  = math.floor(sy * 0.02)          -- 2% of screen height
+local CARD_W    = math.floor(sx * 0.48)           -- 48% of screen width
+local CARD_H    = math.floor(sy * 0.055)          -- 5.5% of screen height
+local RADIUS    = math.floor(CARD_H * 0.25 + 0.5) -- 10 px at 720p
+local ICON_PAD  = CARD_H * 0.30                   -- 12 px at 720p
+local ICON_SIZE = CARD_H * 0.61                   -- glyph ink = 55% of pill
+local TEXT_GAP  = CARD_H * 0.20
+local TEXT_PAD  = CARD_H * 0.30
+local FONT_SCALE = CARD_H * 0.032                 -- ~1.9 at 1080p
+local CHROME    = ICON_PAD + ICON_SIZE + TEXT_GAP + TEXT_PAD
+
+local SS        = 2      -- supersample factor of the cached pill texture
+local BORDER    = math.max(1, math.floor(scale))
+
+local LIFETIME  = 8000
+local IN_MS     = 280
+local OUT_MS    = 350
+local SNIPER_MS = 60
+
+-- reference fill: bright vivid red (+ the very slightly darker hairline)
+local BG_R, BG_G, BG_B       = 222, 42, 42
+local EDGE_R, EDGE_G, EDGE_B = 194, 36, 36
 
 local card = {
 	active   = false,
@@ -70,9 +90,12 @@ local card = {
 	sniperAt = 0,
 	hideY    = 0,
 	x = 0, y = 0, w = 0, h = 0,
-	textRight = 0,
+	textLeft = 0, textRight = 0,
 	sound = nil,
 }
+
+-- the pill background, built once (rounded corners baked in)
+local pill = nil
 
 -- prefix of at most n bytes that ends on a UTF-8 character boundary
 local function cutAtChar(s, n)
@@ -96,11 +119,11 @@ local function firstChar(s)
 	return s:sub(1, i - 1)
 end
 
--- [Fix batch 172] runs ONLY from layoutCard (once per announcement).
--- Was: one dxGetTextWidth per character removed, each on a freshly
--- concatenated string - hundreds of measurements inside a single frame.
+-- [batch 172] runs ONLY from layoutCard (once per announcement).
+-- One dxGetTextWidth per probe, and the probe count is O(log n) instead of
+-- one measurement per removed character.
 local function trimToWidth(text, maxW)
-	if (dxGetTextWidth(text, 1, FONT, true) or 0) <= maxW then
+	if (dxGetTextWidth(text, FONT_SCALE, FONT, true) or 0) <= maxW then
 		return text
 	end
 	local lo, hi = 1, #text
@@ -108,7 +131,7 @@ local function trimToWidth(text, maxW)
 	while lo <= hi do
 		local mid = math.floor((lo + hi) / 2)
 		local cand = cutAtChar(text, mid)
-		if (dxGetTextWidth(cand .. "...", 1, FONT, true) or 0) <= maxW then
+		if (dxGetTextWidth(cand .. "...", FONT_SCALE, FONT, true) or 0) <= maxW then
 			best = cand
 			lo = mid + 1
 		else
@@ -116,8 +139,6 @@ local function trimToWidth(text, maxW)
 		end
 	end
 	if #best == 0 then
-		-- mirror the old loop's floor: it stopped on a 1-byte prefix and never
-		-- went below it, but dropped a multi-byte first character to ""
 		local fc = firstChar(text)
 		if #fc == 1 then
 			best = fc
@@ -126,16 +147,82 @@ local function trimToWidth(text, maxW)
 	return best .. "..."
 end
 
+-- rounded rectangle into the CURRENT target - only ever called while a render
+-- target is bound, i.e. from buildPill, never per frame
+local function roundedBox(x, y, w, h, r, col)
+	if w <= 0 or h <= 0 then return end
+	if r * 2 > w then r = w / 2 end
+	if r * 2 > h then r = h / 2 end
+	if r <= 0 then
+		dxDrawRectangle(x, y, w, h, col, false)
+		return
+	end
+	dxDrawRectangle(x + r, y, w - 2 * r, h, col, false)
+	dxDrawRectangle(x, y + r, w, h - 2 * r, col, false)
+	-- full discs at the four corners (the codebase idiom: hud/c_hud.lua
+	-- dxDrawRoundedRectangle, adminjail_c.lua) - startAngle/stopAngle come
+	-- BEFORE the colours in this client's dxDrawCircle
+	dxDrawCircle(x + r, y + r, r, 0, 360, col, col, 64, false)
+	dxDrawCircle(x + w - r, y + r, r, 0, 360, col, col, 64, false)
+	dxDrawCircle(x + r, y + h - r, r, 0, 360, col, col, 64, false)
+	dxDrawCircle(x + w - r, y + h - r, r, 0, 360, col, col, 64, false)
+end
+
+-- [reference] build the pill texture ONCE: hairline + fill + rounded corners,
+-- drawn at SS x and downscaled by dxDrawImage, so the corners are
+-- anti-aliased. Any failure (no VRAM, no RT support) leaves pill == nil and
+-- drawCard uses the flat fallback - the card always shows.
+local function buildPillAt(ss)
+	local tw, th = CARD_W * ss, CARD_H * ss
+	local b = BORDER * ss
+	local r = RADIUS * ss
+	local ok, tex = pcall(dxCreateRenderTarget, tw, th, true)
+	if not ok or not isElement(tex) then
+		return nil
+	end
+	local drawn = pcall(function()
+		if not dxSetRenderTarget(tex, true) then
+			error("cannot bind the pill render target")
+		end
+		roundedBox(0, 0, tw, th, r, tocolor(EDGE_R, EDGE_G, EDGE_B, 255))
+		roundedBox(b, b, tw - 2 * b, th - 2 * b, math.max(0, r - b),
+			tocolor(BG_R, BG_G, BG_B, 255))
+		dxSetRenderTarget()
+	end)
+	if not drawn then
+		-- never leave a foreign target bound, whatever went wrong
+		pcall(dxSetRenderTarget)
+		if isElement(tex) then
+			destroyElement(tex)
+		end
+		return nil
+	end
+	return tex
+end
+
+local function buildPill()
+	if pill and isElement(pill) then
+		return true
+	end
+	-- 2x first (smooth corners), then a 1x attempt for exotic resolutions
+	pill = buildPillAt(SS) or buildPillAt(1)
+	return pill ~= nil
+end
+
+-- [batch 172] the ONLY place that measures text - once per announcement
 local function layoutCard()
-	local maxTextW = sx * MAX_W_FRAC - CHROME_W
+	local maxTextW = CARD_W - CHROME
 	card.text = trimToWidth(card.text, maxTextW)
-	local textW = math.min(dxGetTextWidth(card.text, 1, FONT, true) or 0, maxTextW)
-	card.w = math.max(MIN_W * scale, CHROME_W + textW * scale)
-	card.h = CARD_H * scale
-	card.x = math.floor((sx - card.w) / 2)
-	card.y = CARD_TOP * scale
-	card.textRight = card.x + card.w - TEXT_PAD * scale
-	card.hideY = -(card.h + 24 * scale)
+
+	card.x = math.floor((sx - CARD_W) / 2)
+	card.y = CARD_TOP
+	card.w = CARD_W
+	card.h = CARD_H
+	card.textLeft  = card.x + CHROME - TEXT_PAD
+	card.textRight = card.x + CARD_W - TEXT_PAD
+	card.hideY = -(CARD_H + 24 * scale)
+
+	buildPill()
 end
 
 local function drawCard()
@@ -190,20 +277,24 @@ local function drawCard()
 	local x, y, w, h = card.x, card.y + yOff, card.w, card.h
 	local a = math.floor(255 * k)
 
-	-- flat box: 2 rectangles total (hairline frame + fill). The corners used
-	-- to cost 4 dxDrawCircle - the expensive part of this function - and the
-	-- owner does not care about rounding, only about the red look.
-	dxDrawRectangle(x - BORDER, y - BORDER, w + BORDER * 2, h + BORDER * 2,
-		tocolor(EDGE_R, EDGE_G, EDGE_B, a), true)
-	dxDrawRectangle(x, y, w, h, tocolor(BG_R, BG_G, BG_B, math.floor(BG_A * k)), true)
+	-- [reference] one image for the whole pill: fill + hairline + rounding,
+	-- all baked in. The fallback keeps the card visible if the target died.
+	if pill and isElement(pill) then
+		dxDrawImage(x, y, w, h, pill, 0, 0, 0,
+			tocolor(255, 255, 255, a), true)
+	else
+		dxDrawRectangle(x - BORDER, y - BORDER, w + BORDER * 2, h + BORDER * 2,
+			tocolor(EDGE_R, EDGE_G, EDGE_B, a), true)
+		dxDrawRectangle(x, y, w, h,
+			tocolor(BG_R, BG_G, BG_B, a), true)
+	end
 
-	dxDrawImage(x + ICON_PAD * scale, y + (h - ICON_SIZE * scale) / 2,
-		ICON_SIZE * scale, ICON_SIZE * scale, "megaphone.png",
-		0, 0, 0, tocolor(255, 255, 255, a), true)
+	dxDrawImage(x + ICON_PAD, y + (h - ICON_SIZE) / 2, ICON_SIZE, ICON_SIZE,
+		"megaphone.png", 0, 0, 0, tocolor(255, 255, 255, a), true)
 
-	dxDrawText(card.text, x + TEXT_X, y, card.textRight, y + h,
+	dxDrawText(card.text, card.textLeft, y, card.textRight, y + h,
 		tocolor(255, 255, 255, a),
-		scale, FONT, "left", "center", true, false, true, false, false)
+		FONT_SCALE, FONT, "center", "center", true, false, true, false, false)
 end
 
 addEventHandler("onClientRender", getRootElement(), drawCard)
